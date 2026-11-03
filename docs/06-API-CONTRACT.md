@@ -243,7 +243,28 @@ Public responses must exclude:
 - Private officer notes
 - Unverified AI output
 
-## 11. API State Rules
+## 11. Health and Liveness
+
+GET /api/health
+Permission: Public (unauthenticated)
+Inputs: None (GET only)
+
+Response: 200 OK
+Content-Type: application/json
+
+```json
+{
+  "status": "ok",
+  "service": "rangkai"
+}
+```
+
+Semantics:
+Process liveness check only. Deterministic response identifying the service.
+Never asserts external dependency readiness (Neon, R2, Gemini) or operational readiness.
+Enforced via Worker-first asset routing (run_worker_first: ["/api/*"]) to ensure API responses are never intercepted by SPA fallback routing regardless of request navigation headers.
+
+## 12. API State Rules
 
 - Draft events are never public.
 - Published events require organizer confirmation.
@@ -253,7 +274,7 @@ Public responses must exclude:
 - Cancelled events are not shown as active closures.
 - All important mutations create audit entries.
 
-## 12. API Testing
+## 13. API Testing
 
 Every endpoint needs:
 

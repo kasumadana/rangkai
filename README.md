@@ -442,7 +442,9 @@ Depending on the configured package scripts:
 
 ```bash
 pnpm exec tsc -b
-pnpm exec vitest run
+pnpm test          # vitest integration tests
+pnpm lint
+pnpm check         # build and dry-run deploy validation
 pnpm exec playwright test
 pnpm build
 ```
@@ -457,7 +459,17 @@ Tests must be implemented before they can pass.
 
 ### 11. Deploy to Cloudflare
 
-Build and deploy:
+Initial production deployment remains pending user authorization and remote resource provisioning.
+
+To validate build and deployment readiness locally without remote deployment, run:
+
+```bash
+pnpm check
+# or
+pnpm exec wrangler deploy --dry-run
+```
+
+When authorized for production deployment:
 
 ```bash
 pnpm deploy

@@ -224,6 +224,8 @@ Do not block critical road-status updates on AI availability.
 Local:
 
 - Vite/Workers local development.
+- Single origin serving React SPA and Hono API (Worker-first routing for /api/*).
+- Health endpoint: GET /api/health (process liveness).
 - Neon development branch.
 - R2 development bucket.
 
@@ -239,6 +241,7 @@ Production:
 - Production Neon database.
 - Production R2 bucket.
 - Secret-based API configuration.
+- Initial deployment is pending user authorization and remote provisioning.
 
 Never share production credentials with preview branches.
 
