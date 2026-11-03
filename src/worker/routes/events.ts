@@ -503,23 +503,32 @@ eventsRouter.patch("/:eventId", async (c) => {
 	const auditId = crypto.randomUUID();
 	const db = c.get("db");
 
-	// Single atomic CTE: event update + conditional audit log ONLY if row was actually updated
+	// Single atomic CTE: event update with full-field snapshot CAS verification
+	// and conditional audit log ONLY if row was actually updated
 	const query = sql`
 		WITH updated AS (
 			UPDATE events
 			SET
-				title = ${newTitle},
-				category = ${newCategory},
-				description = ${newDescription},
-				venue_name = ${newVenueName},
-				starts_at = ${startsAtDate},
-				ends_at = ${endsAtDate},
-				permit_reference = ${newPermitReference},
+				title = ${data.title !== undefined ? newTitle : existingEvent.title},
+				category = ${data.category !== undefined ? newCategory : existingEvent.category},
+				description = ${data.description !== undefined ? newDescription : existingEvent.description},
+				venue_name = ${data.venueName !== undefined ? newVenueName : existingEvent.venueName},
+				starts_at = ${data.startsAt !== undefined ? startsAtDate : existingEvent.startsAt},
+				ends_at = ${data.endsAt !== undefined ? endsAtDate : existingEvent.endsAt},
+				permit_reference = ${data.permitReference !== undefined ? newPermitReference : existingEvent.permitReference},
 				status = ${nextStatus},
 				verified_by = ${nextVerifiedBy},
 				verified_at = ${nextVerifiedAt},
 				updated_at = ${now}
-			WHERE id = ${eventId} AND status = ${existingEvent.status}
+			WHERE id = ${eventId}
+				AND status = ${existingEvent.status}
+				AND title = ${existingEvent.title}
+				AND category IS NOT DISTINCT FROM ${existingEvent.category}
+				AND description IS NOT DISTINCT FROM ${existingEvent.description}
+				AND venue_name IS NOT DISTINCT FROM ${existingEvent.venueName}
+				AND starts_at IS NOT DISTINCT FROM ${existingEvent.startsAt}
+				AND ends_at IS NOT DISTINCT FROM ${existingEvent.endsAt}
+				AND permit_reference IS NOT DISTINCT FROM ${existingEvent.permitReference}
 			RETURNING *
 		),
 		logged AS (
@@ -946,15 +955,22 @@ eventsRouter.post("/:eventId/cancel", async (c) => {
 	const now = new Date();
 	const auditId = crypto.randomUUID();
 
-	// Single atomic CTE: event cancellation + conditional audit log ONLY if row was updated
+	// Single atomic CTE: event cancellation with authoritative status predecessor derived in SQL
+	// and conditional audit log ONLY if row was updated
 	const query = sql`
-		WITH updated AS (
-			UPDATE events
+		WITH current_event AS (
+			SELECT id, status
+			FROM events
+			WHERE id = ${eventId} AND status IN ('draft', 'review', 'published', 'active')
+		),
+		updated AS (
+			UPDATE events e
 			SET
 				status = 'cancelled',
 				updated_at = ${now}
-			WHERE id = ${eventId} AND status IN ('draft', 'review', 'published', 'active')
-			RETURNING *
+			FROM current_event c
+			WHERE e.id = c.id
+			RETURNING e.*, c.status AS prev_status
 		),
 		logged AS (
 			INSERT INTO audit_logs (
@@ -968,7 +984,7 @@ eventsRouter.post("/:eventId/cancel", async (c) => {
 				'event.cancelled',
 				'event',
 				id,
-				${JSON.stringify({ status: event.status })}::jsonb,
+				json_build_object('status', prev_status),
 				${JSON.stringify({
 					status: "cancelled",
 					cancellationReason: parseResult.data.reason,

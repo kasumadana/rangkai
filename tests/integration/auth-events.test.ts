@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import * as dotenv from "dotenv";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { hashPassword } from "better-auth/crypto";
 import { assertDevBranch, AUTHORIZED_DEV_BRANCH } from "../../src/db/guard";
@@ -23,6 +23,56 @@ import { AuthConfigError, validateAuthConfig } from "../../src/worker/auth";
 import app from "../../src/worker/index";
 
 dotenv.config({ path: ".dev.vars" });
+
+function withHeldMutation<T>(
+	test: (payload: { query?: string; params?: unknown[] }) => boolean,
+	start: () => Promise<T> | T,
+	during: () => Promise<void>,
+): Promise<{ result: T; hits: number }> {
+	const fetchReal = globalThis.fetch;
+	let release: () => void = () => {};
+	let arrived: () => void = () => {};
+	let hit = 0;
+	const gate = new Promise<void>((r) => (release = r));
+	const arrival = new Promise<void>((r) => (arrived = r));
+
+	globalThis.fetch = async (input, init) => {
+		let payload: { query?: string; params?: unknown[] } | undefined;
+		try {
+			payload = JSON.parse(init?.body as string);
+		} catch {
+			// ignore non-JSON request body
+		}
+		if (payload?.query && test(payload) && hit === 0) {
+			hit++;
+			arrived();
+			await gate;
+			return fetchReal(input, init);
+		}
+		return fetchReal(input, init);
+	};
+
+	let pending: Promise<T> | undefined;
+	return (async () => {
+		try {
+			pending = Promise.resolve(start());
+			await Promise.race([
+				arrival,
+				new Promise<void>((_, reject) =>
+					setTimeout(() => reject(new Error("Interception timeout")), 20000),
+				),
+			]);
+			await during();
+			release();
+			const result = await pending;
+			return { result, hits: hit };
+		} finally {
+			release();
+			globalThis.fetch = fetchReal;
+			if (pending) await pending.catch(() => {});
+		}
+	})();
+}
 
 describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", () => {
 	let db: DbClient;
@@ -787,6 +837,84 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 				.set({ status: "draft" })
 				.where(eq(events.id, createdEventId));
 		});
+
+		it("rejects concurrent draft PATCH when snapshot is stale (409 Conflict, no lost update)", async () => {
+			const raceEventRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Concurrent PATCH Event",
+					category: "category-initial",
+					description: "description-initial",
+					status: "draft",
+				})
+				.returning();
+			const raceEventId = raceEventRows[0].id;
+
+			try {
+				let secondPatchStatus = 0;
+				const heldPatch = await withHeldMutation(
+					(p) =>
+						Boolean(
+							p.query &&
+							p.query.includes("'event.updated'") &&
+							p.params?.includes(raceEventId),
+						),
+					() =>
+						app.request(`http://localhost:5173/api/events/${raceEventId}`, {
+							method: "PATCH",
+							headers: {
+								"Content-Type": "application/json",
+								Cookie: organizerACookie,
+							},
+							body: JSON.stringify({ category: "category-A" }),
+						}),
+					async () => {
+						const res2 = await app.request(
+							`http://localhost:5173/api/events/${raceEventId}`,
+							{
+								method: "PATCH",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({ description: "description-B" }),
+							},
+						);
+						secondPatchStatus = res2.status;
+					},
+				);
+
+				expect(secondPatchStatus).toBe(200);
+				// Held patch detects stale snapshot predicate failure -> 409
+				expect(heldPatch.result.status).toBe(409);
+
+				// Durable DB verification: description-B is preserved and category is NOT overwritten
+				const saved = await db
+					.select()
+					.from(events)
+					.where(eq(events.id, raceEventId));
+				expect(saved[0].description).toBe("description-B");
+				expect(saved[0].category).toBe("category-initial");
+
+				// Exactly 1 audit log exists for the winning description update
+				const audits = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, raceEventId),
+							eq(auditLogs.action, "event.updated"),
+						),
+					);
+				expect(audits.length).toBe(1);
+				expect((audits[0].afterJson as { description: string }).description).toBe("description-B");
+			} finally {
+				await db.delete(auditLogs).where(eq(auditLogs.eventId, raceEventId));
+				await db.delete(events).where(eq(events.id, raceEventId));
+			}
+		});
 	});
 
 	describe("6. Assignment Scoping & Revocation (A03 / FR-004, FR-005)", () => {
@@ -932,6 +1060,216 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			expect(auditsAfter.length).toBe(auditsBefore.length);
 		});
 
+		it("converges concurrent identical assignment grants to 1 row and exactly 1 created audit log", async () => {
+			const assignRaceEventRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Concurrent Assignment Race Event",
+					status: "draft",
+				})
+				.returning();
+			const assignRaceEventId = assignRaceEventRows[0].id;
+
+			try {
+				let blocked = 0;
+				let releaseBoth: () => void = () => {};
+				const both = new Promise<void>((r) => (releaseBoth = r));
+				const fetchReal = globalThis.fetch;
+
+				globalThis.fetch = async (input, init) => {
+					let payload: { query?: string; params?: unknown[] } | undefined;
+					try {
+						payload = JSON.parse(init?.body as string);
+					} catch {
+						// ignore non-JSON request body
+					}
+					if (
+						payload?.query &&
+						payload.query.includes("WITH upserted") &&
+						payload.query.includes("INSERT INTO event_assignments") &&
+						payload.params?.includes(assignRaceEventId)
+					) {
+						blocked++;
+						if (blocked === 2) releaseBoth();
+						await Promise.race([
+							both,
+							new Promise<void>((_, reject) =>
+								setTimeout(() => reject(new Error("Assignment barrier timeout")), 20000),
+							),
+						]);
+						return fetchReal(input, init);
+					}
+					return fetchReal(input, init);
+				};
+
+				let responses: Array<{ status: number }>;
+				try {
+					responses = await Promise.all([
+						app.request(
+							`http://localhost:5173/api/events/${assignRaceEventId}/assignments`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({
+									userId: fixtureUserOfficerA.id,
+									canUpdateTraffic: true,
+									canUpdateCleanup: false,
+								}),
+							},
+						),
+						app.request(
+							`http://localhost:5173/api/events/${assignRaceEventId}/assignments`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({
+									userId: fixtureUserOfficerA.id,
+									canUpdateTraffic: true,
+									canUpdateCleanup: false,
+								}),
+							},
+						),
+					]);
+				} finally {
+					releaseBoth();
+					globalThis.fetch = fetchReal;
+				}
+
+				const statuses = responses.map((r) => r.status).sort();
+				expect(statuses).toEqual([200, 201]);
+
+				// Durable DB verification: exactly 1 assignment row exists
+				const actual = await db
+					.select()
+					.from(eventAssignments)
+					.where(
+						and(
+							eq(eventAssignments.eventId, assignRaceEventId),
+							eq(eventAssignments.userId, fixtureUserOfficerA.id),
+						),
+					);
+				expect(actual.length).toBe(1);
+
+				// Exactly 1 assignment.created audit log row exists
+				const createdAudits = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, assignRaceEventId),
+							eq(auditLogs.action, "assignment.created"),
+						),
+					);
+				expect(createdAudits.length).toBe(1);
+				expect(createdAudits[0].entityId).toBe(actual[0].id);
+				expect(createdAudits[0].beforeJson).toBeNull();
+			} finally {
+				await db.delete(auditLogs).where(eq(auditLogs.eventId, assignRaceEventId));
+				await db.delete(eventAssignments).where(eq(eventAssignments.eventId, assignRaceEventId));
+				await db.delete(events).where(eq(events.id, assignRaceEventId));
+			}
+		});
+
+		it("authoritatively captures preceding permissions during concurrent assignment update", async () => {
+			const updateRaceEventRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Concurrent Permission Update Event",
+					status: "draft",
+				})
+				.returning();
+			const updateRaceEventId = updateRaceEventRows[0].id;
+
+			// Seed initial assignment: traffic=true, cleanup=false
+			await db.insert(eventAssignments).values({
+				id: crypto.randomUUID(),
+				eventId: updateRaceEventId,
+				userId: fixtureUserOfficerA.id,
+				canUpdateTraffic: true,
+				canUpdateCleanup: false,
+			});
+
+			try {
+				let interveningStatus = 0;
+				const held = await withHeldMutation(
+					(p) =>
+						Boolean(
+							p.query &&
+							p.query.includes("WITH upserted") &&
+							p.params?.includes(updateRaceEventId),
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${updateRaceEventId}/assignments`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({
+									userId: fixtureUserOfficerA.id,
+									canUpdateTraffic: false,
+									canUpdateCleanup: true,
+								}),
+							},
+						),
+					async () => {
+						const res = await app.request(
+							`http://localhost:5173/api/events/${updateRaceEventId}/assignments`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({
+									userId: fixtureUserOfficerA.id,
+									canUpdateTraffic: true,
+									canUpdateCleanup: true,
+								}),
+							},
+						);
+						interveningStatus = res.status;
+					},
+				);
+
+				expect(interveningStatus).toBe(200);
+				expect(held.result.status).toBe(200);
+
+				// Query audit logs for the held update (where afterJson has canUpdateTraffic: false)
+				const updates = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, updateRaceEventId),
+							eq(auditLogs.action, "assignment.updated"),
+						),
+					);
+				const heldAudit = updates.find(
+					(a) => (a.afterJson as { canUpdateTraffic?: boolean })?.canUpdateTraffic === false,
+				);
+				expect(heldAudit).toBeDefined();
+				// Authoritative predecessor: actual cleanup permission was true, not stale false!
+				expect((heldAudit!.beforeJson as { canUpdateCleanup?: boolean })?.canUpdateCleanup).toBe(true);
+			} finally {
+				await db.delete(auditLogs).where(eq(auditLogs.eventId, updateRaceEventId));
+				await db.delete(eventAssignments).where(eq(eventAssignments.eventId, updateRaceEventId));
+				await db.delete(events).where(eq(events.id, updateRaceEventId));
+			}
+		});
+
 		it("assigned officer can now view assigned event detail AND see it in event listing", async () => {
 			// Detail view allowed
 			const detailRes = await app.request(
@@ -1064,6 +1402,75 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			expect(data.event.status).toBe("review");
 			expect(data.event.verifiedBy).toBe(fixtureUserOrganizerA.id);
 			expect(data.event.verifiedAt).toBeDefined();
+		});
+
+		it("rejects review transition with 409 and 0 audit logs when event fields are modified concurrently after review pre-read", async () => {
+			const reviewRaceEventRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Review Race Event",
+					venueName: "Sentra Krematorium A",
+					startsAt: new Date("2026-11-25T07:00:00Z"),
+					endsAt: new Date("2026-11-25T15:00:00Z"),
+					status: "draft",
+				})
+				.returning();
+			const reviewRaceEventId = reviewRaceEventRows[0].id;
+
+			try {
+				let patchStatus = 0;
+				const heldReview = await withHeldMutation(
+					(p) =>
+						Boolean(
+							p.query &&
+							p.query.includes("'event.reviewed'") &&
+							p.params?.includes(reviewRaceEventId),
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${reviewRaceEventId}/review`,
+							{
+								method: "POST",
+								headers: { Cookie: organizerACookie },
+							},
+						),
+					async () => {
+						const patchRes = await app.request(
+							`http://localhost:5173/api/events/${reviewRaceEventId}`,
+							{
+								method: "PATCH",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({ description: "Intervening Concurrent Edit" }),
+							},
+						);
+						patchStatus = patchRes.status;
+					},
+				);
+
+				expect(patchStatus).toBe(200);
+				// Snapshot mismatch causes review update query to match 0 rows -> 409
+				expect(heldReview.result.status).toBe(409);
+
+				// Exactly 0 event.reviewed audit logs exist!
+				const audits = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, reviewRaceEventId),
+							eq(auditLogs.action, "event.reviewed"),
+						),
+					);
+				expect(audits.length).toBe(0);
+			} finally {
+				await db.delete(auditLogs).where(eq(auditLogs.eventId, reviewRaceEventId));
+				await db.delete(events).where(eq(events.id, reviewRaceEventId));
+			}
 		});
 
 		it("REJECTS publication when road impact references an UNVERIFIED road segment", async () => {
@@ -1369,6 +1776,89 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			await db.delete(auditLogs).where(eq(auditLogs.eventId, eventToCancel[0].id));
 			await db.delete(events).where(eq(events.id, eventToCancel[0].id));
 		});
+
+		it("authoritatively captures published predecessor when cancellation races with intervening publication", async () => {
+			const cancelRaceEventRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Cancel Predecessor Race Event",
+					venueName: "Sentra Krematorium A",
+					startsAt: new Date("2026-11-25T07:00:00Z"),
+					endsAt: new Date("2026-11-25T15:00:00Z"),
+					status: "review",
+					verifiedBy: fixtureUserOrganizerA.id,
+					verifiedAt: new Date(),
+				})
+				.returning();
+			const cancelRaceEventId = cancelRaceEventRows[0].id;
+
+			const impactRows = await db
+				.insert(roadImpacts)
+				.values({
+					eventId: cancelRaceEventId,
+					roadSegmentId: fixtureVerifiedRoadSegment.id,
+					plannedFrom: new Date("2026-11-25T07:00:00Z"),
+					plannedTo: new Date("2026-11-25T15:00:00Z"),
+					impactType: "closure",
+				})
+				.returning();
+
+			try {
+				let publishStatus = 0;
+				const heldCancel = await withHeldMutation(
+					(p) =>
+						Boolean(
+							p.query &&
+							p.query.includes("'event.cancelled'") &&
+							p.params?.includes(cancelRaceEventId),
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${cancelRaceEventId}/cancel`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({ reason: "Held cancel racing with publish" }),
+							},
+						),
+					async () => {
+						const publishRes = await app.request(
+							`http://localhost:5173/api/events/${cancelRaceEventId}/publish`,
+							{
+								method: "POST",
+								headers: { Cookie: organizerACookie },
+							},
+						);
+						publishStatus = publishRes.status;
+					},
+				);
+
+				expect(publishStatus).toBe(200);
+				expect(heldCancel.result.status).toBe(200);
+
+				// Audit log for cancellation must record 'published' as authoritative before status!
+				const cancelAudits = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, cancelRaceEventId),
+							eq(auditLogs.action, "event.cancelled"),
+						),
+					);
+				expect(cancelAudits.length).toBe(1);
+				expect((cancelAudits[0].beforeJson as { status?: string })?.status).toBe("published");
+			} finally {
+				await db.delete(auditLogs).where(eq(auditLogs.eventId, cancelRaceEventId));
+				await db.delete(roadImpacts).where(eq(roadImpacts.id, impactRows[0].id));
+				await db.delete(events).where(eq(events.id, cancelRaceEventId));
+			}
+		});
 	});
 
 	describe("9. Atomic Batch Rollback (A04 / AGENTS §17)", () => {
@@ -1415,80 +1905,129 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			expect(checkAudit.length).toBe(0);
 		});
 
-		it("rolls back CTE event creation atomically when audit insert fails", async () => {
-			const failEventId = crypto.randomUUID();
-			const failAuditId = crypto.randomUUID();
+		it("rolls back real handler event creation atomically when audit foreign key insert fails", async () => {
+			const rollbackTitle = `[SIMULATED] Rollback Event ${crypto.randomUUID()}`;
+			const fetchReal = globalThis.fetch;
+			let injections = 0;
 
-			const failQuery = sql`
-				WITH inserted AS (
-					INSERT INTO events (id, organization_id, created_by, title, status)
-					VALUES (${failEventId}, ${fixtureOrgA.id}, ${fixtureUserOrganizerA.id}, 'CTE Rollback Event', 'draft')
-					RETURNING *
-				),
-				logged AS (
-					INSERT INTO audit_logs (id, organization_id, event_id, actor_id, action, entity_type, entity_id)
-					SELECT ${failAuditId}, '00000000-0000-4000-8000-000000000000', id, ${fixtureUserOrganizerA.id}, 'event.created', 'event', id
-					FROM inserted
-					RETURNING id
-				)
-				SELECT * FROM inserted;
-			`;
+			globalThis.fetch = async (input, init) => {
+				let payload: { query?: string; params?: unknown[] } | undefined;
+				try {
+					payload = JSON.parse(init?.body as string);
+				} catch {
+					// ignore non-JSON request body
+				}
+				if (
+					injections === 0 &&
+					payload?.query &&
+					payload.query.includes("INSERT INTO audit_logs") &&
+					payload.query.includes("'event.created'")
+				) {
+					injections++;
+					payload.query = payload.query.replace(
+						/SELECT\s+(\$\d+),\s*organization_id,\s*id,/,
+						"SELECT $1, '00000000-0000-4000-8000-000000000000'::uuid, id,",
+					);
+					return fetchReal(input, { ...init, body: JSON.stringify(payload) });
+				}
+				return fetchReal(input, init);
+			};
 
 			try {
-				await db.execute(failQuery);
-				expect.unreachable("CTE should have failed due to invalid audit foreign key");
-			} catch (err: unknown) {
-				expect(String((err as { cause?: unknown })?.cause || err)).toContain("foreign key");
-			}
+				const res = await app.request("http://localhost:5173/api/events", {
+					method: "POST",
+					headers: {
+						Cookie: organizerACookie,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						organizationId: fixtureOrgA.id,
+						title: rollbackTitle,
+					}),
+				});
 
-			const checkEvent = await db.select().from(events).where(eq(events.id, failEventId));
-			expect(checkEvent.length).toBe(0);
+				expect(res.status).toBe(500);
+				expect(injections).toBe(1);
+
+				// Durable DB verification: real handler rolled back atomically; zero event rows exist
+				const checkEvent = await db
+					.select()
+					.from(events)
+					.where(and(eq(events.organizationId, fixtureOrgA.id), eq(events.title, rollbackTitle)));
+				expect(checkEvent.length).toBe(0);
+			} finally {
+				globalThis.fetch = fetchReal;
+			}
 		});
 
-		it("rolls back CTE assignment creation atomically when audit insert fails", async () => {
-			const failEventId = crypto.randomUUID();
-			const failAssignmentId = crypto.randomUUID();
-			const failAuditId = crypto.randomUUID();
+		it("rolls back real handler assignment creation atomically when audit foreign key insert fails", async () => {
+			const rollbackEventRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: `Rollback Assign Event ${crypto.randomUUID().slice(0, 8)}`,
+					status: "draft",
+				})
+				.returning();
+			const rollbackEventId = rollbackEventRows[0].id;
 
-			const failQuery = sql`
-				WITH inserted_event AS (
-					INSERT INTO events (id, organization_id, created_by, title, status)
-					VALUES (${failEventId}, ${fixtureOrgA.id}, ${fixtureUserOrganizerA.id}, 'CTE Rollback Assignment Event', 'draft')
-					RETURNING id
-				),
-				upserted AS (
-					INSERT INTO event_assignments (id, event_id, user_id, can_update_traffic, can_update_cleanup)
-					SELECT ${failAssignmentId}, id, ${fixtureUserOfficerA.id}, true, true
-					FROM inserted_event
-					RETURNING *
-				),
-				logged AS (
-					INSERT INTO audit_logs (id, organization_id, event_id, actor_id, action, entity_type, entity_id)
-					SELECT ${failAuditId}, '00000000-0000-4000-8000-000000000000', event_id, ${fixtureUserOrganizerA.id}, 'assignment.created', 'event_assignment', id
-					FROM upserted
-					RETURNING id
-				)
-				SELECT * FROM upserted;
-			`;
+			const fetchReal = globalThis.fetch;
+			let injections = 0;
+
+			globalThis.fetch = async (input, init) => {
+				let payload: { query?: string; params?: unknown[] } | undefined;
+				try {
+					payload = JSON.parse(init?.body as string);
+				} catch {
+					// ignore non-JSON request body
+				}
+				if (
+					injections === 0 &&
+					payload?.query &&
+					payload.query.includes("INSERT INTO audit_logs") &&
+					payload.query.includes("'event_assignment'")
+				) {
+					injections++;
+					const matchIndex = payload.params?.findIndex((v) => v === fixtureOrgA.id) ?? -1;
+					if (matchIndex >= 0 && payload.params) {
+						payload.params[matchIndex] = "00000000-0000-4000-8000-000000000000";
+					}
+					return fetchReal(input, { ...init, body: JSON.stringify(payload) });
+				}
+				return fetchReal(input, init);
+			};
 
 			try {
-				await db.execute(failQuery);
-				expect.unreachable("CTE should have failed due to invalid audit foreign key");
-			} catch (err: unknown) {
-				expect(String((err as { cause?: unknown })?.cause || err)).toContain("foreign key");
+				const res = await app.request(
+					`http://localhost:5173/api/events/${rollbackEventId}/assignments`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: organizerACookie,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							userId: fixtureUserOfficerA.id,
+							canUpdateTraffic: true,
+							canUpdateCleanup: true,
+						}),
+					},
+				);
+
+				expect(res.status).toBe(500);
+				expect(injections).toBe(1);
+
+				// Durable DB verification: real handler rolled back atomically; zero assignment rows exist
+				const checkAssignment = await db
+					.select()
+					.from(eventAssignments)
+					.where(eq(eventAssignments.eventId, rollbackEventId));
+				expect(checkAssignment.length).toBe(0);
+			} finally {
+				globalThis.fetch = fetchReal;
+				await db.delete(events).where(eq(events.id, rollbackEventId));
 			}
-
-			const checkAssignment = await db
-				.select()
-				.from(eventAssignments)
-				.where(eq(eventAssignments.id, failAssignmentId));
-			expect(checkAssignment.length).toBe(0);
-
-			const checkEvent = await db
-				.select()
-				.from(events)
-				.where(eq(events.id, failEventId));
-			expect(checkEvent.length).toBe(0);
 		});
 	});
 });

@@ -162,68 +162,62 @@ assignmentsRouter.post("/:eventId/assignments", async (c) => {
 
 	const targetMember = targetMemberRows[0];
 
-	// Check if an assignment already exists for this event and user
-	const existingAssignmentRows = await db
-		.select()
-		.from(eventAssignments)
-		.where(
-			and(
-				eq(eventAssignments.eventId, eventId),
-				eq(eventAssignments.userId, userId),
-			),
-		)
-		.limit(1);
-
-	const existingAssignment = existingAssignmentRows[0];
-
-	// Idempotent no-change: if identical permissions already exist, return 200 without creating a duplicate audit row
-	if (
-		existingAssignment &&
-		existingAssignment.canUpdateTraffic === canUpdateTraffic &&
-		existingAssignment.canUpdateCleanup === canUpdateCleanup
-	) {
-		return c.json(
-			{
-				assignment: {
-					...existingAssignment,
-					userName: targetMember.userName,
-					userEmail: targetMember.userEmail,
-				},
-			},
-			200,
-		);
-	}
-
-	const assignmentId = existingAssignment
-		? existingAssignment.id
-		: crypto.randomUUID();
+	const assignmentId = crypto.randomUUID();
 	const auditId = crypto.randomUUID();
 	const now = new Date();
-	const action = existingAssignment
-		? "assignment.updated"
-		: "assignment.created";
-	const beforeJson = existingAssignment
-		? JSON.stringify({
-				userId: existingAssignment.userId,
-				canUpdateTraffic: existingAssignment.canUpdateTraffic,
-				canUpdateCleanup: existingAssignment.canUpdateCleanup,
-			})
-		: null;
 
-	// Single atomic CTE: upsert assignment AND insert audit log referencing the actual RETURNING id!
+	// Single atomic CTE: inspect current row in SQL, insert if new (with ON CONFLICT DO NOTHING),
+	// update if permissions changed (capturing authoritative locked predecessor from SQL),
+	// and record audit log ONLY for the actual mutation performed.
 	const query = sql`
 		WITH upserted AS (
+			SELECT id, event_id, user_id, can_update_traffic, can_update_cleanup
+			FROM event_assignments
+			WHERE event_id = ${eventId} AND user_id = ${userId}
+		),
+		inserted AS (
 			INSERT INTO event_assignments (
 				id, event_id, user_id, can_update_traffic, can_update_cleanup, created_at
 			)
-			VALUES (
+			SELECT
 				${assignmentId}, ${eventId}, ${userId}, ${canUpdateTraffic}, ${canUpdateCleanup}, ${now}
-			)
-			ON CONFLICT (event_id, user_id)
-			DO UPDATE SET
-				can_update_traffic = EXCLUDED.can_update_traffic,
-				can_update_cleanup = EXCLUDED.can_update_cleanup
-			RETURNING *
+			WHERE NOT EXISTS (SELECT 1 FROM upserted)
+			ON CONFLICT (event_id, user_id) DO NOTHING
+			RETURNING
+				id,
+				event_id,
+				user_id,
+				can_update_traffic,
+				can_update_cleanup,
+				created_at,
+				NULL::boolean AS prev_traffic,
+				NULL::boolean AS prev_cleanup,
+				'assignment.created' AS action_name
+		),
+		updated AS (
+			UPDATE event_assignments ea
+			SET
+				can_update_traffic = ${canUpdateTraffic},
+				can_update_cleanup = ${canUpdateCleanup}
+			FROM upserted u
+			WHERE ea.id = u.id
+				AND (ea.can_update_traffic IS DISTINCT FROM ${canUpdateTraffic}
+					OR ea.can_update_cleanup IS DISTINCT FROM ${canUpdateCleanup})
+			RETURNING
+				ea.id,
+				ea.event_id,
+				ea.user_id,
+				ea.can_update_traffic,
+				ea.can_update_cleanup,
+				ea.created_at,
+				u.can_update_traffic AS prev_traffic,
+				u.can_update_cleanup AS prev_cleanup,
+				'assignment.updated' AS action_name
+		),
+		mutated AS (
+			SELECT * FROM inserted
+			UNION ALL
+			SELECT * FROM updated
 		),
 		logged AS (
 			INSERT INTO audit_logs (
@@ -234,17 +228,24 @@ assignmentsRouter.post("/:eventId/assignments", async (c) => {
 				${check.event.organizationId},
 				event_id,
 				${currentUser.id},
-				${action},
+				action_name,
 				'event_assignment',
 				id,
-				${beforeJson ? sql`${beforeJson}::jsonb` : sql`NULL`},
+				CASE
+					WHEN action_name = 'assignment.created' THEN NULL
+					ELSE json_build_object(
+						'userId', user_id,
+						'canUpdateTraffic', prev_traffic,
+						'canUpdateCleanup', prev_cleanup
+					)
+				END,
 				json_build_object(
 					'userId', user_id,
 					'canUpdateTraffic', can_update_traffic,
 					'canUpdateCleanup', can_update_cleanup
 				),
 				${now}
-			FROM upserted
+			FROM mutated
 			RETURNING id
 		)
 		SELECT
@@ -253,27 +254,75 @@ assignmentsRouter.post("/:eventId/assignments", async (c) => {
 			user_id AS "userId",
 			can_update_traffic AS "canUpdateTraffic",
 			can_update_cleanup AS "canUpdateCleanup",
-			created_at AS "createdAt"
-		FROM upserted;
+			created_at AS "createdAt",
+			action_name AS "actionName"
+		FROM mutated;
 	`;
 
 	const res = await db.execute(query);
-	const assignment = res.rows[0];
+
+	if (res.rows.length === 0) {
+		// Idempotent concurrent repeat: another request already established the row with identical permissions
+		const freshRows = await db
+			.select()
+			.from(eventAssignments)
+			.where(
+				and(
+					eq(eventAssignments.eventId, eventId),
+					eq(eventAssignments.userId, userId),
+				),
+			)
+			.limit(1);
+
+		if (freshRows.length > 0) {
+			const current = freshRows[0];
+			if (
+				current.canUpdateTraffic === canUpdateTraffic &&
+				current.canUpdateCleanup === canUpdateCleanup
+			) {
+				return c.json(
+					{
+						assignment: {
+							id: current.id,
+							eventId: current.eventId,
+							userId: current.userId,
+							canUpdateTraffic: current.canUpdateTraffic,
+							canUpdateCleanup: current.canUpdateCleanup,
+							createdAt: new Date(current.createdAt),
+							userName: targetMember.userName,
+							userEmail: targetMember.userEmail,
+						},
+					},
+					200,
+				);
+			}
+		}
+
+		return sendError(
+			c,
+			"STATE_CONFLICT",
+			"Concurrent modification prevented updating assignment.",
+			409,
+		);
+	}
+
+	const row = res.rows[0];
+	const isCreated = row.actionName === "assignment.created";
 
 	return c.json(
 		{
 			assignment: {
-				id: assignment.id as string,
-				eventId: assignment.eventId as string,
-				userId: assignment.userId as string,
-				canUpdateTraffic: assignment.canUpdateTraffic as boolean,
-				canUpdateCleanup: assignment.canUpdateCleanup as boolean,
-				createdAt: new Date(assignment.createdAt as string),
+				id: row.id as string,
+				eventId: row.eventId as string,
+				userId: row.userId as string,
+				canUpdateTraffic: row.canUpdateTraffic as boolean,
+				canUpdateCleanup: row.canUpdateCleanup as boolean,
+				createdAt: new Date(row.createdAt as string),
 				userName: targetMember.userName,
 				userEmail: targetMember.userEmail,
 			},
 		},
-		existingAssignment ? 200 : 201,
+		isCreated ? 201 : 200,
 	);
 });
 

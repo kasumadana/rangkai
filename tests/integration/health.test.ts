@@ -1,6 +1,10 @@
+import cp from "node:child_process";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import os from "node:os";
+import path from "node:path";
 import * as dotenv from "dotenv";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -391,6 +395,276 @@ describe("GET /api/health", () => {
 					headers: { Cookie: sessionCookie },
 				});
 				expect(resProtected.statusCode).toBe(401);
+			});
+
+			describe("real browser execution via headless Chrome & CDP against workerd", () => {
+				let profile = "";
+				let chromeProcess: cp.ChildProcess | null = null;
+				let ws: WebSocket | null = null;
+				let otherServer: http.Server | null = null;
+				let otherOrigin = "";
+				let seq = 0;
+				const pending = new Map<
+					number,
+					{ resolve: (val: unknown) => void; reject: (err: unknown) => void }
+				>();
+				let cookieDelivered = false;
+				let csrfStatusCode: number | null = null;
+
+				const cmd = (method: string, params: Record<string, unknown> = {}) =>
+					new Promise((resolve, reject) => {
+						const id = ++seq;
+						pending.set(id, { resolve, reject });
+						ws?.send(JSON.stringify({ id, method, params }));
+					});
+
+				const evaluate = async <T = unknown>(expression: string): Promise<T> => {
+					const res = (await cmd("Runtime.evaluate", {
+						expression,
+						awaitPromise: true,
+						returnByValue: true,
+					})) as { exceptionDetails?: unknown; result?: { value?: unknown } };
+					if (res.exceptionDetails) {
+						throw new Error(
+							`Browser evaluation failed: ${JSON.stringify(res.exceptionDetails)}`,
+						);
+					}
+					return res.result?.value as T;
+				};
+
+				beforeAll(async () => {
+					const chromePath =
+						"C:/Program Files/Google/Chrome/Application/chrome.exe";
+					if (!fs.existsSync(chromePath)) return;
+
+					profile = fs.mkdtempSync(
+						path.join(os.tmpdir(), "rangkai-browser-"),
+					);
+					chromeProcess = cp.spawn(
+						chromePath,
+						[
+							"--headless=new",
+							"--no-first-run",
+							"--no-default-browser-check",
+							"--disable-background-networking",
+							"--remote-debugging-port=0",
+							`--user-data-dir=${profile}`,
+							"about:blank",
+						],
+						{ windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+					);
+
+					const devPortFile = path.join(profile, "DevToolsActivePort");
+					for (let i = 0; i < 100 && !fs.existsSync(devPortFile); i++) {
+						await new Promise((r) => setTimeout(r, 100));
+					}
+					const debugPort = Number(
+						fs.readFileSync(devPortFile, "utf8").split("\n")[0].trim(),
+					);
+
+					const tabRes = await fetch(
+						`http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(baseUrl)}`,
+						{ method: "PUT" },
+					);
+					const tab = (await tabRes.json()) as { webSocketDebuggerUrl: string };
+
+					ws = new WebSocket(tab.webSocketDebuggerUrl);
+					await new Promise<void>((resolve, reject) => {
+						if (!ws) return reject(new Error("No WebSocket"));
+						ws.addEventListener("open", () => resolve(), { once: true });
+						ws.addEventListener("error", (err) => reject(err), { once: true });
+					});
+
+					ws.addEventListener("message", (e: MessageEvent) => {
+						const m = JSON.parse(String(e.data));
+						if (m.id) {
+							const p = pending.get(m.id);
+							if (p) {
+								pending.delete(m.id);
+								if (m.error) p.reject(new Error("CDP command failed"));
+								else p.resolve(m.result);
+							}
+						} else if (
+							m.method === "Network.requestWillBeSentExtraInfo" &&
+							otherOrigin &&
+							(m.params.headers?.Origin === otherOrigin ||
+								m.params.headers?.origin === otherOrigin ||
+								m.params.headers?.["Sec-Fetch-Site"] === "cross-site" ||
+								m.params.headers?.["sec-fetch-site"] === "cross-site" ||
+								m.params.headers?.["Sec-Fetch-Site"] === "same-site" ||
+								m.params.headers?.["sec-fetch-site"] === "same-site")
+						) {
+							if (
+								m.params.associatedCookies?.some(
+									(c: {
+										blockedReasons: unknown[];
+										cookie: { name: string };
+									}) =>
+										c.blockedReasons.length === 0 &&
+										c.cookie.name === "rangkai.session_token",
+								)
+							) {
+								cookieDelivered = true;
+							}
+						} else if (
+							m.method === "Network.responseReceivedExtraInfo" &&
+							m.params.statusCode === 403
+						) {
+							csrfStatusCode = 403;
+						}
+					});
+
+					await cmd("Network.enable");
+					await cmd("Page.enable");
+					await cmd("Page.navigate", { url: baseUrl });
+					await new Promise((r) => setTimeout(r, 400));
+				});
+
+				afterAll(async () => {
+					try {
+						ws?.close();
+					} catch {
+						// ignore ws close error
+					}
+					if (otherServer) {
+						try {
+							otherServer.closeAllConnections();
+						} catch {
+							// ignore closeAllConnections error
+						}
+						await new Promise<void>((r) => otherServer?.close(() => r()));
+					}
+					if (chromeProcess && chromeProcess.pid) {
+						try {
+							cp.execFileSync(
+								"taskkill.exe",
+								["/PID", String(chromeProcess.pid), "/T", "/F"],
+								{ stdio: "ignore", windowsHide: true },
+							);
+						} catch {
+							// ignore taskkill error
+						}
+					}
+					if (profile && fs.existsSync(profile)) {
+						try {
+							fs.rmSync(profile, {
+								recursive: true,
+								force: true,
+								maxRetries: 5,
+							});
+						} catch {
+							// ignore profile directory removal error
+						}
+					}
+				});
+
+				it("authenticates in real browser, sets session cookie, and resolves active session", async () => {
+					const status = await evaluate<number>(`
+						fetch('/api/auth/sign-in/email', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								email: 'workerd.${runKey}@test.local',
+								password: '${testPassword}'
+							})
+						}).then(r => r.status)
+					`);
+					expect(status).toBe(200);
+
+					const userCheck = await evaluate<{ user?: { id?: string } }>(`
+						fetch('/api/auth/get-session').then(r => r.json())
+					`);
+					expect(userCheck?.user?.id).toBe(fixtureUserId);
+				});
+
+				it("blocks cross-origin text/plain mutation with 403 in browser despite cookie delivery", async () => {
+					const host = new URL(baseUrl).hostname;
+					otherServer = http.createServer((_req, res) => {
+						res.setHeader("Content-Type", "text/html");
+						res.end("<!doctype html><title>External Origin</title>");
+					});
+					await new Promise<void>((r) => otherServer?.listen(0, host, r));
+					const addr = otherServer.address() as AddressInfo;
+					otherOrigin = `http://${host}:${addr.port}`;
+
+					await cmd("Page.navigate", { url: otherOrigin });
+					await new Promise((r) => setTimeout(r, 300));
+
+					const eventCountBefore = (
+						await db
+							.select()
+							.from(events)
+							.where(eq(events.organizationId, fixtureOrgId))
+					).length;
+
+					const resStatus = await evaluate<number>(`
+						fetch('${baseUrl}api/events', {
+							method: 'POST',
+							credentials: 'include',
+							headers: { 'Content-Type': 'text/plain' },
+							body: JSON.stringify({
+								organizationId: '${fixtureOrgId}',
+								title: 'Browser CSRF should fail'
+							})
+						}).then(r => r.status).catch(() => -1)
+					`);
+
+					expect(resStatus === -1 || resStatus === 403).toBe(true);
+					expect(cookieDelivered).toBe(true);
+					expect(csrfStatusCode).toBe(403);
+
+					const eventCountAfter = (
+						await db
+							.select()
+							.from(events)
+							.where(eq(events.organizationId, fixtureOrgId))
+					).length;
+					expect(eventCountAfter).toBe(eventCountBefore);
+				});
+
+				it("revokes browser session on sign-out and rejects subsequent requests with 401", async () => {
+					await cmd("Page.navigate", { url: baseUrl });
+					await new Promise((r) => setTimeout(r, 300));
+
+					const logoutStatus = await evaluate<number>(`
+						fetch('/api/auth/sign-out', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: '{}'
+						}).then(r => r.status)
+					`);
+					expect(logoutStatus).toBe(200);
+
+					const afterLogoutStatus = await evaluate<number>(`
+						fetch('/api/events').then(r => r.status)
+					`);
+					expect(afterLogoutStatus).toBe(401);
+				});
+
+				it("rejects browser access when session is expired in database (401)", async () => {
+					// Log back in
+					const loginStatus = await evaluate<number>(`
+						fetch('/api/auth/sign-in/email', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								email: 'workerd.${runKey}@test.local',
+								password: '${testPassword}'
+							})
+						}).then(r => r.status)
+					`);
+					expect(loginStatus).toBe(200);
+
+					// Expire session in database
+					await db.execute(
+						sql`UPDATE session SET expires_at = now() - interval '1 minute' WHERE user_id = ${fixtureUserId}`,
+					);
+
+					const expiredStatus = await evaluate<number>(`
+						fetch('/api/events').then(r => r.status)
+					`);
+					expect(expiredStatus).toBe(401);
+				});
 			});
 		});
 	});
