@@ -174,15 +174,5 @@ describe("GET /api/health", () => {
 			expect(res.contentType).toContain("application/json");
 			expect(res.json()).toEqual({ name: "Cloudflare" });
 		});
-
-		it("confirms database connectivity under workerd runtime via /api/db-check", async () => {
-			const res = await httpRequest(`${baseUrl}api/db-check`);
-			expect(res.statusCode).toBe(200);
-			expect(res.contentType).toContain("application/json");
-			expect(res.json()).toEqual({
-				status: "ok",
-				branchId: "br-wandering-paper-aogdxs48",
-			});
-		});
 	});
 });

@@ -154,6 +154,8 @@ supported by Cloudflare Workers.
 - PostGIS: enabled via `CREATE EXTENSION IF NOT EXISTS postgis;` in migrations;
   geometries are strongly typed in Drizzle via custom geometry types and
   indexed with GIST.
+- Development branch guard: CLI scripts and test harnesses enforce a fail-closed preflight check (`assertDevBranch`) verifying `current_setting('neon.branch_id', true) === 'br-wandering-paper-aogdxs48'` with pinned connection resolution before any mutation or migration.
+- Database catalog verification: `verifyDatabase` strictly asserts expected Neon branch, PostGIS 3.x, 17+ tables, 10+ indexes, and catalog constraints from `pg_constraint` failing nonzero on missing/incomplete metadata.
 
 ## 7. Geospatial Strategy
 

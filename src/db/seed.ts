@@ -1,5 +1,6 @@
 import * as dotenv from "dotenv";
 import { sql } from "drizzle-orm";
+import { assertDevBranch } from "./guard";
 import { getDb } from "./index";
 import {
 	cleanupTasks,
@@ -49,7 +50,7 @@ export const SIMULATED_DATA = {
 		category: "upacara",
 		description: "Data simulasi untuk verifikasi database dan pipeline pengujian.",
 		venueName: "Balai Banjar Simulasi",
-		status: "draft",
+		status: "draft" as const,
 		publicSlug: "simulated-upacara-uji-coba",
 		startsAt: new Date("2026-11-10T08:00:00Z"),
 		endsAt: new Date("2026-11-10T14:00:00Z"),
@@ -59,12 +60,14 @@ export const SIMULATED_DATA = {
 		title: "[SIMULATED] Pembersihan Area Pos Uji Coba",
 		description: "Tugas pembersihan simulasi pasca kegiatan.",
 		location: "SRID=4326;POINT(115.2166 -8.6500)",
-		status: "todo",
+		status: "todo" as const,
 	},
 };
 
 export async function seedDatabase(databaseUrl?: string) {
-	const db = getDb(databaseUrl);
+	// Preflight guard: fail-closed if not targeting the authorized Neon development branch
+	const { pinnedUrl } = await assertDevBranch(databaseUrl);
+	const db = getDb(pinnedUrl);
 
 	// 1. Seed simulated users
 	await db

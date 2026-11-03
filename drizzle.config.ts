@@ -1,14 +1,11 @@
-import * as dotenv from "dotenv";
 import { defineConfig } from "drizzle-kit";
+import { resolveDatabaseUrl } from "./src/db/guard";
 
-// ponytail: load .dev.vars for local development migrations without leaking secrets
-dotenv.config({ path: ".dev.vars" });
-
+// ponytail: fail-closed configuration resolution preventing empty or ambient URL migration attempts
+const rawUrl = resolveDatabaseUrl();
 const dbUrl =
 	process.env.DATABASE_URL_UNPOOLED ||
-	(process.env.DATABASE_URL
-		? process.env.DATABASE_URL.replace("-pooler.", ".")
-		: "");
+	rawUrl.replace("-pooler.", ".");
 
 export default defineConfig({
 	schema: ["./src/db/auth-schema.ts", "./src/db/schema/index.ts"],

@@ -28,6 +28,63 @@ export const pointGeometry = customType<{ data: string; driverData: string }>({
 	},
 });
 
+// Domain finite value enumerations & types (AGENTS.md §13)
+export const MEMBERSHIP_ROLES = ["organizer", "officer"] as const;
+export type MembershipRole = (typeof MEMBERSHIP_ROLES)[number];
+
+export const EVENT_STATUSES = [
+	"draft",
+	"review",
+	"published",
+	"active",
+	"completed",
+	"cancelled",
+	"archived",
+] as const;
+export type EventStatus = (typeof EVENT_STATUSES)[number];
+
+export const AI_EXTRACTION_STATUSES = [
+	"pending",
+	"processing",
+	"completed",
+	"failed",
+] as const;
+export type AiExtractionStatus = (typeof AI_EXTRACTION_STATUSES)[number];
+
+export const IMPACT_TYPES = [
+	"closure",
+	"intermittent",
+	"narrowing",
+	"procession",
+] as const;
+export type ImpactType = (typeof IMPACT_TYPES)[number];
+
+export const ROAD_STATUSES = [
+	"open",
+	"intermittent",
+	"closed",
+	"unknown",
+] as const;
+export type RoadStatus = (typeof ROAD_STATUSES)[number];
+
+export const CLEANUP_STATUSES = [
+	"todo",
+	"in_progress",
+	"submitted",
+	"verified",
+	"reopened",
+] as const;
+export type CleanupStatus = (typeof CLEANUP_STATUSES)[number];
+
+export const CLEANUP_STAGES = ["before", "after"] as const;
+export type CleanupStage = (typeof CLEANUP_STAGES)[number];
+
+export const WASTE_CATEGORIES = ["organic", "recyclable", "residual"] as const;
+export type WasteCategory = (typeof WASTE_CATEGORIES)[number];
+
+export const MEASUREMENT_METHODS = ["weighed", "estimated"] as const;
+export type MeasurementMethod = (typeof MEASUREMENT_METHODS)[number];
+
 export const organizations = pgTable("organizations", {
 	id: uuid("id").primaryKey().defaultRandom(),
 	name: text("name").notNull(),
@@ -46,11 +103,15 @@ export const memberships = pgTable(
 		userId: text("user_id")
 			.notNull()
 			.references(() => user.id, { onDelete: "cascade" }),
-		role: text("role").notNull(), // 'organizer' | 'officer'
+		role: text("role").$type<MembershipRole>().notNull(),
 		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
 		unique("memberships_org_user_unique").on(table.organizationId, table.userId),
+		check(
+			"memberships_role_check",
+			sql`role IN ('organizer', 'officer')`,
+		),
 	],
 );
 
@@ -70,7 +131,7 @@ export const events = pgTable(
 		venueName: text("venue_name"),
 		startsAt: timestamp("starts_at", { withTimezone: true }),
 		endsAt: timestamp("ends_at", { withTimezone: true }),
-		status: text("status").default("draft").notNull(), // draft | review | published | active | completed | cancelled | archived
+		status: text("status").$type<EventStatus>().default("draft").notNull(),
 		publicSlug: text("public_slug").unique(),
 		permitReference: text("permit_reference"),
 		verifiedBy: text("verified_by"),
@@ -83,6 +144,10 @@ export const events = pgTable(
 		check(
 			"events_ends_at_after_starts_at",
 			sql`ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at`,
+		),
+		check(
+			"events_status_check",
+			sql`status IN ('draft', 'review', 'published', 'active', 'completed', 'cancelled', 'archived')`,
 		),
 		index("events_org_starts_at_idx").on(table.organizationId, table.startsAt),
 		index("events_status_starts_at_idx").on(table.status, table.startsAt),
@@ -109,20 +174,29 @@ export const documents = pgTable(
 	(table) => [index("documents_event_id_idx").on(table.eventId)],
 );
 
-export const aiExtractions = pgTable("ai_extractions", {
-	id: uuid("id").primaryKey().defaultRandom(),
-	documentId: uuid("document_id")
-		.notNull()
-		.references(() => documents.id, { onDelete: "cascade" }),
-	modelName: text("model_name").notNull(),
-	promptVersion: text("prompt_version").notNull(),
-	schemaVersion: text("schema_version").notNull(),
-	outputJson: jsonb("output_json"),
-	status: text("status").default("pending").notNull(), // pending | processing | completed | failed
-	errorCode: text("error_code"),
-	latencyMs: integer("latency_ms"),
-	createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const aiExtractions = pgTable(
+	"ai_extractions",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		documentId: uuid("document_id")
+			.notNull()
+			.references(() => documents.id, { onDelete: "cascade" }),
+		modelName: text("model_name").notNull(),
+		promptVersion: text("prompt_version").notNull(),
+		schemaVersion: text("schema_version").notNull(),
+		outputJson: jsonb("output_json"),
+		status: text("status").$type<AiExtractionStatus>().default("pending").notNull(),
+		errorCode: text("error_code"),
+		latencyMs: integer("latency_ms"),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	() => [
+		check(
+			"ai_extractions_status_check",
+			sql`status IN ('pending', 'processing', 'completed', 'failed')`,
+		),
+	],
+);
 
 export const roadSegments = pgTable(
 	"road_segments",
@@ -150,12 +224,16 @@ export const roadImpacts = pgTable(
 			.references(() => roadSegments.id, { onDelete: "restrict" }),
 		plannedFrom: timestamp("planned_from", { withTimezone: true }).notNull(),
 		plannedTo: timestamp("planned_to", { withTimezone: true }).notNull(),
-		impactType: text("impact_type").notNull(), // closure | intermittent | narrowing | procession
+		impactType: text("impact_type").$type<ImpactType>().notNull(),
 		diversionNote: text("diversion_note"),
 		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
 		check("road_impacts_time_check", sql`planned_to > planned_from`),
+		check(
+			"road_impacts_type_check",
+			sql`impact_type IN ('closure', 'intermittent', 'narrowing', 'procession')`,
+		),
 		index("road_impacts_event_id_idx").on(table.eventId),
 		index("road_impacts_segment_planned_idx").on(
 			table.roadSegmentId,
@@ -168,10 +246,11 @@ export const roadStatusUpdates = pgTable(
 	"road_status_updates",
 	{
 		id: uuid("id").primaryKey().defaultRandom(),
+		// ponytail: restrict deletion to preserve immutable append-only road status history
 		roadImpactId: uuid("road_impact_id")
 			.notNull()
-			.references(() => roadImpacts.id, { onDelete: "cascade" }),
-		status: text("status").notNull(), // open | intermittent | closed | unknown
+			.references(() => roadImpacts.id, { onDelete: "restrict" }),
+		status: text("status").$type<RoadStatus>().notNull(),
 		observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
 		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 		updatedBy: text("updated_by")
@@ -182,6 +261,10 @@ export const roadStatusUpdates = pgTable(
 		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
+		check(
+			"road_status_updates_status_check",
+			sql`status IN ('open', 'intermittent', 'closed', 'unknown')`,
+		),
 		index("road_status_updates_impact_created_idx").on(
 			table.roadImpactId,
 			table.createdAt.desc(),
@@ -224,7 +307,7 @@ export const cleanupTasks = pgTable(
 		assignedUserId: text("assigned_user_id").references(() => user.id, {
 			onDelete: "set null",
 		}),
-		status: text("status").default("todo").notNull(), // todo | in_progress | submitted | verified | reopened
+		status: text("status").$type<CleanupStatus>().default("todo").notNull(),
 		dueAt: timestamp("due_at", { withTimezone: true }),
 		verifiedBy: text("verified_by"),
 		verifiedAt: timestamp("verified_at", { withTimezone: true }),
@@ -232,23 +315,36 @@ export const cleanupTasks = pgTable(
 		updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [
+		check(
+			"cleanup_tasks_status_check",
+			sql`status IN ('todo', 'in_progress', 'submitted', 'verified', 'reopened')`,
+		),
 		index("cleanup_tasks_event_status_idx").on(table.eventId, table.status),
 		index("cleanup_tasks_location_gist_idx").using("gist", table.location),
 	],
 );
 
-export const cleanupEvidence = pgTable("cleanup_evidence", {
-	id: uuid("id").primaryKey().defaultRandom(),
-	taskId: uuid("task_id")
-		.notNull()
-		.references(() => cleanupTasks.id, { onDelete: "cascade" }),
-	uploadedBy: text("uploaded_by")
-		.notNull()
-		.references(() => user.id),
-	r2Key: text("r2_key").notNull().unique(),
-	stage: text("stage").notNull(), // before | after
-	createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
+export const cleanupEvidence = pgTable(
+	"cleanup_evidence",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		taskId: uuid("task_id")
+			.notNull()
+			.references(() => cleanupTasks.id, { onDelete: "cascade" }),
+		uploadedBy: text("uploaded_by")
+			.notNull()
+			.references(() => user.id),
+		r2Key: text("r2_key").notNull().unique(),
+		stage: text("stage").$type<CleanupStage>().notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	() => [
+		check(
+			"cleanup_evidence_stage_check",
+			sql`stage IN ('before', 'after')`,
+		),
+	],
+);
 
 export const wasteRecords = pgTable(
 	"waste_records",
@@ -260,10 +356,10 @@ export const wasteRecords = pgTable(
 		taskId: uuid("task_id").references(() => cleanupTasks.id, {
 			onDelete: "set null",
 		}),
-		category: text("category").notNull(), // organic | recyclable | residual
+		category: text("category").$type<WasteCategory>().notNull(),
 		quantityKg: numeric("quantity_kg", { precision: 10, scale: 2 }),
 		sackCount: integer("sack_count"),
-		measurementMethod: text("measurement_method").notNull(), // weighed | estimated
+		measurementMethod: text("measurement_method").$type<MeasurementMethod>().notNull(),
 		destination: text("destination"),
 		recordedBy: text("recorded_by")
 			.notNull()
@@ -274,6 +370,14 @@ export const wasteRecords = pgTable(
 		check(
 			"waste_records_quantity_check",
 			sql`quantity_kg IS NOT NULL OR sack_count IS NOT NULL`,
+		),
+		check(
+			"waste_records_category_check",
+			sql`category IN ('organic', 'recyclable', 'residual')`,
+		),
+		check(
+			"waste_records_method_check",
+			sql`measurement_method IN ('weighed', 'estimated')`,
 		),
 	],
 );
