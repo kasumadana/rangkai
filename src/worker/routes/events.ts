@@ -1,7 +1,6 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import {
-	auditLogs,
 	eventAssignments,
 	events,
 	memberships,
@@ -27,6 +26,29 @@ const eventsRouter = new Hono<{
 }>();
 
 eventsRouter.use("*", requireAuth);
+
+// Helper: Map SQL CTE row to typed Event structure
+function mapEventRow(row: Record<string, unknown>) {
+	return {
+		id: row.id as string,
+		organizationId: row.organizationId as string,
+		createdBy: row.createdBy as string,
+		title: row.title as string,
+		category: (row.category ?? null) as string | null,
+		description: (row.description ?? null) as string | null,
+		venueName: (row.venueName ?? null) as string | null,
+		startsAt: row.startsAt ? new Date(row.startsAt as string) : null,
+		endsAt: row.endsAt ? new Date(row.endsAt as string) : null,
+		status: row.status as string,
+		publicSlug: (row.publicSlug ?? null) as string | null,
+		permitReference: (row.permitReference ?? null) as string | null,
+		verifiedBy: (row.verifiedBy ?? null) as string | null,
+		verifiedAt: row.verifiedAt ? new Date(row.verifiedAt as string) : null,
+		publishedAt: row.publishedAt ? new Date(row.publishedAt as string) : null,
+		createdAt: new Date(row.createdAt as string),
+		updatedAt: new Date(row.updatedAt as string),
+	};
+}
 
 // Helper: Verify organizer role for a given event
 async function assertOrganizerForEvent(
@@ -130,46 +152,62 @@ eventsRouter.post("/", async (c) => {
 	const eventId = crypto.randomUUID();
 	const auditId = crypto.randomUUID();
 	const now = new Date();
+	const startsAtDate = data.startsAt ? new Date(data.startsAt) : null;
+	const endsAtDate = data.endsAt ? new Date(data.endsAt) : null;
 
-	// Atomic batch: event creation + append-only audit log committed together
-	const [insertedRows] = await db.batch([
-		db
-			.insert(events)
-			.values({
-				id: eventId,
-				organizationId: data.organizationId,
-				createdBy: currentUser.id,
-				title: data.title,
-				category: data.category ?? null,
-				description: data.description ?? null,
-				venueName: data.venueName ?? null,
-				startsAt: data.startsAt ? new Date(data.startsAt) : null,
-				endsAt: data.endsAt ? new Date(data.endsAt) : null,
-				permitReference: data.permitReference ?? null,
-				status: "draft",
-				createdAt: now,
-				updatedAt: now,
-			})
-			.returning(),
-		db.insert(auditLogs).values({
-			id: auditId,
-			organizationId: data.organizationId,
-			eventId,
-			actorId: currentUser.id,
-			action: "event.created",
-			entityType: "event",
-			entityId: eventId,
-			afterJson: {
-				title: data.title,
-				status: "draft",
-				startsAt: data.startsAt ? new Date(data.startsAt).toISOString() : null,
-				endsAt: data.endsAt ? new Date(data.endsAt).toISOString() : null,
-			},
-			createdAt: now,
-		}),
-	]);
+	// Single atomic CTE: event creation + conditional append-only audit log
+	const query = sql`
+		WITH inserted AS (
+			INSERT INTO events (
+				id, organization_id, created_by, title, category, description,
+				venue_name, starts_at, ends_at, permit_reference, status, created_at, updated_at
+			)
+			VALUES (
+				${eventId}, ${data.organizationId}, ${currentUser.id}, ${data.title},
+				${data.category ?? null}, ${data.description ?? null}, ${data.venueName ?? null},
+				${startsAtDate}, ${endsAtDate}, ${data.permitReference ?? null}, 'draft', ${now}, ${now}
+			)
+			RETURNING *
+		),
+		logged AS (
+			INSERT INTO audit_logs (
+				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+			)
+			SELECT
+				${auditId}, organization_id, id, ${currentUser.id}, 'event.created', 'event', id, null,
+				json_build_object(
+					'title', title,
+					'status', status,
+					'startsAt', starts_at,
+					'endsAt', ends_at
+				),
+				${now}
+			FROM inserted
+			RETURNING id
+		)
+		SELECT
+			id,
+			organization_id AS "organizationId",
+			created_by AS "createdBy",
+			title,
+			category,
+			description,
+			venue_name AS "venueName",
+			starts_at AS "startsAt",
+			ends_at AS "endsAt",
+			status,
+			public_slug AS "publicSlug",
+			permit_reference AS "permitReference",
+			verified_by AS "verifiedBy",
+			verified_at AS "verifiedAt",
+			published_at AS "publishedAt",
+			created_at AS "createdAt",
+			updated_at AS "updatedAt"
+		FROM inserted;
+	`;
 
-	return c.json({ event: insertedRows[0] }, 201);
+	const res = await db.execute(query);
+	return c.json({ event: mapEventRow(res.rows[0]) }, 201);
 });
 
 // GET /api/events - List accessible events with bounded pagination and officer assignment scoping
@@ -359,6 +397,19 @@ eventsRouter.patch("/:eventId", async (c) => {
 
 	const existingEvent = check.event;
 
+	// Published and active events cannot be edited via PATCH (FR-011: edits must occur prior to publication)
+	if (
+		existingEvent.status === "published" ||
+		existingEvent.status === "active"
+	) {
+		return sendError(
+			c,
+			"STATE_CONFLICT",
+			`Published and active events cannot be edited via PATCH. Current status: ${existingEvent.status}. Edits must occur prior to publication.`,
+			409,
+		);
+	}
+
 	// Terminal lifecycle states cannot be edited
 	if (
 		existingEvent.status === "completed" ||
@@ -391,34 +442,6 @@ eventsRouter.patch("/:eventId", async (c) => {
 
 	const data = parseResult.data;
 
-	// In published state, required core fields cannot be removed/nullified
-	if (existingEvent.status === "published") {
-		if (data.venueName === null || data.venueName === "") {
-			return sendError(
-				c,
-				"VALIDATION_FAILED",
-				"Cannot remove venue name from an already published event.",
-				422,
-			);
-		}
-		if (data.title !== undefined && data.title.trim().length === 0) {
-			return sendError(
-				c,
-				"VALIDATION_FAILED",
-				"Title cannot be empty.",
-				422,
-			);
-		}
-		if (data.startsAt === null || data.endsAt === null) {
-			return sendError(
-				c,
-				"VALIDATION_FAILED",
-				"Cannot remove event timing from an already published event.",
-				422,
-			);
-		}
-	}
-
 	const startsAtDate =
 		data.startsAt !== undefined
 			? data.startsAt
@@ -441,97 +464,132 @@ eventsRouter.patch("/:eventId", async (c) => {
 		);
 	}
 
-	// Stale verification check: if event is in "review" and core fields are modified,
+	// Stale verification check: if event is in "review" and ANY editable field is modified,
 	// clear previous verification and reset status to "draft" for human re-review.
 	let nextStatus = existingEvent.status;
 	let nextVerifiedBy = existingEvent.verifiedBy;
 	let nextVerifiedAt = existingEvent.verifiedAt;
 
 	if (existingEvent.status === "review") {
-		const coreFieldModified =
+		const isModified =
 			(data.title !== undefined && data.title !== existingEvent.title) ||
-			data.startsAt !== undefined ||
-			data.endsAt !== undefined ||
-			(data.venueName !== undefined && data.venueName !== existingEvent.venueName);
+			(data.category !== undefined && data.category !== existingEvent.category) ||
+			(data.description !== undefined && data.description !== existingEvent.description) ||
+			(data.venueName !== undefined && data.venueName !== existingEvent.venueName) ||
+			(data.permitReference !== undefined && data.permitReference !== existingEvent.permitReference) ||
+			(data.startsAt !== undefined && startsAtDate?.getTime() !== existingEvent.startsAt?.getTime()) ||
+			(data.endsAt !== undefined && endsAtDate?.getTime() !== existingEvent.endsAt?.getTime());
 
-		if (coreFieldModified) {
+		if (isModified) {
 			nextStatus = "draft";
 			nextVerifiedBy = null;
 			nextVerifiedAt = null;
 		}
 	}
 
+	const newTitle = data.title ?? existingEvent.title;
+	const newCategory =
+		data.category !== undefined ? data.category : existingEvent.category;
+	const newDescription =
+		data.description !== undefined ? data.description : existingEvent.description;
+	const newVenueName =
+		data.venueName !== undefined ? data.venueName : existingEvent.venueName;
+	const newPermitReference =
+		data.permitReference !== undefined
+			? data.permitReference
+			: existingEvent.permitReference;
+
 	const now = new Date();
 	const auditId = crypto.randomUUID();
 	const db = c.get("db");
 
-	// Atomic batch: event update + audit log
-	const [updatedRows] = await db.batch([
-		db
-			.update(events)
-			.set({
-				title: data.title ?? existingEvent.title,
-				category:
-					data.category !== undefined
-						? data.category
-						: existingEvent.category,
-				description:
-					data.description !== undefined
-						? data.description
-						: existingEvent.description,
-				venueName:
-					data.venueName !== undefined
-						? data.venueName
-						: existingEvent.venueName,
-				startsAt: startsAtDate,
-				endsAt: endsAtDate,
-				permitReference:
-					data.permitReference !== undefined
-						? data.permitReference
-						: existingEvent.permitReference,
-				status: nextStatus,
-				verifiedBy: nextVerifiedBy,
-				verifiedAt: nextVerifiedAt,
-				updatedAt: now,
-			})
-			.where(
-				and(
-					eq(events.id, eventId),
-					eq(events.status, existingEvent.status),
-				),
+	// Single atomic CTE: event update + conditional audit log ONLY if row was actually updated
+	const query = sql`
+		WITH updated AS (
+			UPDATE events
+			SET
+				title = ${newTitle},
+				category = ${newCategory},
+				description = ${newDescription},
+				venue_name = ${newVenueName},
+				starts_at = ${startsAtDate},
+				ends_at = ${endsAtDate},
+				permit_reference = ${newPermitReference},
+				status = ${nextStatus},
+				verified_by = ${nextVerifiedBy},
+				verified_at = ${nextVerifiedAt},
+				updated_at = ${now}
+			WHERE id = ${eventId} AND status = ${existingEvent.status}
+			RETURNING *
+		),
+		logged AS (
+			INSERT INTO audit_logs (
+				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 			)
-			.returning(),
-		db.insert(auditLogs).values({
-			id: auditId,
-			organizationId: existingEvent.organizationId,
-			eventId,
-			actorId: currentUser.id,
-			action: "event.updated",
-			entityType: "event",
-			entityId: eventId,
-			beforeJson: {
-				title: existingEvent.title,
-				status: existingEvent.status,
-				startsAt: existingEvent.startsAt?.toISOString() ?? null,
-				endsAt: existingEvent.endsAt?.toISOString() ?? null,
-				venueName: existingEvent.venueName,
-			},
-			afterJson: {
-				title: data.title ?? existingEvent.title,
-				status: nextStatus,
-				startsAt: startsAtDate?.toISOString() ?? null,
-				endsAt: endsAtDate?.toISOString() ?? null,
-				venueName:
-					data.venueName !== undefined
-						? data.venueName
-						: existingEvent.venueName,
-			},
-			createdAt: now,
-		}),
-	]);
+			SELECT
+				${auditId},
+				organization_id,
+				id,
+				${currentUser.id},
+				'event.updated',
+				'event',
+				id,
+				${JSON.stringify({
+					title: existingEvent.title,
+					category: existingEvent.category,
+					description: existingEvent.description,
+					venueName: existingEvent.venueName,
+					startsAt: existingEvent.startsAt?.toISOString() ?? null,
+					endsAt: existingEvent.endsAt?.toISOString() ?? null,
+					permitReference: existingEvent.permitReference,
+					status: existingEvent.status,
+				})}::jsonb,
+				json_build_object(
+					'title', title,
+					'category', category,
+					'description', description,
+					'venueName', venue_name,
+					'startsAt', starts_at,
+					'endsAt', ends_at,
+					'permitReference', permit_reference,
+					'status', status
+				),
+				${now}
+			FROM updated
+			RETURNING id
+		)
+		SELECT
+			id,
+			organization_id AS "organizationId",
+			created_by AS "createdBy",
+			title,
+			category,
+			description,
+			venue_name AS "venueName",
+			starts_at AS "startsAt",
+			ends_at AS "endsAt",
+			status,
+			public_slug AS "publicSlug",
+			permit_reference AS "permitReference",
+			verified_by AS "verifiedBy",
+			verified_at AS "verifiedAt",
+			published_at AS "publishedAt",
+			created_at AS "createdAt",
+			updated_at AS "updatedAt"
+		FROM updated;
+	`;
 
-	const updatedEvent = updatedRows[0];
-	return c.json({ event: updatedEvent }, 200);
+	const res = await db.execute(query);
+	if (res.rows.length === 0) {
+		return sendError(
+			c,
+			"STATE_CONFLICT",
+			"Concurrent modification prevented event update.",
+			409,
+		);
+	}
+
+	return c.json({ event: mapEventRow(res.rows[0]) }, 200);
 });
 
 // POST /api/events/:eventId/review - Move draft -> review
@@ -576,37 +634,75 @@ eventsRouter.post("/:eventId/review", async (c) => {
 	const auditId = crypto.randomUUID();
 	const db = c.get("db");
 
-	// Atomic batch: draft -> review transition + audit log
-	const [updatedRows] = await db.batch([
-		db
-			.update(events)
-			.set({
-				status: "review",
-				verifiedBy: currentUser.id,
-				verifiedAt: now,
-				updatedAt: now,
-			})
-			.where(and(eq(events.id, eventId), eq(events.status, "draft")))
-			.returning(),
-		db.insert(auditLogs).values({
-			id: auditId,
-			organizationId: event.organizationId,
-			eventId,
-			actorId: currentUser.id,
-			action: "event.reviewed",
-			entityType: "event",
-			entityId: eventId,
-			beforeJson: { status: "draft" },
-			afterJson: {
-				status: "review",
-				verifiedBy: currentUser.id,
-				verifiedAt: now.toISOString(),
-			},
-			createdAt: now,
-		}),
-	]);
+	// Atomic single CTE: transition draft -> review AND audit log only if actually transitioned
+	const query = sql`
+		WITH updated AS (
+			UPDATE events
+			SET
+				status = 'review',
+				verified_by = ${currentUser.id},
+				verified_at = ${now},
+				updated_at = ${now}
+			WHERE id = ${eventId}
+				AND status = 'draft'
+				AND title = ${event.title}
+				AND category IS NOT DISTINCT FROM ${event.category}
+				AND description IS NOT DISTINCT FROM ${event.description}
+				AND venue_name IS NOT DISTINCT FROM ${event.venueName}
+				AND starts_at IS NOT DISTINCT FROM ${event.startsAt}
+				AND ends_at IS NOT DISTINCT FROM ${event.endsAt}
+				AND permit_reference IS NOT DISTINCT FROM ${event.permitReference}
+			RETURNING *
+		),
+		logged AS (
+			INSERT INTO audit_logs (
+				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+			)
+			SELECT
+				${auditId},
+				organization_id,
+				id,
+				${currentUser.id},
+				'event.reviewed',
+				'event',
+				id,
+				${JSON.stringify({ status: "draft" })}::jsonb,
+				${JSON.stringify({ status: "review", verifiedBy: currentUser.id, verifiedAt: now.toISOString() })}::jsonb,
+				${now}
+			FROM updated
+			RETURNING id
+		)
+		SELECT
+			id,
+			organization_id AS "organizationId",
+			created_by AS "createdBy",
+			title,
+			category,
+			description,
+			venue_name AS "venueName",
+			starts_at AS "startsAt",
+			ends_at AS "endsAt",
+			status,
+			public_slug AS "publicSlug",
+			permit_reference AS "permitReference",
+			verified_by AS "verifiedBy",
+			verified_at AS "verifiedAt",
+			published_at AS "publishedAt",
+			created_at AS "createdAt",
+			updated_at AS "updatedAt"
+		FROM updated;
+	`;
 
-	if (updatedRows.length === 0) {
+	const res = await db.execute(query);
+	if (res.rows.length === 0) {
+		const freshRows = await db
+			.select()
+			.from(events)
+			.where(eq(events.id, eventId))
+			.limit(1);
+		if (freshRows[0]?.status === "review") {
+			return c.json({ event: freshRows[0] }, 200);
+		}
 		return sendError(
 			c,
 			"STATE_CONFLICT",
@@ -615,7 +711,7 @@ eventsRouter.post("/:eventId/review", async (c) => {
 		);
 	}
 
-	return c.json({ event: updatedRows[0] }, 200);
+	return c.json({ event: mapEventRow(res.rows[0]) }, 200);
 });
 
 // POST /api/events/:eventId/publish - Publish verified event
@@ -726,45 +822,73 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 	const now = new Date();
 	const auditId = crypto.randomUUID();
 
-	// 6. Atomic conditional publication: only updates if still in review status
-	const [updatedRows] = await db.batch([
-		db
-			.update(events)
-			.set({
-				status: "published",
-				publicSlug,
-				publishedAt: event.publishedAt || now,
-				updatedAt: now,
-			})
-			.where(and(eq(events.id, eventId), eq(events.status, "review")))
-			.returning(),
-		db.insert(auditLogs).values({
-			id: auditId,
-			organizationId: event.organizationId,
-			eventId,
-			actorId: currentUser.id,
-			action: "event.published",
-			entityType: "event",
-			entityId: eventId,
-			beforeJson: { status: "review", publicSlug: event.publicSlug },
-			afterJson: {
-				status: "published",
-				publicSlug,
-				publishedAt: (event.publishedAt || now).toISOString(),
-			},
-			createdAt: now,
-		}),
-	]);
+	// 6. Atomic conditional publication via single CTE:
+	// Only updates if still in review status; audit is ONLY inserted if a row was actually updated!
+	const query = sql`
+		WITH updated AS (
+			UPDATE events
+			SET
+				status = 'published',
+				public_slug = COALESCE(events.public_slug, ${publicSlug}),
+				published_at = COALESCE(events.published_at, ${now}),
+				updated_at = ${now}
+			WHERE id = ${eventId} AND status = 'review'
+			RETURNING *
+		),
+		logged AS (
+			INSERT INTO audit_logs (
+				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+			)
+			SELECT
+				${auditId},
+				organization_id,
+				id,
+				${currentUser.id},
+				'event.published',
+				'event',
+				id,
+				${JSON.stringify({ status: "review", publicSlug: event.publicSlug })}::jsonb,
+				json_build_object(
+					'status', 'published',
+					'publicSlug', public_slug,
+					'publishedAt', published_at
+				)::jsonb,
+				${now}
+			FROM updated
+			RETURNING id
+		)
+		SELECT
+			id,
+			organization_id AS "organizationId",
+			created_by AS "createdBy",
+			title,
+			category,
+			description,
+			venue_name AS "venueName",
+			starts_at AS "startsAt",
+			ends_at AS "endsAt",
+			status,
+			public_slug AS "publicSlug",
+			permit_reference AS "permitReference",
+			verified_by AS "verifiedBy",
+			verified_at AS "verifiedAt",
+			published_at AS "publishedAt",
+			created_at AS "createdAt",
+			updated_at AS "updatedAt"
+		FROM updated;
+	`;
 
-	if (updatedRows.length === 0) {
-		// Concurrent publication occurred: fetch fresh state and return idempotently
+	const res = await db.execute(query);
+	if (res.rows.length === 0) {
+		// Concurrent publication occurred: fetch authoritative published state and return idempotently
 		const freshEventRows = await db
 			.select()
 			.from(events)
 			.where(eq(events.id, eventId))
 			.limit(1);
-		if (freshEventRows[0]?.status === "published") {
-			return c.json({ event: freshEventRows[0] }, 200);
+		const freshEvent = freshEventRows[0];
+		if (freshEvent && (freshEvent.status === "published" || freshEvent.status === "active")) {
+			return c.json({ event: freshEvent }, 200);
 		}
 		return sendError(
 			c,
@@ -774,7 +898,7 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 		);
 	}
 
-	return c.json({ event: updatedRows[0] }, 200);
+	return c.json({ event: mapEventRow(res.rows[0]) }, 200);
 });
 
 // POST /api/events/:eventId/cancel - Cancel event with mandatory reason
@@ -822,39 +946,60 @@ eventsRouter.post("/:eventId/cancel", async (c) => {
 	const now = new Date();
 	const auditId = crypto.randomUUID();
 
-	// Atomic batch: cancel status update + cancellation reason audit log
-	const [updatedRows] = await db.batch([
-		db
-			.update(events)
-			.set({
-				status: "cancelled",
-				updatedAt: now,
-			})
-			.where(
-				and(
-					eq(events.id, eventId),
-					inArray(events.status, ["draft", "review", "published", "active"]),
-				),
+	// Single atomic CTE: event cancellation + conditional audit log ONLY if row was updated
+	const query = sql`
+		WITH updated AS (
+			UPDATE events
+			SET
+				status = 'cancelled',
+				updated_at = ${now}
+			WHERE id = ${eventId} AND status IN ('draft', 'review', 'published', 'active')
+			RETURNING *
+		),
+		logged AS (
+			INSERT INTO audit_logs (
+				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 			)
-			.returning(),
-		db.insert(auditLogs).values({
-			id: auditId,
-			organizationId: event.organizationId,
-			eventId,
-			actorId: currentUser.id,
-			action: "event.cancelled",
-			entityType: "event",
-			entityId: eventId,
-			beforeJson: { status: event.status },
-			afterJson: {
-				status: "cancelled",
-				cancellationReason: parseResult.data.reason,
-			},
-			createdAt: now,
-		}),
-	]);
+			SELECT
+				${auditId},
+				organization_id,
+				id,
+				${currentUser.id},
+				'event.cancelled',
+				'event',
+				id,
+				${JSON.stringify({ status: event.status })}::jsonb,
+				${JSON.stringify({
+					status: "cancelled",
+					cancellationReason: parseResult.data.reason,
+				})}::jsonb,
+				${now}
+			FROM updated
+			RETURNING id
+		)
+		SELECT
+			id,
+			organization_id AS "organizationId",
+			created_by AS "createdBy",
+			title,
+			category,
+			description,
+			venue_name AS "venueName",
+			starts_at AS "startsAt",
+			ends_at AS "endsAt",
+			status,
+			public_slug AS "publicSlug",
+			permit_reference AS "permitReference",
+			verified_by AS "verifiedBy",
+			verified_at AS "verifiedAt",
+			published_at AS "publishedAt",
+			created_at AS "createdAt",
+			updated_at AS "updatedAt"
+		FROM updated;
+	`;
 
-	if (updatedRows.length === 0) {
+	const res = await db.execute(query);
+	if (res.rows.length === 0) {
 		return sendError(
 			c,
 			"STATE_CONFLICT",
@@ -864,7 +1009,7 @@ eventsRouter.post("/:eventId/cancel", async (c) => {
 	}
 
 	return c.json(
-		{ event: updatedRows[0], reason: parseResult.data.reason },
+		{ event: mapEventRow(res.rows[0]), reason: parseResult.data.reason },
 		200,
 	);
 });
@@ -884,12 +1029,12 @@ eventsRouter.post("/:eventId/complete", async (c) => {
 
 	const event = check.event;
 
-	// Allowed predecessor check: only published or active events can be completed
-	if (event.status !== "published" && event.status !== "active") {
+	// Authoritative lifecycle: only active events can be completed (AGENTS §13: DRAFT -> REVIEW -> PUBLISHED -> ACTIVE -> COMPLETED)
+	if (event.status !== "active") {
 		return sendError(
 			c,
 			"STATE_CONFLICT",
-			`Only published or active events can be completed. Current status: ${event.status}.`,
+			`Only active events can be completed. Current status: ${event.status}.`,
 			409,
 		);
 	}
@@ -898,36 +1043,57 @@ eventsRouter.post("/:eventId/complete", async (c) => {
 	const now = new Date();
 	const auditId = crypto.randomUUID();
 
-	// Atomic batch: status complete + audit log
-	const [updatedRows] = await db.batch([
-		db
-			.update(events)
-			.set({
-				status: "completed",
-				updatedAt: now,
-			})
-			.where(
-				and(
-					eq(events.id, eventId),
-					inArray(events.status, ["published", "active"]),
-				),
+	// Single atomic CTE: event completion + conditional audit log ONLY if row was updated
+	const query = sql`
+		WITH updated AS (
+			UPDATE events
+			SET
+				status = 'completed',
+				updated_at = ${now}
+			WHERE id = ${eventId} AND status = 'active'
+			RETURNING *
+		),
+		logged AS (
+			INSERT INTO audit_logs (
+				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 			)
-			.returning(),
-		db.insert(auditLogs).values({
-			id: auditId,
-			organizationId: event.organizationId,
-			eventId,
-			actorId: currentUser.id,
-			action: "event.completed",
-			entityType: "event",
-			entityId: eventId,
-			beforeJson: { status: event.status },
-			afterJson: { status: "completed" },
-			createdAt: now,
-		}),
-	]);
+			SELECT
+				${auditId},
+				organization_id,
+				id,
+				${currentUser.id},
+				'event.completed',
+				'event',
+				id,
+				${JSON.stringify({ status: "active" })}::jsonb,
+				${JSON.stringify({ status: "completed" })}::jsonb,
+				${now}
+			FROM updated
+			RETURNING id
+		)
+		SELECT
+			id,
+			organization_id AS "organizationId",
+			created_by AS "createdBy",
+			title,
+			category,
+			description,
+			venue_name AS "venueName",
+			starts_at AS "startsAt",
+			ends_at AS "endsAt",
+			status,
+			public_slug AS "publicSlug",
+			permit_reference AS "permitReference",
+			verified_by AS "verifiedBy",
+			verified_at AS "verifiedAt",
+			published_at AS "publishedAt",
+			created_at AS "createdAt",
+			updated_at AS "updatedAt"
+		FROM updated;
+	`;
 
-	if (updatedRows.length === 0) {
+	const res = await db.execute(query);
+	if (res.rows.length === 0) {
 		return sendError(
 			c,
 			"STATE_CONFLICT",
@@ -936,7 +1102,7 @@ eventsRouter.post("/:eventId/complete", async (c) => {
 		);
 	}
 
-	return c.json({ event: updatedRows[0] }, 200);
+	return c.json({ event: mapEventRow(res.rows[0]) }, 200);
 });
 
 export { eventsRouter };

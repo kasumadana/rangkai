@@ -109,52 +109,27 @@ export async function seedDatabase(databaseUrl?: string) {
 	const hashedOrganizerPassword = await hashPassword(organizerPassword);
 	const hashedOfficerPassword = await hashPassword(officerPassword);
 
-	// If rotation is explicitly requested, update credentials for known dev accounts,
-	// otherwise onConflictDoNothing preserves existing authorized credentials across repeated seeds.
-	if (process.env.ROTATE_SEED_CREDENTIALS === "true") {
-		await db
-			.insert(account)
-			.values([
-				{
-					id: "acc_simulated_organizer_01",
-					accountId: SIMULATED_DATA.users.organizer.id,
-					providerId: "credential",
-					userId: SIMULATED_DATA.users.organizer.id,
-					password: hashedOrganizerPassword,
-				},
-				{
-					id: "acc_simulated_officer_01",
-					accountId: SIMULATED_DATA.users.officer.id,
-					providerId: "credential",
-					userId: SIMULATED_DATA.users.officer.id,
-					password: hashedOfficerPassword,
-				},
-			])
-			.onConflictDoUpdate({
-				target: account.id,
-				set: { password: sql`EXCLUDED.password` },
-			});
-	} else {
-		await db
-			.insert(account)
-			.values([
-				{
-					id: "acc_simulated_organizer_01",
-					accountId: SIMULATED_DATA.users.organizer.id,
-					providerId: "credential",
-					userId: SIMULATED_DATA.users.organizer.id,
-					password: hashedOrganizerPassword,
-				},
-				{
-					id: "acc_simulated_officer_01",
-					accountId: SIMULATED_DATA.users.officer.id,
-					providerId: "credential",
-					userId: SIMULATED_DATA.users.officer.id,
-					password: hashedOfficerPassword,
-				},
-			])
-			.onConflictDoNothing();
-	}
+	// Seed Better Auth accounts for credential authentication using separate caller-supplied or ephemeral secure credentials.
+	// onConflictDoNothing preserves existing rotated/authorized credentials across repeated seeds.
+	await db
+		.insert(account)
+		.values([
+			{
+				id: "acc_simulated_organizer_01",
+				accountId: SIMULATED_DATA.users.organizer.id,
+				providerId: "credential",
+				userId: SIMULATED_DATA.users.organizer.id,
+				password: hashedOrganizerPassword,
+			},
+			{
+				id: "acc_simulated_officer_01",
+				accountId: SIMULATED_DATA.users.officer.id,
+				providerId: "credential",
+				userId: SIMULATED_DATA.users.officer.id,
+				password: hashedOfficerPassword,
+			},
+		])
+		.onConflictDoNothing();
 
 	// 2. Seed simulated organization
 	await db

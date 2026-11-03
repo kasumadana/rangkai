@@ -13,7 +13,10 @@ Format: JSON unless multipart upload
 - All protected routes require a valid session cookie.
 - Server strictly validates organization membership, event assignments, and roles server-side.
 - Input validation uses Zod.
-- All mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) require `application/json` Content-Type and verified Origin headers to defend against CSRF.
+- All mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) enforce CSRF defense:
+  - If `Origin` header is present (mandatory for browsers), it must match the canonical configured base URL or request origin.
+  - `Sec-Fetch-Site: cross-site` requests are rejected (403 Forbidden).
+  - Unsafe form content types (`application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`) are rejected on JSON endpoints (400 Bad Request). Non-browser API requests omitting Origin are permitted provided they supply valid authentication and do not use unsafe form content types.
 - Errors use a consistent response envelope.
 
 ## 2. Error Format
@@ -48,7 +51,7 @@ Better Auth owns:
 
 - /api/auth/*
 
-Organizer and officer sessions are cookie-based (`HttpOnly`, `SameSite=Lax`, `Secure` in production).
+Organizer and officer sessions are cookie-based (`HttpOnly`, `SameSite=Lax`, `Secure` in production) using cookie prefix `rangkai` (`rangkai.session_token`).
 Missing or invalid authentication configuration (`BETTER_AUTH_SECRET` < 32 chars, missing `BETTER_AUTH_URL`) fails closed with HTTP 503.
 Public endpoints never require a session.
 
@@ -122,9 +125,9 @@ PATCH /api/events/:eventId
 Permission: organizer
 Constraints:
 - Terminal states (`completed`, `cancelled`) cannot be modified (409 Conflict).
-- Published events cannot remove required core fields (`venueName`, `title`, `startsAt`, `endsAt`) (422 Unprocessable).
-- In `review` status, modifying core fields invalidates verification and resets status to "draft".
-Response: 200 OK with updated event. Atomic audit log recorded.
+- Published and active events cannot be edited via PATCH (409 Conflict); edits must occur prior to publication while in `draft` or `review` status (FR-011).
+- In `review` status, modifying any organizer-editable field (`title`, `category`, `description`, `venueName`, `startsAt`, `endsAt`, `permitReference`) invalidates previous human review verification and resets status to `draft`.
+Response: 200 OK with updated event. Atomic audit log recorded. Zero-row concurrent conflicts return 409 Conflict without creating false audit records.
 
 POST /api/events/:eventId/review
 Permission: organizer
@@ -158,9 +161,9 @@ Response: 200 OK with status "cancelled" and reason. Atomic audit log recorded.
 
 POST /api/events/:eventId/complete
 Permission: organizer
-Transitions: published | active -> completed.
-Constraints: cannot complete draft or review events (409 Conflict).
-Response: 200 OK with status "completed". Atomic audit log recorded.
+Transitions: active -> completed.
+Constraints: cannot complete draft, review, or published events (409 Conflict; AGENTS §13 lifecycle requires ACTIVE -> COMPLETED).
+Response: 200 OK with status "completed". Atomic audit log recorded. Zero-row concurrent conflicts return 409 Conflict without creating false audit records.
 
 ## 5. Documents and AI
 

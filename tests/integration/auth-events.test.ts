@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import * as dotenv from "dotenv";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { hashPassword } from "better-auth/crypto";
 import { assertDevBranch, AUTHORIZED_DEV_BRANCH } from "../../src/db/guard";
@@ -256,7 +256,7 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 
 			expect(res.status).toBe(200);
 			const setCookieHeader = res.headers.get("set-cookie") || "";
-			expect(setCookieHeader).toContain("better-auth.session_token");
+			expect(setCookieHeader).toContain("rangkai.session_token");
 			organizerACookie = setCookieHeader.split(";")[0];
 
 			const data = (await res.json()) as { user: { id: string; email: string } };
@@ -275,7 +275,7 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 
 			expect(res.status).toBe(200);
 			const setCookie = res.headers.get("set-cookie") || "";
-			expect(setCookie).toContain("better-auth.session_token");
+			expect(setCookie).toContain("rangkai.session_token");
 			officerACookie = setCookie.split(";")[0];
 		});
 
@@ -494,7 +494,7 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 
 		it("returns 401 Unauthorized with corrupted session cookie", async () => {
 			const res = await app.request("http://localhost:5173/api/events", {
-				headers: { Cookie: "better-auth.session_token=forged_token_val" },
+				headers: { Cookie: "rangkai.session_token=forged_token_val" },
 			});
 
 			expect(res.status).toBe(401);
@@ -699,7 +699,7 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			expect(detailRes.status).toBe(403);
 		});
 
-		it("clears stale verification and resets review status to draft when core fields are edited (PATCH)", async () => {
+		it("clears stale verification and resets review status to draft when reviewed fields (description, category, venue) are edited (PATCH)", async () => {
 			// First, transition to review
 			await db
 				.update(events)
@@ -710,8 +710,8 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 				})
 				.where(eq(events.id, createdEventId));
 
-			// Now edit venueName on event in review
-			const patchRes = await app.request(
+			// Edit description on event in review
+			const patchDescRes = await app.request(
 				`http://localhost:5173/api/events/${createdEventId}`,
 				{
 					method: "PATCH",
@@ -720,29 +720,29 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 						Cookie: organizerACookie,
 					},
 					body: JSON.stringify({
-						venueName: "Balai Banjar Utama (Baru)",
+						description: "Deskripsi baru yang memerlukan peninjauan ulang",
 					}),
 				},
 			);
 
-			expect(patchRes.status).toBe(200);
-			const patchBody = (await patchRes.json()) as {
-				event: { status: string; verifiedBy: string | null; venueName: string };
+			expect(patchDescRes.status).toBe(200);
+			const patchDescBody = (await patchDescRes.json()) as {
+				event: { status: string; verifiedBy: string | null; description: string };
 			};
-			expect(patchBody.event.venueName).toBe("Balai Banjar Utama (Baru)");
-			// Verification must be cleared and status reset to draft
-			expect(patchBody.event.status).toBe("draft");
-			expect(patchBody.event.verifiedBy).toBeNull();
+			expect(patchDescBody.event.description).toBe("Deskripsi baru yang memerlukan peninjauan ulang");
+			// Verification must be invalidated and status reset to draft
+			expect(patchDescBody.event.status).toBe("draft");
+			expect(patchDescBody.event.verifiedBy).toBeNull();
 		});
 
-		it("rejects removing venueName on published event", async () => {
-			// Set event to published temporarily
+		it("rejects editing published and active events via PATCH (409 Conflict, FR-011)", async () => {
+			// Published event cannot be edited via PATCH
 			await db
 				.update(events)
 				.set({ status: "published" })
 				.where(eq(events.id, createdEventId));
 
-			const res = await app.request(
+			const resPublished = await app.request(
 				`http://localhost:5173/api/events/${createdEventId}`,
 				{
 					method: "PATCH",
@@ -750,13 +750,36 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 						"Content-Type": "application/json",
 						Cookie: organizerACookie,
 					},
-					body: JSON.stringify({ venueName: null }),
+					body: JSON.stringify({ venueName: "New Venue Attempt" }),
 				},
 			);
 
-			expect(res.status).toBe(422);
-			const body = (await res.json()) as { error: { message: string } };
-			expect(body.error.message).toContain("Cannot remove venue name");
+			expect(resPublished.status).toBe(409);
+			const bodyPublished = (await resPublished.json()) as { error: { code: string; message: string } };
+			expect(bodyPublished.error.code).toBe("STATE_CONFLICT");
+			expect(bodyPublished.error.message).toContain("Published and active events cannot be edited via PATCH");
+
+			// Active event cannot be edited via PATCH
+			await db
+				.update(events)
+				.set({ status: "active" })
+				.where(eq(events.id, createdEventId));
+
+			const resActive = await app.request(
+				`http://localhost:5173/api/events/${createdEventId}`,
+				{
+					method: "PATCH",
+					headers: {
+						"Content-Type": "application/json",
+						Cookie: organizerACookie,
+					},
+					body: JSON.stringify({ title: "New Title Attempt" }),
+				},
+			);
+
+			expect(resActive.status).toBe(409);
+			const bodyActive = (await resActive.json()) as { error: { code: string; message: string } };
+			expect(bodyActive.error.code).toBe("STATE_CONFLICT");
 
 			// Reset back to draft
 			await db
@@ -824,6 +847,89 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 					),
 				);
 			expect(audits.length).toBe(1);
+			expect(audits[0].entityId).toBe(assignmentId);
+		});
+
+		it("organizer updates officer permissions; audit log entityId matches existing assignment id", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${testEventId}/assignments`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Cookie: organizerACookie,
+					},
+					body: JSON.stringify({
+						userId: fixtureUserOfficerA.id,
+						canUpdateTraffic: true,
+						canUpdateCleanup: true,
+					}),
+				},
+			);
+
+			expect(res.status).toBe(200);
+			const data = (await res.json()) as {
+				assignment: { id: string; canUpdateCleanup: boolean };
+			};
+			// Must preserve the existing assignment ID on conflict update
+			expect(data.assignment.id).toBe(assignmentId);
+			expect(data.assignment.canUpdateCleanup).toBe(true);
+
+			// Audit log must reference the ACTUAL returned assignment ID!
+			const audits = await db
+				.select()
+				.from(auditLogs)
+				.where(
+					and(
+						eq(auditLogs.eventId, testEventId),
+						eq(auditLogs.action, "assignment.updated"),
+					),
+				);
+			expect(audits.length).toBe(1);
+			expect(audits[0].entityId).toBe(assignmentId);
+			expect(audits[0].beforeJson).toEqual({
+				userId: fixtureUserOfficerA.id,
+				canUpdateTraffic: true,
+				canUpdateCleanup: false,
+			});
+			expect(audits[0].afterJson).toEqual({
+				userId: fixtureUserOfficerA.id,
+				canUpdateTraffic: true,
+				canUpdateCleanup: true,
+			});
+		});
+
+		it("repeated identical assignment upsert is idempotent and generates NO duplicate audit", async () => {
+			const auditsBefore = await db
+				.select()
+				.from(auditLogs)
+				.where(eq(auditLogs.eventId, testEventId));
+
+			const res = await app.request(
+				`http://localhost:5173/api/events/${testEventId}/assignments`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Cookie: organizerACookie,
+					},
+					body: JSON.stringify({
+						userId: fixtureUserOfficerA.id,
+						canUpdateTraffic: true,
+						canUpdateCleanup: true,
+					}),
+				},
+			);
+
+			expect(res.status).toBe(200);
+			const data = (await res.json()) as { assignment: { id: string } };
+			expect(data.assignment.id).toBe(assignmentId);
+
+			const auditsAfter = await db
+				.select()
+				.from(auditLogs)
+				.where(eq(auditLogs.eventId, testEventId));
+			expect(auditsAfter.length).toBe(auditsBefore.length);
 		});
 
 		it("assigned officer can now view assigned event detail AND see it in event listing", async () => {
@@ -871,6 +977,40 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			});
 			const listData = (await listRes.json()) as { events: Array<{ id: string }> };
 			expect(listData.events.some((e) => e.id === testEventId)).toBe(false);
+
+			// Audit log recorded for revocation with correct entityId
+			const revokeAudits = await db
+				.select()
+				.from(auditLogs)
+				.where(
+					and(
+						eq(auditLogs.eventId, testEventId),
+						eq(auditLogs.action, "assignment.revoked"),
+					),
+				);
+			expect(revokeAudits.length).toBe(1);
+			expect(revokeAudits[0].entityId).toBe(assignmentId);
+
+			// Calling delete again returns 404 and does NOT insert a second audit log
+			const repeatDeleteRes = await app.request(
+				`http://localhost:5173/api/events/${testEventId}/assignments/${assignmentId}`,
+				{
+					method: "DELETE",
+					headers: { Cookie: organizerACookie },
+				},
+			);
+			expect(repeatDeleteRes.status).toBe(404);
+
+			const revokeAuditsAfter = await db
+				.select()
+				.from(auditLogs)
+				.where(
+					and(
+						eq(auditLogs.eventId, testEventId),
+						eq(auditLogs.action, "assignment.revoked"),
+					),
+				);
+			expect(revokeAuditsAfter.length).toBe(1);
 		});
 	});
 
@@ -1028,6 +1168,76 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			// Count of publication audits must remain exactly identical
 			expect(auditsAfter.length).toBe(auditsBefore.length);
 		});
+
+		it("converges concurrent publish requests to 1 stable slug and exactly 1 audit log", async () => {
+			// Create a new event in review with verified road impact
+			const eventRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Concurrent Publish Test Event",
+					category: "upacara",
+					venueName: "Balai Banjar Concurrency",
+					startsAt: new Date("2026-11-26T08:00:00Z"),
+					endsAt: new Date("2026-11-26T14:00:00Z"),
+					status: "review",
+					verifiedBy: fixtureUserOrganizerA.id,
+					verifiedAt: new Date(),
+				})
+				.returning();
+			const concEventId = eventRows[0].id;
+
+			await db.insert(roadImpacts).values({
+				eventId: concEventId,
+				roadSegmentId: fixtureVerifiedRoadSegment.id,
+				plannedFrom: new Date("2026-11-26T08:00:00Z"),
+				plannedTo: new Date("2026-11-26T14:00:00Z"),
+				impactType: "closure",
+				diversionNote: "Pengalihan uji coba concurrent",
+			});
+
+			// Fire two publish requests simultaneously
+			const [res1, res2] = await Promise.all([
+				app.request(`http://localhost:5173/api/events/${concEventId}/publish`, {
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				}),
+				app.request(`http://localhost:5173/api/events/${concEventId}/publish`, {
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				}),
+			]);
+
+			expect(res1.status).toBe(200);
+			expect(res2.status).toBe(200);
+
+			const body1 = (await res1.json()) as { event: { status: string; publicSlug: string } };
+			const body2 = (await res2.json()) as { event: { status: string; publicSlug: string } };
+
+			expect(body1.event.status).toBe("published");
+			expect(body2.event.status).toBe("published");
+			// Both must converge to the exact same publicSlug
+			expect(body1.event.publicSlug).toBe(body2.event.publicSlug);
+
+			// Exactly 1 publication audit log must exist in the database!
+			const audits = await db
+				.select()
+				.from(auditLogs)
+				.where(
+					and(
+						eq(auditLogs.eventId, concEventId),
+						eq(auditLogs.action, "event.published"),
+					),
+				);
+			expect(audits.length).toBe(1);
+			expect((audits[0].afterJson as { publicSlug: string }).publicSlug).toBe(body1.event.publicSlug);
+
+			// Clean up concurrent event fixtures
+			await db.delete(roadImpacts).where(eq(roadImpacts.eventId, concEventId));
+			await db.delete(auditLogs).where(eq(auditLogs.eventId, concEventId));
+			await db.delete(events).where(eq(events.id, concEventId));
+		});
 	});
 
 	describe("8. Terminal Lifecycle Enforcement (A04 / AGENTS §13)", () => {
@@ -1046,7 +1256,27 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			completedEventId = eventRows[0].id;
 		});
 
-		it("completes published event successfully", async () => {
+		it("REJECTS completion directly from published status (409 Conflict, requires active state)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${completedEventId}/complete`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				},
+			);
+			expect(res.status).toBe(409);
+			const body = (await res.json()) as { error: { code: string; message: string } };
+			expect(body.error.code).toBe("STATE_CONFLICT");
+			expect(body.error.message).toContain("Only active events can be completed");
+		});
+
+		it("completes active event successfully (ACTIVE -> COMPLETED)", async () => {
+			// Set event to simulated active state
+			await db
+				.update(events)
+				.set({ status: "active" })
+				.where(eq(events.id, completedEventId));
+
 			const res = await app.request(
 				`http://localhost:5173/api/events/${completedEventId}/complete`,
 				{
@@ -1183,6 +1413,82 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 				.from(auditLogs)
 				.where(eq(auditLogs.eventId, testEventId));
 			expect(checkAudit.length).toBe(0);
+		});
+
+		it("rolls back CTE event creation atomically when audit insert fails", async () => {
+			const failEventId = crypto.randomUUID();
+			const failAuditId = crypto.randomUUID();
+
+			const failQuery = sql`
+				WITH inserted AS (
+					INSERT INTO events (id, organization_id, created_by, title, status)
+					VALUES (${failEventId}, ${fixtureOrgA.id}, ${fixtureUserOrganizerA.id}, 'CTE Rollback Event', 'draft')
+					RETURNING *
+				),
+				logged AS (
+					INSERT INTO audit_logs (id, organization_id, event_id, actor_id, action, entity_type, entity_id)
+					SELECT ${failAuditId}, '00000000-0000-4000-8000-000000000000', id, ${fixtureUserOrganizerA.id}, 'event.created', 'event', id
+					FROM inserted
+					RETURNING id
+				)
+				SELECT * FROM inserted;
+			`;
+
+			try {
+				await db.execute(failQuery);
+				expect.unreachable("CTE should have failed due to invalid audit foreign key");
+			} catch (err: unknown) {
+				expect(String((err as { cause?: unknown })?.cause || err)).toContain("foreign key");
+			}
+
+			const checkEvent = await db.select().from(events).where(eq(events.id, failEventId));
+			expect(checkEvent.length).toBe(0);
+		});
+
+		it("rolls back CTE assignment creation atomically when audit insert fails", async () => {
+			const failEventId = crypto.randomUUID();
+			const failAssignmentId = crypto.randomUUID();
+			const failAuditId = crypto.randomUUID();
+
+			const failQuery = sql`
+				WITH inserted_event AS (
+					INSERT INTO events (id, organization_id, created_by, title, status)
+					VALUES (${failEventId}, ${fixtureOrgA.id}, ${fixtureUserOrganizerA.id}, 'CTE Rollback Assignment Event', 'draft')
+					RETURNING id
+				),
+				upserted AS (
+					INSERT INTO event_assignments (id, event_id, user_id, can_update_traffic, can_update_cleanup)
+					SELECT ${failAssignmentId}, id, ${fixtureUserOfficerA.id}, true, true
+					FROM inserted_event
+					RETURNING *
+				),
+				logged AS (
+					INSERT INTO audit_logs (id, organization_id, event_id, actor_id, action, entity_type, entity_id)
+					SELECT ${failAuditId}, '00000000-0000-4000-8000-000000000000', event_id, ${fixtureUserOrganizerA.id}, 'assignment.created', 'event_assignment', id
+					FROM upserted
+					RETURNING id
+				)
+				SELECT * FROM upserted;
+			`;
+
+			try {
+				await db.execute(failQuery);
+				expect.unreachable("CTE should have failed due to invalid audit foreign key");
+			} catch (err: unknown) {
+				expect(String((err as { cause?: unknown })?.cause || err)).toContain("foreign key");
+			}
+
+			const checkAssignment = await db
+				.select()
+				.from(eventAssignments)
+				.where(eq(eventAssignments.id, failAssignmentId));
+			expect(checkAssignment.length).toBe(0);
+
+			const checkEvent = await db
+				.select()
+				.from(events)
+				.where(eq(events.id, failEventId));
+			expect(checkEvent.length).toBe(0);
 		});
 	});
 });

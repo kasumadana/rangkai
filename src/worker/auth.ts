@@ -95,7 +95,21 @@ export function createAuth(db: DbClient, env?: Env) {
 			autoSignIn: true,
 		},
 		advanced: {
+			cookiePrefix: "rangkai",
 			useSecureCookies: isProduction || baseURL.startsWith("https://"),
+		},
+		trustedOrigins: (request) => {
+			const origins = [baseURL];
+			if (request) {
+				try {
+					const reqOrigin = new URL(request.url).origin;
+					origins.push(reqOrigin);
+				} catch {
+					// Ignore invalid URL parse
+				}
+			}
+			origins.push("http://localhost:5173", "http://127.0.0.1:5173");
+			return origins;
 		},
 	});
 }

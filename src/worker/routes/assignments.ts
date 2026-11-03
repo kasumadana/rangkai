@@ -1,8 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { user as userTable } from "../../db/auth-schema";
 import {
-	auditLogs,
 	eventAssignments,
 	events,
 	memberships,
@@ -162,58 +161,119 @@ assignmentsRouter.post("/:eventId/assignments", async (c) => {
 	}
 
 	const targetMember = targetMemberRows[0];
-	const assignmentId = crypto.randomUUID();
+
+	// Check if an assignment already exists for this event and user
+	const existingAssignmentRows = await db
+		.select()
+		.from(eventAssignments)
+		.where(
+			and(
+				eq(eventAssignments.eventId, eventId),
+				eq(eventAssignments.userId, userId),
+			),
+		)
+		.limit(1);
+
+	const existingAssignment = existingAssignmentRows[0];
+
+	// Idempotent no-change: if identical permissions already exist, return 200 without creating a duplicate audit row
+	if (
+		existingAssignment &&
+		existingAssignment.canUpdateTraffic === canUpdateTraffic &&
+		existingAssignment.canUpdateCleanup === canUpdateCleanup
+	) {
+		return c.json(
+			{
+				assignment: {
+					...existingAssignment,
+					userName: targetMember.userName,
+					userEmail: targetMember.userEmail,
+				},
+			},
+			200,
+		);
+	}
+
+	const assignmentId = existingAssignment
+		? existingAssignment.id
+		: crypto.randomUUID();
 	const auditId = crypto.randomUUID();
 	const now = new Date();
-
-	// Atomic batch: event assignment mutation + append-only audit record
-	const [insertedRows] = await db.batch([
-		db
-			.insert(eventAssignments)
-			.values({
-				id: assignmentId,
-				eventId,
-				userId,
-				canUpdateTraffic,
-				canUpdateCleanup,
-				createdAt: now,
+	const action = existingAssignment
+		? "assignment.updated"
+		: "assignment.created";
+	const beforeJson = existingAssignment
+		? JSON.stringify({
+				userId: existingAssignment.userId,
+				canUpdateTraffic: existingAssignment.canUpdateTraffic,
+				canUpdateCleanup: existingAssignment.canUpdateCleanup,
 			})
-			.onConflictDoUpdate({
-				target: [eventAssignments.eventId, eventAssignments.userId],
-				set: {
-					canUpdateTraffic,
-					canUpdateCleanup,
-				},
-			})
-			.returning(),
-		db.insert(auditLogs).values({
-			id: auditId,
-			organizationId: check.event.organizationId,
-			eventId,
-			actorId: currentUser.id,
-			action: "assignment.created",
-			entityType: "event_assignment",
-			entityId: assignmentId,
-			afterJson: {
-				userId,
-				canUpdateTraffic,
-				canUpdateCleanup,
-			},
-			createdAt: now,
-		}),
-	]);
+		: null;
 
-	const assignment = insertedRows[0];
+	// Single atomic CTE: upsert assignment AND insert audit log referencing the actual RETURNING id!
+	const query = sql`
+		WITH upserted AS (
+			INSERT INTO event_assignments (
+				id, event_id, user_id, can_update_traffic, can_update_cleanup, created_at
+			)
+			VALUES (
+				${assignmentId}, ${eventId}, ${userId}, ${canUpdateTraffic}, ${canUpdateCleanup}, ${now}
+			)
+			ON CONFLICT (event_id, user_id)
+			DO UPDATE SET
+				can_update_traffic = EXCLUDED.can_update_traffic,
+				can_update_cleanup = EXCLUDED.can_update_cleanup
+			RETURNING *
+		),
+		logged AS (
+			INSERT INTO audit_logs (
+				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+			)
+			SELECT
+				${auditId},
+				${check.event.organizationId},
+				event_id,
+				${currentUser.id},
+				${action},
+				'event_assignment',
+				id,
+				${beforeJson ? sql`${beforeJson}::jsonb` : sql`NULL`},
+				json_build_object(
+					'userId', user_id,
+					'canUpdateTraffic', can_update_traffic,
+					'canUpdateCleanup', can_update_cleanup
+				),
+				${now}
+			FROM upserted
+			RETURNING id
+		)
+		SELECT
+			id,
+			event_id AS "eventId",
+			user_id AS "userId",
+			can_update_traffic AS "canUpdateTraffic",
+			can_update_cleanup AS "canUpdateCleanup",
+			created_at AS "createdAt"
+		FROM upserted;
+	`;
+
+	const res = await db.execute(query);
+	const assignment = res.rows[0];
 
 	return c.json(
 		{
 			assignment: {
-				...assignment,
+				id: assignment.id as string,
+				eventId: assignment.eventId as string,
+				userId: assignment.userId as string,
+				canUpdateTraffic: assignment.canUpdateTraffic as boolean,
+				canUpdateCleanup: assignment.canUpdateCleanup as boolean,
+				createdAt: new Date(assignment.createdAt as string),
 				userName: targetMember.userName,
 				userEmail: targetMember.userEmail,
 			},
 		},
-		201,
+		existingAssignment ? 200 : 201,
 	);
 });
 
@@ -233,56 +293,56 @@ assignmentsRouter.delete("/:eventId/assignments/:assignmentId", async (c) => {
 	if (check.error) return check.error;
 
 	const db = c.get("db");
-
-	// Verify target assignment exists before mutation
-	const existingRows = await db
-		.select()
-		.from(eventAssignments)
-		.where(
-			and(
-				eq(eventAssignments.id, assignmentId),
-				eq(eventAssignments.eventId, eventId),
-			),
-		)
-		.limit(1);
-
-	const existingAssignment = existingRows[0];
-	if (!existingAssignment) {
-		return sendError(c, "NOT_FOUND", "Assignment not found.", 404);
-	}
-
 	const auditId = crypto.randomUUID();
 	const now = new Date();
 
-	// Atomic batch: assignment deletion + append-only audit record
-	const [deletedRows] = await db.batch([
-		db
-			.delete(eventAssignments)
-			.where(
-				and(
-					eq(eventAssignments.id, assignmentId),
-					eq(eventAssignments.eventId, eventId),
-				),
+	// Single atomic CTE: assignment deletion + conditional audit log ONLY if row was deleted
+	const query = sql`
+		WITH deleted AS (
+			DELETE FROM event_assignments
+			WHERE id = ${assignmentId} AND event_id = ${eventId}
+			RETURNING *
+		),
+		logged AS (
+			INSERT INTO audit_logs (
+				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 			)
-			.returning(),
-		db.insert(auditLogs).values({
-			id: auditId,
-			organizationId: check.event.organizationId,
-			eventId,
-			actorId: currentUser.id,
-			action: "assignment.revoked",
-			entityType: "event_assignment",
-			entityId: existingAssignment.id,
-			beforeJson: {
-				userId: existingAssignment.userId,
-				canUpdateTraffic: existingAssignment.canUpdateTraffic,
-				canUpdateCleanup: existingAssignment.canUpdateCleanup,
-			},
-			createdAt: now,
-		}),
-	]);
+			SELECT
+				${auditId},
+				${check.event.organizationId},
+				event_id,
+				${currentUser.id},
+				'assignment.revoked',
+				'event_assignment',
+				id,
+				json_build_object(
+					'userId', user_id,
+					'canUpdateTraffic', can_update_traffic,
+					'canUpdateCleanup', can_update_cleanup
+				),
+				null,
+				${now}
+			FROM deleted
+			RETURNING id
+		)
+		SELECT
+			id,
+			event_id AS "eventId",
+			user_id AS "userId"
+		FROM deleted;
+	`;
 
-	return c.json({ success: true, revokedId: deletedRows[0]?.id ?? assignmentId }, 200);
+	const res = await db.execute(query);
+	if (res.rows.length === 0) {
+		return sendError(
+			c,
+			"NOT_FOUND",
+			"Assignment not found or already revoked.",
+			404,
+		);
+	}
+
+	return c.json({ success: true, revokedId: res.rows[0].id as string }, 200);
 });
 
 export { assignmentsRouter };

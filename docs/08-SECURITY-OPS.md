@@ -41,9 +41,9 @@ Requirements:
 - Secure cookie attributes (`Secure: true` in production; explicitly allowed loopback HTTP in development).
 - `SameSite=Lax` cookie policy.
 - Origin & CSRF defense on all state-mutating endpoints (`POST`, `PUT`, `PATCH`, `DELETE`):
-  - Request `Origin` must match trusted canonical base URL or request origin.
+  - Request `Origin` header (when present, mandatory in browsers) must match trusted canonical base URL or request origin.
   - `Sec-Fetch-Site: cross-site` requests are rejected (403 Forbidden).
-  - Form-compatible simple request Content-Types (`text/plain`, `application/x-www-form-urlencoded`, `multipart/form-data`) are rejected for JSON mutation endpoints (400 Bad Request).
+  - Form-compatible simple request Content-Types (`text/plain`, `application/x-www-form-urlencoded`, `multipart/form-data`) are rejected for JSON mutation endpoints (400 Bad Request). Non-browser API callers omitting Origin are permitted provided they supply valid authentication and do not use unsafe form content types.
 - Session expiration and revocation.
 - Fail-closed authentication configuration: `BETTER_AUTH_SECRET` must have high entropy (min 32 chars); missing auth or database configuration returns 503 Dependency Unavailable without starting or serving authenticated requests.
 - No shared banjar-wide PIN or committed shared passwords.
