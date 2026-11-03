@@ -28,6 +28,7 @@ Unit:
 Integration:
 
 - Hono endpoints.
+- Deterministic health check endpoint (/api/health).
 - Neon database queries.
 - R2 upload lifecycle.
 - Better Auth session checks.
@@ -48,6 +49,7 @@ AI evaluation:
 
 ## 3. Critical Test Cases
 
+TC-000: Health check endpoint returns 200 with service liveness payload.
 TC-001: Create and save draft event.
 TC-002: Upload valid image.
 TC-003: Reject oversized file.
