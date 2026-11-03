@@ -1,5 +1,6 @@
 import * as dotenv from "dotenv";
 import { sql } from "drizzle-orm";
+import { hashPassword } from "better-auth/crypto";
 import { assertDevBranch, sanitizeDatabaseError } from "./guard";
 import { getDb } from "./index";
 import {
@@ -8,12 +9,15 @@ import {
 	events,
 	memberships,
 	organizations,
+	roadImpacts,
 	roadSegments,
 } from "./schema";
-import { user } from "./auth-schema";
+import { account, user } from "./auth-schema";
 
 // ponytail: clearly simulated development fixtures without inventing real road closures or real credentials
 dotenv.config({ path: ".dev.vars" });
+
+export const SIMULATED_DEV_PASSWORD = "SimulatedPassword123!";
 
 export const SIMULATED_DATA = {
 	users: {
@@ -55,6 +59,13 @@ export const SIMULATED_DATA = {
 		startsAt: new Date("2026-11-10T08:00:00Z"),
 		endsAt: new Date("2026-11-10T14:00:00Z"),
 	},
+	roadImpact: {
+		id: "55555555-5555-4555-8555-555555555555",
+		plannedFrom: new Date("2026-11-10T08:00:00Z"),
+		plannedTo: new Date("2026-11-10T12:00:00Z"),
+		impactType: "closure" as const,
+		diversionNote: "Pengalihan lalu lintas uji coba",
+	},
 	cleanupTask: {
 		id: "44444444-4444-4444-8444-444444444444",
 		title: "[SIMULATED] Pembersihan Area Pos Uji Coba",
@@ -89,6 +100,31 @@ export async function seedDatabase(databaseUrl?: string) {
 		.onConflictDoUpdate({
 			target: user.id,
 			set: { name: sql`EXCLUDED.name` },
+		});
+
+	// Seed Better Auth accounts for credential authentication
+	const hashedPassword = await hashPassword(SIMULATED_DEV_PASSWORD);
+	await db
+		.insert(account)
+		.values([
+			{
+				id: "acc_simulated_organizer_01",
+				accountId: SIMULATED_DATA.users.organizer.id,
+				providerId: "credential",
+				userId: SIMULATED_DATA.users.organizer.id,
+				password: hashedPassword,
+			},
+			{
+				id: "acc_simulated_officer_01",
+				accountId: SIMULATED_DATA.users.officer.id,
+				providerId: "credential",
+				userId: SIMULATED_DATA.users.officer.id,
+				password: hashedPassword,
+			},
+		])
+		.onConflictDoUpdate({
+			target: account.id,
+			set: { password: sql`EXCLUDED.password` },
 		});
 
 	// 2. Seed simulated organization
@@ -159,7 +195,21 @@ export async function seedDatabase(databaseUrl?: string) {
 			set: { title: sql`EXCLUDED.title` },
 		});
 
-	// 6. Seed event assignment
+	// 6. Seed simulated road impact for the event
+	await db
+		.insert(roadImpacts)
+		.values({
+			id: SIMULATED_DATA.roadImpact.id,
+			eventId: SIMULATED_DATA.event.id,
+			roadSegmentId: SIMULATED_DATA.roadSegment.id,
+			plannedFrom: SIMULATED_DATA.roadImpact.plannedFrom,
+			plannedTo: SIMULATED_DATA.roadImpact.plannedTo,
+			impactType: SIMULATED_DATA.roadImpact.impactType,
+			diversionNote: SIMULATED_DATA.roadImpact.diversionNote,
+		})
+		.onConflictDoNothing();
+
+	// 7. Seed event assignment
 	await db
 		.insert(eventAssignments)
 		.values({
@@ -170,7 +220,7 @@ export async function seedDatabase(databaseUrl?: string) {
 		})
 		.onConflictDoNothing();
 
-	// 7. Seed cleanup task with PostGIS point
+	// 8. Seed cleanup task with PostGIS point
 	await db
 		.insert(cleanupTasks)
 		.values({

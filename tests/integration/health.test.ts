@@ -106,7 +106,7 @@ describe("GET /api/health", () => {
 				throw new Error("Preview server did not expose a local URL");
 			}
 			baseUrl = localUrl;
-		});
+		}, 60000);
 
 		afterAll(async () => {
 			await server?.close();

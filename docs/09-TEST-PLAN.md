@@ -29,10 +29,13 @@ Integration:
 
 - Hono endpoints.
 - Deterministic health check endpoint (/api/health).
-- Neon database queries.
+- Neon database queries and PostGIS verification (tests/integration/db.test.ts).
+- Better Auth session and authentication endpoints (tests/integration/auth-events.test.ts).
+- Organization membership and RBAC authorization.
+- Event assignment scoping and revocation.
+- Event CRUD, review, road-impact publication gating, and lifecycle cancellation.
+- Audit-log creation and append-only traceability.
 - R2 upload lifecycle.
-- Better Auth session checks.
-- Audit-log creation.
 
 E2E:
 
