@@ -17,8 +17,6 @@ import { account, user } from "./auth-schema";
 // ponytail: clearly simulated development fixtures without inventing real road closures or real credentials
 dotenv.config({ path: ".dev.vars" });
 
-export const SIMULATED_DEV_PASSWORD = "SimulatedPassword123!";
-
 export const SIMULATED_DATA = {
 	users: {
 		organizer: {
@@ -102,30 +100,61 @@ export async function seedDatabase(databaseUrl?: string) {
 			set: { name: sql`EXCLUDED.name` },
 		});
 
-	// Seed Better Auth accounts for credential authentication
-	const hashedPassword = await hashPassword(SIMULATED_DEV_PASSWORD);
-	await db
-		.insert(account)
-		.values([
-			{
-				id: "acc_simulated_organizer_01",
-				accountId: SIMULATED_DATA.users.organizer.id,
-				providerId: "credential",
-				userId: SIMULATED_DATA.users.organizer.id,
-				password: hashedPassword,
-			},
-			{
-				id: "acc_simulated_officer_01",
-				accountId: SIMULATED_DATA.users.officer.id,
-				providerId: "credential",
-				userId: SIMULATED_DATA.users.officer.id,
-				password: hashedPassword,
-			},
-		])
-		.onConflictDoUpdate({
-			target: account.id,
-			set: { password: sql`EXCLUDED.password` },
-		});
+	// Seed Better Auth accounts for credential authentication using separate caller-supplied or ephemeral secure credentials
+	const organizerPassword =
+		process.env.SEED_ORGANIZER_PASSWORD || crypto.randomUUID() + "!DevOrg1";
+	const officerPassword =
+		process.env.SEED_OFFICER_PASSWORD || crypto.randomUUID() + "!DevOff1";
+
+	const hashedOrganizerPassword = await hashPassword(organizerPassword);
+	const hashedOfficerPassword = await hashPassword(officerPassword);
+
+	// If rotation is explicitly requested, update credentials for known dev accounts,
+	// otherwise onConflictDoNothing preserves existing authorized credentials across repeated seeds.
+	if (process.env.ROTATE_SEED_CREDENTIALS === "true") {
+		await db
+			.insert(account)
+			.values([
+				{
+					id: "acc_simulated_organizer_01",
+					accountId: SIMULATED_DATA.users.organizer.id,
+					providerId: "credential",
+					userId: SIMULATED_DATA.users.organizer.id,
+					password: hashedOrganizerPassword,
+				},
+				{
+					id: "acc_simulated_officer_01",
+					accountId: SIMULATED_DATA.users.officer.id,
+					providerId: "credential",
+					userId: SIMULATED_DATA.users.officer.id,
+					password: hashedOfficerPassword,
+				},
+			])
+			.onConflictDoUpdate({
+				target: account.id,
+				set: { password: sql`EXCLUDED.password` },
+			});
+	} else {
+		await db
+			.insert(account)
+			.values([
+				{
+					id: "acc_simulated_organizer_01",
+					accountId: SIMULATED_DATA.users.organizer.id,
+					providerId: "credential",
+					userId: SIMULATED_DATA.users.organizer.id,
+					password: hashedOrganizerPassword,
+				},
+				{
+					id: "acc_simulated_officer_01",
+					accountId: SIMULATED_DATA.users.officer.id,
+					providerId: "credential",
+					userId: SIMULATED_DATA.users.officer.id,
+					password: hashedOfficerPassword,
+				},
+			])
+			.onConflictDoNothing();
+	}
 
 	// 2. Seed simulated organization
 	await db

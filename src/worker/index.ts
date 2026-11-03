@@ -1,7 +1,8 @@
 import { Hono } from "hono";
 import { getDb } from "../db/index";
-import { createAuth } from "./auth";
+import { AuthConfigError, createAuth } from "./auth";
 import { formatErrorEnvelope } from "./lib/errors";
+import { csrfAndOriginProtection } from "./middleware/csrf";
 import { assignmentsRouter } from "./routes/assignments";
 import { eventsRouter } from "./routes/events";
 import type { AppVariables, Env } from "./types";
@@ -32,17 +33,61 @@ app.use("/api/*", async (c, next) => {
 	const requestId =
 		c.req.header("x-request-id") || crypto.randomUUID();
 	c.set("requestId", requestId);
+	c.header("x-request-id", requestId);
 
-	const dbUrl = c.env?.DATABASE_URL || (typeof process !== "undefined" ? process.env?.DATABASE_URL : undefined);
-	const db = getDb(dbUrl);
+	const dbUrl =
+		c.env && "DATABASE_URL" in c.env
+			? c.env.DATABASE_URL
+			: typeof process !== "undefined"
+				? process.env?.DATABASE_URL
+				: undefined;
+
+	if (!dbUrl || typeof dbUrl !== "string" || dbUrl.trim().length === 0) {
+		return c.json(
+			formatErrorEnvelope(
+				"DEPENDENCY_UNAVAILABLE",
+				"Database configuration is missing. Service is unavailable.",
+				requestId,
+			),
+			503,
+		);
+	}
+
+	let db;
+	try {
+		db = getDb(dbUrl);
+	} catch {
+		return c.json(
+			formatErrorEnvelope(
+				"DEPENDENCY_UNAVAILABLE",
+				"Database connection could not be established.",
+				requestId,
+			),
+			503,
+		);
+	}
 	c.set("db", db);
 
-	const auth = createAuth(db, c.env);
+	let auth;
+	try {
+		auth = createAuth(db, c.env);
+	} catch {
+		return c.json(
+			formatErrorEnvelope(
+				"DEPENDENCY_UNAVAILABLE",
+				"Authentication service configuration is missing or invalid.",
+				requestId,
+			),
+			503,
+		);
+	}
 	c.set("auth", auth);
 
-	c.header("x-request-id", requestId);
 	await next();
 });
+
+// Enforce CSRF and Origin protection on cookie-authenticated / mutating application routes
+app.use("/api/*", csrfAndOriginProtection);
 
 // Better Auth owns /api/auth/* (docs/06-API-CONTRACT.md §3)
 app.all("/api/auth/*", async (c) => {
@@ -66,6 +111,23 @@ app.notFound((c) => {
 // Global error handler: never leak stack traces or internal secrets to clients
 app.onError((err, c) => {
 	const requestId = c.get("requestId") || "unknown";
+
+	if (
+		err instanceof AuthConfigError ||
+		err.message?.includes("DATABASE_URL") ||
+		err.message?.includes("fetch failed") ||
+		err.message?.includes("connection")
+	) {
+		return c.json(
+			formatErrorEnvelope(
+				"DEPENDENCY_UNAVAILABLE",
+				"Upstream dependency service is temporarily unavailable.",
+				requestId,
+			),
+			503,
+		);
+	}
+
 	return c.json(
 		formatErrorEnvelope(
 			"INTERNAL_SERVER_ERROR",

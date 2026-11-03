@@ -11,34 +11,37 @@ export const requireAuth: MiddlewareHandler<{
 		return sendError(
 			c,
 			"DEPENDENCY_UNAVAILABLE",
-			"Authentication service is unavailable.",
+			"Authentication service is unavailable due to missing or invalid server configuration.",
 			503,
 		);
 	}
 
+	let sessionResult: Awaited<ReturnType<typeof auth.api.getSession>>;
 	try {
-		const session = await auth.api.getSession({
+		sessionResult = await auth.api.getSession({
 			headers: c.req.raw.headers,
 		});
-
-		if (!session || !session.user) {
-			return sendError(
-				c,
-				"UNAUTHORIZED",
-				"Authentication required.",
-				401,
-			);
-		}
-
-		c.set("user", session.user);
-		c.set("session", session.session);
-		await next();
 	} catch {
+		// Upstream database or authentication service failure must return 503 DEPENDENCY_UNAVAILABLE
+		// rather than misclassifying infrastructure outages as invalid sessions (401).
+		return sendError(
+			c,
+			"DEPENDENCY_UNAVAILABLE",
+			"Authentication dependency service is temporarily unavailable.",
+			503,
+		);
+	}
+
+	if (!sessionResult || !sessionResult.user) {
 		return sendError(
 			c,
 			"UNAUTHORIZED",
-			"Invalid or expired session.",
+			"Authentication required.",
 			401,
 		);
 	}
+
+	c.set("user", sessionResult.user);
+	c.set("session", sessionResult.session);
+	await next();
 };

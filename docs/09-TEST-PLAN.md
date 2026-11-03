@@ -31,10 +31,16 @@ Integration:
 - Deterministic health check endpoint (/api/health).
 - Neon database queries and PostGIS verification (tests/integration/db.test.ts).
 - Better Auth session and authentication endpoints (tests/integration/auth-events.test.ts).
+- Origin and CSRF defense on application mutating requests (rejection of untrusted origins and simple form types).
+- Fail-closed authentication configuration (high-entropy secrets, HTTPS URL requirement in production, 503 dependency errors).
+- Strict ISO 8601 timestamp parsing with explicit timezone offset verification.
 - Organization membership and RBAC authorization.
-- Event assignment scoping and revocation.
-- Event CRUD, review, road-impact publication gating, and lifecycle cancellation.
-- Audit-log creation and append-only traceability.
+- Event assignment scoping and revocation (officers only receive assigned events in detail and listings).
+- Event CRUD, bounded pagination, review state transition, road-impact publication gating (verified road segments requirement), and lifecycle cancellation with reason.
+- Stale verification reset to draft on core field modification during review.
+- Terminal state modification prevention (completed/cancelled).
+- Idempotent publication retries without duplicate slug creation or audit duplication.
+- Atomic database mutation + audit log batching with rollback verification.
 - R2 upload lifecycle.
 
 E2E:

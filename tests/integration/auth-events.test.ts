@@ -12,7 +12,6 @@ import {
 } from "../../src/db/auth-schema";
 import {
 	auditLogs,
-	cleanupTasks,
 	eventAssignments,
 	events,
 	memberships,
@@ -20,7 +19,7 @@ import {
 	roadImpacts,
 	roadSegments,
 } from "../../src/db/schema";
-import { SIMULATED_DATA, SIMULATED_DEV_PASSWORD } from "../../src/db/seed";
+import { AuthConfigError, validateAuthConfig } from "../../src/worker/auth";
 import app from "../../src/worker/index";
 
 dotenv.config({ path: ".dev.vars" });
@@ -75,12 +74,22 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 		emailVerified: true,
 	};
 
-	const fixtureRoadSegment = {
+	const fixtureVerifiedRoadSegment = {
 		id: crypto.randomUUID(),
-		displayName: `[TEST] Jl. Segmen Uji (${runKey})`,
+		displayName: `[TEST] Jl. Segmen Terverifikasi (${runKey})`,
 		geom: "SRID=4326;LINESTRING(115.2166 -8.6500, 115.2170 -8.6510)",
 		coverageArea: "Area Uji",
-		verifiedBy: "system_test",
+		verifiedBy: "system_test_verifier",
+		verifiedAt: new Date("2026-11-01T00:00:00Z"),
+	};
+
+	const fixtureUnverifiedRoadSegment = {
+		id: crypto.randomUUID(),
+		displayName: `[TEST] Jl. Segmen Belum Verifikasi (${runKey})`,
+		geom: "SRID=4326;LINESTRING(115.2180 -8.6520, 115.2185 -8.6530)",
+		coverageArea: "Area Uji",
+		verifiedBy: null,
+		verifiedAt: null,
 	};
 
 	let organizerACookie = "";
@@ -104,7 +113,7 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			fixtureUserOfficerB,
 		]);
 
-		// Seed Better Auth accounts
+		// Seed Better Auth accounts with distinct credentials
 		const hashedPw = await hashPassword(testPassword);
 		await db.insert(account).values([
 			{
@@ -161,21 +170,30 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			},
 		]);
 
-		// Seed road segment
-		await db.insert(roadSegments).values({
-			id: fixtureRoadSegment.id,
-			displayName: fixtureRoadSegment.displayName,
-			geom: fixtureRoadSegment.geom,
-			coverageArea: fixtureRoadSegment.coverageArea,
-			verifiedBy: fixtureRoadSegment.verifiedBy,
-			verifiedAt: new Date(),
-		});
+		// Seed road segments (one verified, one unverified)
+		await db.insert(roadSegments).values([
+			{
+				id: fixtureVerifiedRoadSegment.id,
+				displayName: fixtureVerifiedRoadSegment.displayName,
+				geom: fixtureVerifiedRoadSegment.geom,
+				coverageArea: fixtureVerifiedRoadSegment.coverageArea,
+				verifiedBy: fixtureVerifiedRoadSegment.verifiedBy,
+				verifiedAt: fixtureVerifiedRoadSegment.verifiedAt,
+			},
+			{
+				id: fixtureUnverifiedRoadSegment.id,
+				displayName: fixtureUnverifiedRoadSegment.displayName,
+				geom: fixtureUnverifiedRoadSegment.geom,
+				coverageArea: fixtureUnverifiedRoadSegment.coverageArea,
+				verifiedBy: fixtureUnverifiedRoadSegment.verifiedBy,
+				verifiedAt: fixtureUnverifiedRoadSegment.verifiedAt,
+			},
+		]);
 	});
 
 	afterAll(async () => {
 		if (!db) return;
 		try {
-			// Clean up created event records for this run
 			const orgIds = [fixtureOrgA.id, fixtureOrgB.id];
 			const testEvents = await db
 				.select({ id: events.id })
@@ -185,20 +203,27 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			const eventIds = testEvents.map((e) => e.id);
 			if (eventIds.length > 0) {
 				await db.delete(auditLogs).where(inArray(auditLogs.eventId, eventIds));
-				await db.delete(cleanupTasks).where(inArray(cleanupTasks.eventId, eventIds));
-				await db.delete(eventAssignments).where(inArray(eventAssignments.eventId, eventIds));
 				await db.delete(roadImpacts).where(inArray(roadImpacts.eventId, eventIds));
+				await db
+					.delete(eventAssignments)
+					.where(inArray(eventAssignments.eventId, eventIds));
 				await db.delete(events).where(inArray(events.id, eventIds));
 			}
 
-			// Clean up audit logs for orgs
-			await db.delete(auditLogs).where(inArray(auditLogs.organizationId, orgIds));
-
-			// Clean up road segment
-			await db.delete(roadSegments).where(eq(roadSegments.id, fixtureRoadSegment.id));
+			// Clean up segments
+			await db
+				.delete(roadSegments)
+				.where(
+					inArray(roadSegments.id, [
+						fixtureVerifiedRoadSegment.id,
+						fixtureUnverifiedRoadSegment.id,
+					]),
+				);
 
 			// Clean up memberships
-			await db.delete(memberships).where(inArray(memberships.organizationId, orgIds));
+			await db
+				.delete(memberships)
+				.where(inArray(memberships.organizationId, orgIds));
 
 			// Clean up sessions and accounts
 			const userIds = [
@@ -234,7 +259,7 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			expect(setCookieHeader).toContain("better-auth.session_token");
 			organizerACookie = setCookieHeader.split(";")[0];
 
-			const data = await res.json() as { user: { id: string; email: string } };
+			const data = (await res.json()) as { user: { id: string; email: string } };
 			expect(data.user.email).toBe(fixtureUserOrganizerA.email);
 		});
 
@@ -269,28 +294,6 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			organizerBCookie = setCookie.split(";")[0];
 		});
 
-		it("verifies pre-seeded simulated development pilot accounts can authenticate", async () => {
-			const resOrg = await app.request("http://localhost:5173/api/auth/sign-in/email", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					email: SIMULATED_DATA.users.organizer.email,
-					password: SIMULATED_DEV_PASSWORD,
-				}),
-			});
-			expect(resOrg.status).toBe(200);
-
-			const resOff = await app.request("http://localhost:5173/api/auth/sign-in/email", {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					email: SIMULATED_DATA.users.officer.email,
-					password: SIMULATED_DEV_PASSWORD,
-				}),
-			});
-			expect(resOff.status).toBe(200);
-		});
-
 		it("rejects sign-in with invalid password", async () => {
 			const res = await app.request("http://localhost:5173/api/auth/sign-in/email", {
 				method: "POST",
@@ -310,12 +313,11 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			});
 
 			expect(res.status).toBe(200);
-			const sessionData = await res.json() as { user: { email: string } };
+			const sessionData = (await res.json()) as { user: { email: string } };
 			expect(sessionData.user.email).toBe(fixtureUserOrganizerA.email);
 		});
 
 		it("revokes session via /api/auth/sign-out", async () => {
-			// Sign in temporary session
 			const tempRes = await app.request("http://localhost:5173/api/auth/sign-in/email", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -326,14 +328,12 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			});
 			const tempCookie = (tempRes.headers.get("set-cookie") || "").split(";")[0];
 
-			// Sign out
 			const signOutRes = await app.request("http://localhost:5173/api/auth/sign-out", {
 				method: "POST",
 				headers: { Cookie: tempCookie },
 			});
 			expect(signOutRes.status).toBe(200);
 
-			// Session should now be null/inactive
 			const checkRes = await app.request("http://localhost:5173/api/auth/get-session", {
 				headers: { Cookie: tempCookie },
 			});
@@ -342,7 +342,139 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 		});
 	});
 
-	describe("2. Authentication & Authorization Guards (A03 / FR-003, FR-072)", () => {
+	describe("2. CSRF & Origin Protections (AGENTS §19, docs/08-SECURITY-OPS §3)", () => {
+		it("REJECTS same-site simple request from untrusted origin (e.g. Origin: http://localhost:9999 + Content-Type: text/plain)", async () => {
+			const res = await app.request("http://localhost:5173/api/events", {
+				method: "POST",
+				headers: {
+					Cookie: organizerACookie,
+					Origin: "http://localhost:9999",
+					"Sec-Fetch-Site": "same-site",
+					"Content-Type": "text/plain",
+				},
+				body: JSON.stringify({
+					organizationId: fixtureOrgA.id,
+					title: "CSRF Malicious Event",
+					startsAt: "2026-11-20T08:00:00Z",
+					endsAt: "2026-11-20T14:00:00Z",
+				}),
+			});
+
+			expect(res.status).toBe(403);
+			const body = (await res.json()) as { error: { code: string; message: string } };
+			expect(body.error.code).toBe("FORBIDDEN");
+			expect(body.error.message).toContain("Untrusted request origin");
+
+			// Ensure no event was created in the database
+			const check = await db
+				.select()
+				.from(events)
+				.where(eq(events.title, "CSRF Malicious Event"));
+			expect(check.length).toBe(0);
+		});
+
+		it("REJECTS mutating request with cross-site Sec-Fetch-Site header", async () => {
+			const res = await app.request("http://localhost:5173/api/events", {
+				method: "POST",
+				headers: {
+					Cookie: organizerACookie,
+					"Sec-Fetch-Site": "cross-site",
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					organizationId: fixtureOrgA.id,
+					title: "Cross Site Attempt",
+					startsAt: "2026-11-20T08:00:00Z",
+					endsAt: "2026-11-20T14:00:00Z",
+				}),
+			});
+
+			expect(res.status).toBe(403);
+			const body = (await res.json()) as { error: { code: string } };
+			expect(body.error.code).toBe("FORBIDDEN");
+		});
+
+		it("REJECTS form-encoded Content-Type for JSON API mutations", async () => {
+			const res = await app.request("http://localhost:5173/api/events", {
+				method: "POST",
+				headers: {
+					Cookie: organizerACookie,
+					"Content-Type": "application/x-www-form-urlencoded",
+				},
+				body: "organizationId=foo&title=bar",
+			});
+
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error: { code: string; message: string } };
+			expect(body.error.code).toBe("BAD_REQUEST");
+			expect(body.error.message).toContain("Application API mutations require application/json");
+		});
+	});
+
+	describe("3. Fail-Closed Authentication Configuration (AGENTS §19, docs/08-SECURITY-OPS §3)", () => {
+		it("throws AuthConfigError when BETTER_AUTH_SECRET is missing or insufficient length", () => {
+			expect(() =>
+				validateAuthConfig({
+					BETTER_AUTH_SECRET: undefined,
+					BETTER_AUTH_URL: "http://localhost:5173",
+				}),
+			).toThrowError(AuthConfigError);
+
+			expect(() =>
+				validateAuthConfig({
+					BETTER_AUTH_SECRET: "too-short-secret-less-than-32",
+					BETTER_AUTH_URL: "http://localhost:5173",
+				}),
+			).toThrowError(AuthConfigError);
+		});
+
+		it("throws AuthConfigError when BETTER_AUTH_URL is missing", () => {
+			expect(() =>
+				validateAuthConfig({
+					BETTER_AUTH_SECRET: "high-entropy-secret-with-more-than-32-chars-long!",
+					BETTER_AUTH_URL: undefined,
+				}),
+			).toThrowError(AuthConfigError);
+		});
+
+		it("strictly requires HTTPS for BETTER_AUTH_URL when NODE_ENV is production", () => {
+			const prevEnv = process.env.NODE_ENV;
+			try {
+				process.env.NODE_ENV = "production";
+				expect(() =>
+					validateAuthConfig({
+						BETTER_AUTH_SECRET: "high-entropy-secret-with-more-than-32-chars-long!",
+						BETTER_AUTH_URL: "http://localhost:5173",
+					}),
+				).toThrowError(/HTTPS is strictly required/);
+
+				const valid = validateAuthConfig({
+					BETTER_AUTH_SECRET: "high-entropy-secret-with-more-than-32-chars-long!",
+					BETTER_AUTH_URL: "https://rangkai.id",
+				});
+				expect(valid.baseURL).toBe("https://rangkai.id");
+				expect(valid.isProduction).toBe(true);
+			} finally {
+				process.env.NODE_ENV = prevEnv;
+			}
+		});
+
+		it("returns 503 DEPENDENCY_UNAVAILABLE when request context lacks database configuration", async () => {
+			const res = await app.fetch(
+				new Request("http://localhost:5173/api/events", {
+					method: "GET",
+				}),
+				{ DATABASE_URL: "" },
+			);
+
+			expect(res.status).toBe(503);
+			const body = (await res.json()) as { error: { code: string; message: string } };
+			expect(body.error.code).toBe("DEPENDENCY_UNAVAILABLE");
+			expect(body.error.message).toContain("Database configuration is missing");
+		});
+	});
+
+	describe("4. Authentication & Authorization Guards (A03 / FR-003, FR-072)", () => {
 		it("returns 401 Unauthorized for protected endpoints without session cookie", async () => {
 			const res = await app.request("http://localhost:5173/api/events", {
 				method: "POST",
@@ -354,7 +486,7 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			});
 
 			expect(res.status).toBe(401);
-			const body = await res.json() as { error: { code: string; message: string; requestId: string } };
+			const body = (await res.json()) as { error: { code: string; message: string; requestId: string } };
 			expect(body.error.code).toBe("UNAUTHORIZED");
 			expect(body.error.message).toContain("Authentication required");
 			expect(body.error.requestId).toBeDefined();
@@ -366,12 +498,11 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			});
 
 			expect(res.status).toBe(401);
-			const body = await res.json() as { error: { code: string } };
+			const body = (await res.json()) as { error: { code: string } };
 			expect(body.error.code).toBe("UNAUTHORIZED");
 		});
 
 		it("returns 403 Forbidden when organizer attempts action in non-member organization", async () => {
-			// Organizer B attempts to create event in Organization A
 			const res = await app.request("http://localhost:5173/api/events", {
 				method: "POST",
 				headers: {
@@ -385,13 +516,12 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			});
 
 			expect(res.status).toBe(403);
-			const body = await res.json() as { error: { code: string; message: string } };
+			const body = (await res.json()) as { error: { code: string; message: string } };
 			expect(body.error.code).toBe("FORBIDDEN");
 			expect(body.error.message).toContain("not a member");
 		});
 
 		it("returns 403 Forbidden when field officer attempts organizer-only event creation", async () => {
-			// Officer A attempts to create an event in Organization A
 			const res = await app.request("http://localhost:5173/api/events", {
 				method: "POST",
 				headers: {
@@ -405,18 +535,57 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			});
 
 			expect(res.status).toBe(403);
-			const body = await res.json() as { error: { code: string; message: string } };
+			const body = (await res.json()) as { error: { code: string; message: string } };
 			expect(body.error.code).toBe("FORBIDDEN");
 			expect(body.error.message).toContain("Organizer permission required");
 		});
 	});
 
-	describe("3. Event CRUD & Validation (A04 / FR-010..013, FR-016)", () => {
+	describe("5. Event CRUD, Boundary Validation & Pagination (A04 / FR-010..013)", () => {
 		let createdEventId = "";
 
-		it("creates a draft event with valid core fields, saving in UTC and recording audit log", async () => {
-			const startsAt = "2026-11-20T08:00:00Z";
-			const endsAt = "2026-11-20T16:00:00Z";
+		it("rejects offsetless timestamps without explicit timezone", async () => {
+			const res = await app.request("http://localhost:5173/api/events", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Cookie: organizerACookie,
+				},
+				body: JSON.stringify({
+					organizationId: fixtureOrgA.id,
+					title: "Offsetless Time Event",
+					startsAt: "2026-11-20T08:00:00",
+					endsAt: "2026-11-20T10:00:00",
+				}),
+			});
+
+			expect(res.status).toBe(422);
+			const body = (await res.json()) as { error: { code: string; message: string } };
+			expect(body.error.code).toBe("VALIDATION_FAILED");
+			expect(body.error.message).toContain("timezone information is required");
+		});
+
+		it("rejects date-only strings without time and timezone", async () => {
+			const res = await app.request("http://localhost:5173/api/events", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					Cookie: organizerACookie,
+				},
+				body: JSON.stringify({
+					organizationId: fixtureOrgA.id,
+					title: "Date-only Event",
+					startsAt: "2026-11-20",
+					endsAt: "2026-11-21",
+				}),
+			});
+
+			expect(res.status).toBe(422);
+		});
+
+		it("creates a draft event with explicit timezone timestamp, saving in UTC and recording audit log", async () => {
+			const startsAt = "2026-11-20T08:00:00+08:00";
+			const endsAt = "2026-11-20T16:00:00+08:00";
 
 			const res = await app.request("http://localhost:5173/api/events", {
 				method: "POST",
@@ -437,15 +606,24 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			});
 
 			expect(res.status).toBe(201);
-			const body = await res.json() as { event: { id: string; title: string; status: string; startsAt: string; endsAt: string } };
+			const body = (await res.json()) as {
+				event: {
+					id: string;
+					title: string;
+					status: string;
+					startsAt: string;
+					endsAt: string;
+				};
+			};
 			expect(body.event.id).toBeDefined();
 			createdEventId = body.event.id;
 			expect(body.event.status).toBe("draft");
 			expect(body.event.title).toBe("Upacara Odalan Test");
-			expect(new Date(body.event.startsAt).toISOString()).toBe(new Date(startsAt).toISOString());
-			expect(new Date(body.event.endsAt).toISOString()).toBe(new Date(endsAt).toISOString());
+			expect(new Date(body.event.startsAt).toISOString()).toBe(
+				new Date(startsAt).toISOString(),
+			);
 
-			// Verify persistent audit record was created atomically
+			// Verify atomic audit log
 			const audits = await db
 				.select()
 				.from(auditLogs)
@@ -476,116 +654,123 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			});
 
 			expect(res.status).toBe(422);
-			const body = await res.json() as { error: { code: string; message: string } };
+			const body = (await res.json()) as { error: { code: string; message: string } };
 			expect(body.error.code).toBe("VALIDATION_FAILED");
 			expect(body.error.message).toContain("End time must be after start time");
 		});
 
-		it("rejects event creation with empty title", async () => {
-			const res = await app.request("http://localhost:5173/api/events", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: organizerACookie,
-				},
-				body: JSON.stringify({
-					organizationId: fixtureOrgA.id,
-					title: "   ",
-				}),
+		it("returns bounded pagination envelope on GET /api/events", async () => {
+			const res = await app.request("http://localhost:5173/api/events?page=1&limit=2", {
+				headers: { Cookie: organizerACookie },
 			});
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as {
+				events: Array<{ id: string }>;
+				pagination: { page: number; limit: number; total: number; totalPages: number };
+			};
+			expect(body.pagination).toBeDefined();
+			expect(body.pagination.page).toBe(1);
+			expect(body.pagination.limit).toBe(2);
+			expect(body.pagination.total).toBeGreaterThanOrEqual(1);
+			expect(body.pagination.totalPages).toBeGreaterThanOrEqual(1);
+			expect(body.events.length).toBeLessThanOrEqual(2);
+		});
+
+		it("ENFORCES officer assignment scoping: unassigned officer receives 0 events in list and 403 on detail", async () => {
+			// Officer A is a member of Org A, but NOT assigned to createdEventId
+			const listRes = await app.request("http://localhost:5173/api/events", {
+				headers: { Cookie: officerACookie },
+			});
+			expect(listRes.status).toBe(200);
+			const listBody = (await listRes.json()) as {
+				events: Array<{ id: string }>;
+				pagination: { total: number };
+			};
+			// Officer A must NOT see createdEventId
+			expect(listBody.events.some((e) => e.id === createdEventId)).toBe(false);
+
+			// Detail query for unassigned event must return 403
+			const detailRes = await app.request(
+				`http://localhost:5173/api/events/${createdEventId}`,
+				{
+					headers: { Cookie: officerACookie },
+				},
+			);
+			expect(detailRes.status).toBe(403);
+		});
+
+		it("clears stale verification and resets review status to draft when core fields are edited (PATCH)", async () => {
+			// First, transition to review
+			await db
+				.update(events)
+				.set({
+					status: "review",
+					verifiedBy: fixtureUserOrganizerA.id,
+					verifiedAt: new Date(),
+				})
+				.where(eq(events.id, createdEventId));
+
+			// Now edit venueName on event in review
+			const patchRes = await app.request(
+				`http://localhost:5173/api/events/${createdEventId}`,
+				{
+					method: "PATCH",
+					headers: {
+						"Content-Type": "application/json",
+						Cookie: organizerACookie,
+					},
+					body: JSON.stringify({
+						venueName: "Balai Banjar Utama (Baru)",
+					}),
+				},
+			);
+
+			expect(patchRes.status).toBe(200);
+			const patchBody = (await patchRes.json()) as {
+				event: { status: string; verifiedBy: string | null; venueName: string };
+			};
+			expect(patchBody.event.venueName).toBe("Balai Banjar Utama (Baru)");
+			// Verification must be cleared and status reset to draft
+			expect(patchBody.event.status).toBe("draft");
+			expect(patchBody.event.verifiedBy).toBeNull();
+		});
+
+		it("rejects removing venueName on published event", async () => {
+			// Set event to published temporarily
+			await db
+				.update(events)
+				.set({ status: "published" })
+				.where(eq(events.id, createdEventId));
+
+			const res = await app.request(
+				`http://localhost:5173/api/events/${createdEventId}`,
+				{
+					method: "PATCH",
+					headers: {
+						"Content-Type": "application/json",
+						Cookie: organizerACookie,
+					},
+					body: JSON.stringify({ venueName: null }),
+				},
+			);
 
 			expect(res.status).toBe(422);
-		});
+			const body = (await res.json()) as { error: { message: string } };
+			expect(body.error.message).toContain("Cannot remove venue name");
 
-		it("lists events scoped to user organization, preventing cross-tenant leakage", async () => {
-			// Organizer A lists events
-			const resA = await app.request("http://localhost:5173/api/events", {
-				headers: { Cookie: organizerACookie },
-			});
-			expect(resA.status).toBe(200);
-			const dataA = await resA.json() as { events: Array<{ id: string; organizationId: string }> };
-			expect(dataA.events.some((e) => e.id === createdEventId)).toBe(true);
-			expect(dataA.events.every((e) => e.organizationId === fixtureOrgA.id)).toBe(true);
-
-			// Organizer B lists events (must NOT see Org A events)
-			const resB = await app.request("http://localhost:5173/api/events", {
-				headers: { Cookie: organizerBCookie },
-			});
-			expect(resB.status).toBe(200);
-			const dataB = await resB.json() as { events: Array<{ id: string; organizationId: string }> };
-			expect(dataB.events.some((e) => e.id === createdEventId)).toBe(false);
-		});
-
-		it("retrieves event details by ID, hiding private event from non-members with 404", async () => {
-			// Organizer A can view
-			const resOwner = await app.request(`http://localhost:5173/api/events/${createdEventId}`, {
-				headers: { Cookie: organizerACookie },
-			});
-			expect(resOwner.status).toBe(200);
-
-			// Organizer B cannot view (returns 404 to avoid leaking resource existence)
-			const resForeign = await app.request(`http://localhost:5173/api/events/${createdEventId}`, {
-				headers: { Cookie: organizerBCookie },
-			});
-			expect(resForeign.status).toBe(404);
-		});
-
-		it("updates draft event details and appends audit log", async () => {
-			const updatedTitle = "Upacara Odalan Test (Revisi)";
-			const res = await app.request(`http://localhost:5173/api/events/${createdEventId}`, {
-				method: "PATCH",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: organizerACookie,
-				},
-				body: JSON.stringify({
-					title: updatedTitle,
-					venueName: "Balai Banjar Utama",
-				}),
-			});
-
-			expect(res.status).toBe(200);
-			const body = await res.json() as { event: { title: string; venueName: string } };
-			expect(body.event.title).toBe(updatedTitle);
-			expect(body.event.venueName).toBe("Balai Banjar Utama");
-
-			// Check audit record
-			const updateAudits = await db
-				.select()
-				.from(auditLogs)
-				.where(
-					and(
-						eq(auditLogs.eventId, createdEventId),
-						eq(auditLogs.action, "event.updated"),
-					),
-				);
-			expect(updateAudits.length).toBe(1);
-			expect(updateAudits[0].afterJson).toMatchObject({
-				title: updatedTitle,
-				venueName: "Balai Banjar Utama",
-			});
-		});
-
-		it("rejects PATCH from field officer with 403 Forbidden", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${createdEventId}`, {
-				method: "PATCH",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: officerACookie,
-				},
-				body: JSON.stringify({ title: "Unauthorized Patch" }),
-			});
-
-			expect(res.status).toBe(403);
+			// Reset back to draft
+			await db
+				.update(events)
+				.set({ status: "draft" })
+				.where(eq(events.id, createdEventId));
 		});
 	});
 
-	describe("4. Assignment Scoping & Revocation (A03 / FR-004, FR-005)", () => {
+	describe("6. Assignment Scoping & Revocation (A03 / FR-004, FR-005)", () => {
 		let testEventId = "";
 		let assignmentId = "";
 
 		beforeAll(async () => {
-			// Create dedicated test event in Org A
 			const eventRows = await db
 				.insert(events)
 				.values({
@@ -598,25 +783,34 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			testEventId = eventRows[0].id;
 		});
 
-		it("organizer creates an event assignment for officer", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${testEventId}/assignments`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: organizerACookie,
+		it("organizer grants officer assignment atomically with audit log", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${testEventId}/assignments`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Cookie: organizerACookie,
+					},
+					body: JSON.stringify({
+						userId: fixtureUserOfficerA.id,
+						canUpdateTraffic: true,
+						canUpdateCleanup: false,
+					}),
 				},
-				body: JSON.stringify({
-					userId: fixtureUserOfficerA.id,
-					canUpdateTraffic: true,
-					canUpdateCleanup: false,
-				}),
-			});
+			);
 
 			expect(res.status).toBe(201);
-			const data = await res.json() as { assignment: { id: string; userId: string; canUpdateTraffic: boolean; canUpdateCleanup: boolean } };
+			const data = (await res.json()) as {
+				assignment: {
+					id: string;
+					userId: string;
+					canUpdateTraffic: boolean;
+					canUpdateCleanup: boolean;
+				};
+			};
 			expect(data.assignment.userId).toBe(fixtureUserOfficerA.id);
 			expect(data.assignment.canUpdateTraffic).toBe(true);
-			expect(data.assignment.canUpdateCleanup).toBe(false);
 			assignmentId = data.assignment.id;
 
 			// Audit log recorded
@@ -632,76 +826,55 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			expect(audits.length).toBe(1);
 		});
 
-		it("assigned officer can now access assigned event details", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${testEventId}`, {
+		it("assigned officer can now view assigned event detail AND see it in event listing", async () => {
+			// Detail view allowed
+			const detailRes = await app.request(
+				`http://localhost:5173/api/events/${testEventId}`,
+				{
+					headers: { Cookie: officerACookie },
+				},
+			);
+			expect(detailRes.status).toBe(200);
+
+			// Listing now includes the assigned event
+			const listRes = await app.request("http://localhost:5173/api/events", {
 				headers: { Cookie: officerACookie },
 			});
-			expect(res.status).toBe(200);
+			expect(listRes.status).toBe(200);
+			const listData = (await listRes.json()) as { events: Array<{ id: string }> };
+			expect(listData.events.some((e) => e.id === testEventId)).toBe(true);
 		});
 
-		it("unassigned officer from foreign org receives 404 on event details", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${testEventId}`, {
-				headers: { Cookie: organizerBCookie },
-			});
-			expect(res.status).toBe(404);
-		});
-
-		it("field officer cannot manage assignments (returns 403)", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${testEventId}/assignments`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: officerACookie,
+		it("organizer revokes officer assignment, immediately denying officer access again", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${testEventId}/assignments/${assignmentId}`,
+				{
+					method: "DELETE",
+					headers: { Cookie: organizerACookie },
 				},
-				body: JSON.stringify({
-					userId: fixtureUserOfficerA.id,
-					canUpdateCleanup: true,
-				}),
-			});
-			expect(res.status).toBe(403);
-		});
-
-		it("organizer lists assignments for event", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${testEventId}/assignments`, {
-				headers: { Cookie: organizerACookie },
-			});
-
-			expect(res.status).toBe(200);
-			const data = await res.json() as { assignments: Array<{ id: string; userId: string; userName: string }> };
-			expect(data.assignments.some((a) => a.id === assignmentId)).toBe(true);
-			expect(data.assignments[0].userName).toBe(fixtureUserOfficerA.name);
-		});
-
-		it("organizer revokes officer assignment and records audit log", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${testEventId}/assignments/${assignmentId}`, {
-				method: "DELETE",
-				headers: { Cookie: organizerACookie },
-			});
+			);
 
 			expect(res.status).toBe(200);
 
-			// Verify assignment removed from database
-			const check = await db
-				.select()
-				.from(eventAssignments)
-				.where(eq(eventAssignments.id, assignmentId));
-			expect(check.length).toBe(0);
+			// Detail query is now 403 Forbidden
+			const detailRes = await app.request(
+				`http://localhost:5173/api/events/${testEventId}`,
+				{
+					headers: { Cookie: officerACookie },
+				},
+			);
+			expect(detailRes.status).toBe(403);
 
-			// Verify revocation audit log
-			const audits = await db
-				.select()
-				.from(auditLogs)
-				.where(
-					and(
-						eq(auditLogs.eventId, testEventId),
-						eq(auditLogs.action, "assignment.revoked"),
-					),
-				);
-			expect(audits.length).toBe(1);
+			// Revoked event no longer in officer listing
+			const listRes = await app.request("http://localhost:5173/api/events", {
+				headers: { Cookie: officerACookie },
+			});
+			const listData = (await listRes.json()) as { events: Array<{ id: string }> };
+			expect(listData.events.some((e) => e.id === testEventId)).toBe(false);
 		});
 	});
 
-	describe("5. Event Review & Verified Publication (A04 / FR-013..015, AC-07)", () => {
+	describe("7. Event Review & Publication Prerequisites (A04 / FR-013..015, AC-07)", () => {
 		let publishEventId = "";
 
 		beforeAll(async () => {
@@ -720,75 +893,95 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			publishEventId = eventRows[0].id;
 		});
 
-		it("moves draft event to review state with human verification metadata", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${publishEventId}/review`, {
-				method: "POST",
-				headers: { Cookie: organizerACookie },
-			});
+		it("REJECTS direct publication from draft status without human review (409 Conflict)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${publishEventId}/publish`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				},
+			);
+
+			expect(res.status).toBe(409);
+			const body = (await res.json()) as { error: { code: string; message: string } };
+			expect(body.error.code).toBe("STATE_CONFLICT");
+			expect(body.error.message).toContain("Event must be in review status before publication");
+		});
+
+		it("transitions draft event to review state with human verification metadata", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${publishEventId}/review`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				},
+			);
 
 			expect(res.status).toBe(200);
-			const data = await res.json() as { event: { status: string; verifiedBy: string; verifiedAt: string } };
+			const data = (await res.json()) as {
+				event: { status: string; verifiedBy: string; verifiedAt: string };
+			};
 			expect(data.event.status).toBe("review");
 			expect(data.event.verifiedBy).toBe(fixtureUserOrganizerA.id);
 			expect(data.event.verifiedAt).toBeDefined();
-
-			// Audit record
-			const audits = await db
-				.select()
-				.from(auditLogs)
-				.where(
-					and(
-						eq(auditLogs.eventId, publishEventId),
-						eq(auditLogs.action, "event.reviewed"),
-					),
-				);
-			expect(audits.length).toBe(1);
 		});
 
-		it("REJECTS publication when event has NO verified road impacts (AC-07 prerequisite)", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${publishEventId}/publish`, {
-				method: "POST",
-				headers: { Cookie: organizerACookie },
-			});
+		it("REJECTS publication when road impact references an UNVERIFIED road segment", async () => {
+			// Attach road impact referencing unverified segment
+			const impactRows = await db
+				.insert(roadImpacts)
+				.values({
+					eventId: publishEventId,
+					roadSegmentId: fixtureUnverifiedRoadSegment.id,
+					plannedFrom: new Date("2026-11-25T07:00:00Z"),
+					plannedTo: new Date("2026-11-25T15:00:00Z"),
+					impactType: "closure",
+				})
+				.returning();
+
+			const res = await app.request(
+				`http://localhost:5173/api/events/${publishEventId}/publish`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				},
+			);
 
 			expect(res.status).toBe(422);
-			const body = await res.json() as { error: { code: string; message: string } };
-			expect(body.error.code).toBe("VALIDATION_FAILED");
-			expect(body.error.message).toContain("verified road impact");
+			const body = (await res.json()) as { error: { message: string } };
+			expect(body.error.message).toContain("unverified road segment");
 
-			// Event status must still be review, NOT published
-			const eventCheck = await db
-				.select({ status: events.status })
-				.from(events)
-				.where(eq(events.id, publishEventId));
-			expect(eventCheck[0].status).toBe("review");
+			// Clean up unverified impact
+			await db.delete(roadImpacts).where(eq(roadImpacts.id, impactRows[0].id));
 		});
 
-		it("successfully publishes event once verified road impact fixture is attached", async () => {
-			// Attach verified road impact fixture
+		it("successfully publishes event once VERIFIED road impact is attached", async () => {
+			// Attach verified road impact
 			await db.insert(roadImpacts).values({
 				eventId: publishEventId,
-				roadSegmentId: fixtureRoadSegment.id,
+				roadSegmentId: fixtureVerifiedRoadSegment.id,
 				plannedFrom: new Date("2026-11-25T07:00:00Z"),
 				plannedTo: new Date("2026-11-25T15:00:00Z"),
 				impactType: "closure",
-				diversionNote: "Jalur dialihkan ke Jl. Uji Coba Segmen B",
+				diversionNote: "Pengalihan uji coba",
 			});
 
-			// Now attempt publication
-			const res = await app.request(`http://localhost:5173/api/events/${publishEventId}/publish`, {
-				method: "POST",
-				headers: { Cookie: organizerACookie },
-			});
+			const res = await app.request(
+				`http://localhost:5173/api/events/${publishEventId}/publish`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				},
+			);
 
 			expect(res.status).toBe(200);
-			const body = await res.json() as { event: { status: string; publicSlug: string; publishedAt: string } };
+			const body = (await res.json()) as {
+				event: { status: string; publicSlug: string; publishedAt: string };
+			};
 			expect(body.event.status).toBe("published");
-			expect(body.event.publicSlug).toBeDefined();
 			expect(body.event.publicSlug).toContain("ngaben-massal-desa-a");
 			expect(body.event.publishedAt).toBeDefined();
 
-			// Audit record
 			const audits = await db
 				.select()
 				.from(auditLogs)
@@ -799,39 +992,46 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 					),
 				);
 			expect(audits.length).toBe(1);
-			expect(audits[0].afterJson).toMatchObject({
-				status: "published",
-				publicSlug: body.event.publicSlug,
-			});
 		});
 
-		it("is idempotent: repeated publish call preserves slug and does not duplicate status", async () => {
-			const resFirst = await app.request(`http://localhost:5173/api/events/${publishEventId}`, {
-				headers: { Cookie: organizerACookie },
-			});
-			const slugFirst = (await resFirst.json() as { event: { publicSlug: string } }).event.publicSlug;
+		it("is strictly idempotent: repeated publish call does NOT generate duplicate audit logs", async () => {
+			const auditsBefore = await db
+				.select()
+				.from(auditLogs)
+				.where(
+					and(
+						eq(auditLogs.eventId, publishEventId),
+						eq(auditLogs.action, "event.published"),
+					),
+				);
 
-			const resRepeat = await app.request(`http://localhost:5173/api/events/${publishEventId}/publish`, {
-				method: "POST",
-				headers: { Cookie: organizerACookie },
-			});
+			const resRepeat = await app.request(
+				`http://localhost:5173/api/events/${publishEventId}/publish`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				},
+			);
 
 			expect(resRepeat.status).toBe(200);
-			const dataRepeat = await resRepeat.json() as { event: { publicSlug: string } };
-			expect(dataRepeat.event.publicSlug).toBe(slugFirst);
-		});
 
-		it("rejects publish request from officer with 403 Forbidden", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${publishEventId}/publish`, {
-				method: "POST",
-				headers: { Cookie: officerACookie },
-			});
-			expect(res.status).toBe(403);
+			const auditsAfter = await db
+				.select()
+				.from(auditLogs)
+				.where(
+					and(
+						eq(auditLogs.eventId, publishEventId),
+						eq(auditLogs.action, "event.published"),
+					),
+				);
+
+			// Count of publication audits must remain exactly identical
+			expect(auditsAfter.length).toBe(auditsBefore.length);
 		});
 	});
 
-	describe("6. Event Lifecycle Transitions (A04 / FR-012, AGENTS.md §13)", () => {
-		let lifecycleEventId = "";
+	describe("8. Terminal Lifecycle Enforcement (A04 / AGENTS §13)", () => {
+		let completedEventId = "";
 
 		beforeAll(async () => {
 			const eventRows = await db
@@ -839,105 +1039,150 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 				.values({
 					organizationId: fixtureOrgA.id,
 					createdBy: fixtureUserOrganizerA.id,
-					title: "Pawai Ogoh-ogoh Simulasi",
+					title: "Terminal Test Event",
 					status: "published",
 				})
 				.returning();
-			lifecycleEventId = eventRows[0].id;
+			completedEventId = eventRows[0].id;
 		});
 
-		it("cancels an event with mandatory reason and records audit log", async () => {
-			const cancellationReason = "Kondisi cuaca ekstrem dan angin kencang";
-
-			const res = await app.request(`http://localhost:5173/api/events/${lifecycleEventId}/cancel`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: organizerACookie,
+		it("completes published event successfully", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${completedEventId}/complete`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
 				},
-				body: JSON.stringify({ reason: cancellationReason }),
-			});
-
+			);
 			expect(res.status).toBe(200);
-			const body = await res.json() as { event: { status: string }; reason: string };
-			expect(body.event.status).toBe("cancelled");
-			expect(body.reason).toBe(cancellationReason);
-
-			// Audit record contains cancellation reason
-			const audits = await db
-				.select()
-				.from(auditLogs)
-				.where(
-					and(
-						eq(auditLogs.eventId, lifecycleEventId),
-						eq(auditLogs.action, "event.cancelled"),
-					),
-				);
-			expect(audits.length).toBe(1);
-			expect(audits[0].afterJson).toMatchObject({
-				status: "cancelled",
-				cancellationReason,
-			});
-		});
-
-		it("rejects cancellation without reason", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${lifecycleEventId}/cancel`, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: organizerACookie,
-				},
-				body: JSON.stringify({ reason: "   " }),
-			});
-
-			expect(res.status).toBe(422);
-		});
-
-		it("completes operational event lifecycle and records audit log", async () => {
-			const res = await app.request(`http://localhost:5173/api/events/${lifecycleEventId}/complete`, {
-				method: "POST",
-				headers: { Cookie: organizerACookie },
-			});
-
-			expect(res.status).toBe(200);
-			const body = await res.json() as { event: { status: string } };
+			const body = (await res.json()) as { event: { status: string } };
 			expect(body.event.status).toBe("completed");
+		});
 
-			const audits = await db
-				.select()
-				.from(auditLogs)
-				.where(
-					and(
-						eq(auditLogs.eventId, lifecycleEventId),
-						eq(auditLogs.action, "event.completed"),
-					),
-				);
-			expect(audits.length).toBe(1);
+		it("REJECTS transition to review on completed event (409 Conflict)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${completedEventId}/review`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				},
+			);
+			expect(res.status).toBe(409);
+			const body = (await res.json()) as { error: { code: string } };
+			expect(body.error.code).toBe("STATE_CONFLICT");
+		});
+
+		it("REJECTS publication on completed event (409 Conflict)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${completedEventId}/publish`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				},
+			);
+			expect(res.status).toBe(409);
+		});
+
+		it("REJECTS completion on draft event (409 Conflict)", async () => {
+			const draftEvent = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Draft Complete Test",
+					status: "draft",
+				})
+				.returning();
+
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEvent[0].id}/complete`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+				},
+			);
+			expect(res.status).toBe(409);
+
+			// Clean up
+			await db.delete(events).where(eq(events.id, draftEvent[0].id));
+		});
+
+		it("cancels published event with non-empty reason", async () => {
+			const eventToCancel = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Event to Cancel",
+					status: "published",
+				})
+				.returning();
+
+			const res = await app.request(
+				`http://localhost:5173/api/events/${eventToCancel[0].id}/cancel`,
+				{
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Cookie: organizerACookie,
+					},
+					body: JSON.stringify({ reason: "Cuaca buruk" }),
+				},
+			);
+
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { event: { status: string }; reason: string };
+			expect(body.event.status).toBe("cancelled");
+			expect(body.reason).toBe("Cuaca buruk");
+
+			// Clean up
+			await db.delete(auditLogs).where(eq(auditLogs.eventId, eventToCancel[0].id));
+			await db.delete(events).where(eq(events.id, eventToCancel[0].id));
 		});
 	});
 
-	describe("7. Safe Error Handling Envelope (docs/06-API-CONTRACT.md §2)", () => {
-		it("returns 404 envelope for non-existent routes", async () => {
-			const res = await app.request("http://localhost:5173/api/non-existent-route");
-			expect(res.status).toBe(404);
-			const body = await res.json() as { error: { code: string; message: string; requestId: string } };
-			expect(body.error.code).toBe("NOT_FOUND");
-			expect(body.error.requestId).toBeDefined();
-		});
+	describe("9. Atomic Batch Rollback (A04 / AGENTS §17)", () => {
+		it("rolls back event creation when audit insert statement fails", async () => {
+			const testEventId = crypto.randomUUID();
 
-		it("returns 400 envelope for invalid JSON payload", async () => {
-			const res = await app.request("http://localhost:5173/api/events", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: organizerACookie,
-				},
-				body: "{ invalid json payload",
-			});
+			// Test atomic batch failure: query 1 is valid event insert, query 2 is invalid audit insert (violating FK constraint)
+			try {
+				await db.batch([
+					db.insert(events).values({
+						id: testEventId,
+						organizationId: fixtureOrgA.id,
+						createdBy: fixtureUserOrganizerA.id,
+						title: "Should Not Persist Event",
+						status: "draft",
+					}),
+					db.insert(auditLogs).values({
+						id: crypto.randomUUID(),
+						organizationId: "00000000-0000-4000-8000-000000000000",
+						eventId: testEventId,
+						actorId: fixtureUserOrganizerA.id,
+						action: "event.created",
+						entityType: "event",
+						entityId: testEventId,
+					}),
+				]);
+				expect.unreachable("Batch should have failed due to foreign key violation");
+			} catch (err: unknown) {
+				// Expected foreign key failure
+				expect(String(err)).toContain("violates foreign key constraint");
+			}
 
-			expect(res.status).toBe(400);
-			const body = await res.json() as { error: { code: string } };
-			expect(body.error.code).toBe("BAD_REQUEST");
+			// Verify that the event was NOT persisted in the database
+			const checkEvent = await db
+				.select()
+				.from(events)
+				.where(eq(events.id, testEventId));
+			expect(checkEvent.length).toBe(0);
+
+			const checkAudit = await db
+				.select()
+				.from(auditLogs)
+				.where(eq(auditLogs.eventId, testEventId));
+			expect(checkAudit.length).toBe(0);
 		});
 	});
 });

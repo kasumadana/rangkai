@@ -10,7 +10,7 @@ Status: Draft
 - Validate at server boundaries.
 - Separate public and private data.
 - Keep secrets outside source code.
-- Maintain traceability for critical changes.
+- Maintain traceability for critical changes via atomic append-only audit logging.
 
 ## 2. Role Permission Matrix
 
@@ -30,21 +30,24 @@ Status: Draft
 All permissions are checked on the server.
 Assignments must match the requested event.
 
-## 3. Authentication
+## 3. Authentication & CSRF Protection
 
 Use Better Auth with secure cookie sessions.
 
 Requirements:
 
 - HTTPS in production.
-- HttpOnly session cookies.
-- Secure cookie attributes.
-- Appropriate SameSite policy.
-- CSRF protection for cookie-based mutations.
+- HttpOnly session cookies with `cookiePrefix: "rangkai"`.
+- Secure cookie attributes (`Secure: true` in production; explicitly allowed loopback HTTP in development).
+- `SameSite=Lax` cookie policy.
+- Origin & CSRF defense on all state-mutating endpoints (`POST`, `PUT`, `PATCH`, `DELETE`):
+  - Request `Origin` must match trusted canonical base URL or request origin.
+  - `Sec-Fetch-Site: cross-site` requests are rejected (403 Forbidden).
+  - Form-compatible simple request Content-Types (`text/plain`, `application/x-www-form-urlencoded`, `multipart/form-data`) are rejected for JSON mutation endpoints (400 Bad Request).
 - Session expiration and revocation.
-- No shared banjar-wide PIN for privileged actions.
-
-Invitation-based onboarding is preferred for MVP.
+- Fail-closed authentication configuration: `BETTER_AUTH_SECRET` must have high entropy (min 32 chars); missing auth or database configuration returns 503 Dependency Unavailable without starting or serving authenticated requests.
+- No shared banjar-wide PIN or committed shared passwords.
+- Seed credentials: use caller-supplied (`SEED_ORGANIZER_PASSWORD`, `SEED_OFFICER_PASSWORD`) or ephemeral cryptographically secure generated passwords; never commit or log credentials; repeated seeds preserve existing credentials without resetting passwords.
 
 ## 4. Multi-Tenant Isolation
 
@@ -55,6 +58,7 @@ Protected queries must verify:
 - Current authenticated user.
 - Organization membership.
 - Role or event assignment.
+- Officers only receive events they are assigned to via `event_assignments` (both in detail views and in event listings).
 - Requested resource ownership.
 
 Do not trust organizationId supplied by the browser.
@@ -127,13 +131,13 @@ Do not equate:
 
 Audit:
 
-- Event publication and cancellation.
+- Event creation, review, publication, completion, and cancellation.
 - Road-status changes.
-- Role assignment changes.
+- Role assignment changes (grant and revoke).
 - Cleanup verification.
 - Important edits after publication.
 
-Protect logs from ordinary user modification.
+Every audit entry is committed atomically in the same database batch/transaction as the underlying mutation. Protect logs from ordinary user modification.
 
 ## 9. Secrets
 

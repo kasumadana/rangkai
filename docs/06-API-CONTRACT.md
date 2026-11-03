@@ -8,11 +8,12 @@ Format: JSON unless multipart upload
 ## 1. Conventions
 
 - IDs are UUIDs unless noted.
-- Times use ISO 8601 with timezone information.
+- Times use ISO 8601 with explicit timezone information (e.g. `2026-11-10T08:00:00Z` or `2026-11-10T08:00:00+08:00`). Date-only and offsetless timestamps are rejected.
 - Database stores timestamps in UTC.
-- All protected routes require a valid session.
-- Server checks organization and event permissions.
+- All protected routes require a valid session cookie.
+- Server strictly validates organization membership, event assignments, and roles server-side.
 - Input validation uses Zod.
+- All mutating requests (`POST`, `PUT`, `PATCH`, `DELETE`) require `application/json` Content-Type and verified Origin headers to defend against CSRF.
 - Errors use a consistent response envelope.
 
 ## 2. Error Format
@@ -29,32 +30,33 @@ Format: JSON unless multipart upload
 
 HTTP codes:
 
-- 400: Invalid request
-- 401: Unauthenticated
-- 403: Insufficient permission
+- 400: Invalid request / Unsupported Content-Type
+- 401: Unauthenticated (missing, expired, or revoked session)
+- 403: Insufficient permission / Untrusted origin (CSRF) / Unassigned resource access
 - 404: Resource not found or not visible
-- 409: State conflict
+- 409: State conflict (invalid lifecycle transition or concurrency conflict)
 - 413: File too large
-- 422: Validation failed
+- 422: Validation failed (Zod schema violations or missing required prerequisites)
 - 429: Rate limited
-- 503: Dependency unavailable
+- 503: Dependency unavailable (database or authentication configuration missing or unreachable)
 
-Do not return stack traces to clients.
+Do not return stack traces or connection secrets to clients.
 
 ## 3. Authentication
 
 Better Auth owns:
 
-- /api/auth/\*
+- /api/auth/*
 
-Organizer and officer sessions are cookie-based.
-
+Organizer and officer sessions are cookie-based (`HttpOnly`, `SameSite=Lax`, `Secure` in production).
+Missing or invalid authentication configuration (`BETTER_AUTH_SECRET` < 32 chars, missing `BETTER_AUTH_URL`) fails closed with HTTP 503.
 Public endpoints never require a session.
 
 ## 4. Events
 
 POST /api/events
 Permission: organizer
+Requires: Content-Type: application/json
 
 Request:
 
@@ -62,38 +64,103 @@ Request:
 {
   "organizationId": "uuid",
   "title": "Kegiatan Contoh",
-  "startsAt": "2026-11-10T00:00:00Z",
-  "endsAt": "2026-11-10T04:00:00Z"
+  "startsAt": "2026-11-10T08:00:00Z",
+  "endsAt": "2026-11-10T14:00:00Z",
+  "venueName": "Balai Banjar",
+  "category": "upacara",
+  "description": "Deskripsi opsional",
+  "permitReference": "SURAT/2026/01"
 }
 ```
 
-Response: 201, event with status "draft".
+Response: 201 Created with event object in status "draft". Atomic audit log recorded.
 
 GET /api/events
 Permission: authenticated organization member
-Returns paginated accessible events.
+Query parameters:
+- `page` (integer, default 1, min 1)
+- `limit` (integer, default 20, min 1, max 100)
+- `status` (optional enum: draft, review, published, active, completed, cancelled, archived)
+- `organizationId` (optional uuid, must match caller membership)
+
+Scoping & Visibility:
+- Organizers receive all events within their organizations.
+- Field officers receive ONLY events they are assigned to via `event_assignments`. Unassigned officers receive zero private event records.
+
+Response: 200 OK
+
+```json
+{
+  "events": [
+    {
+      "id": "uuid",
+      "organizationId": "uuid",
+      "createdBy": "user-id",
+      "title": "Kegiatan Contoh",
+      "status": "draft",
+      "startsAt": "2026-11-10T08:00:00.000Z",
+      "endsAt": "2026-11-10T14:00:00.000Z",
+      "venueName": "Balai Banjar",
+      "createdAt": "2026-11-01T00:00:00.000Z",
+      "updatedAt": "2026-11-01T00:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "totalPages": 1
+  }
+}
+```
 
 GET /api/events/:eventId
-Permission: authorized organization member
+Permission: authorized organization member (organizer or assigned field officer)
+Response: 200 OK with event detail. Returns 403/404 if caller is unassigned or outside the organization.
 
 PATCH /api/events/:eventId
 Permission: organizer
+Constraints:
+- Terminal states (`completed`, `cancelled`) cannot be modified (409 Conflict).
+- Published events cannot remove required core fields (`venueName`, `title`, `startsAt`, `endsAt`) (422 Unprocessable).
+- In `review` status, modifying core fields invalidates verification and resets status to "draft".
+Response: 200 OK with updated event. Atomic audit log recorded.
 
 POST /api/events/:eventId/review
 Permission: organizer
-Moves draft -> review.
+Transitions: draft -> review.
+Prerequisites: core fields (`title`, `startsAt`, `endsAt`, `venueName`) must be present and valid.
+Constraints: cannot review from completed, cancelled, published, or active (409 Conflict). Idempotent if already in review.
+Response: 200 OK with verifiedBy, verifiedAt, status "review". Atomic audit log recorded.
 
 POST /api/events/:eventId/publish
 Permission: organizer
-Requires confirmed core fields and road impacts.
+Transitions: review -> published.
+Prerequisites:
+- Event must be in `review` status (publishing from draft rejected with 409 Conflict).
+- Event must have explicit human review verification (`verifiedBy` and `verifiedAt` non-null).
+- Confirmed core fields (`title`, `startsAt`, `endsAt`, `venueName`).
+- At least one road impact referencing a verified road segment (`road_segments.verified_by` and `verified_at` non-null) with `plannedTo > plannedFrom`.
+Idempotency:
+- If event is already published, returns 200 OK immediately without generating duplicate slugs or audit rows.
+Response: 200 OK with publicSlug, publishedAt, status "published". Atomic audit log recorded.
 
 POST /api/events/:eventId/cancel
 Permission: organizer
-Requires cancellation reason.
+Request:
+```json
+{
+  "reason": "Alasan pembatalan kegiatan"
+}
+```
+Constraints: cannot cancel completed or already cancelled events (409 Conflict).
+Response: 200 OK with status "cancelled" and reason. Atomic audit log recorded.
 
 POST /api/events/:eventId/complete
 Permission: organizer
-Closes operational event lifecycle.
+Transitions: published | active -> completed.
+Constraints: cannot complete draft or review events (409 Conflict).
+Response: 200 OK with status "completed". Atomic audit log recorded.
 
 ## 5. Documents and AI
 
@@ -212,12 +279,24 @@ Permission: organizer or assigned cleanup officer
 
 GET /api/events/:eventId/assignments
 Permission: organizer
+Response: 200 OK with list of assigned officers (`id`, `userId`, `userName`, `userEmail`, `canUpdateTraffic`, `canUpdateCleanup`, `createdAt`).
 
 POST /api/events/:eventId/assignments
 Permission: organizer
+Request:
+```json
+{
+  "userId": "uuid-or-id",
+  "canUpdateTraffic": true,
+  "canUpdateCleanup": false
+}
+```
+Target user must be a member of the event's organization.
+Response: 201 Created with assignment object and target user details. Atomic audit log recorded.
 
 DELETE /api/events/:eventId/assignments/:assignmentId
 Permission: organizer
+Response: 200 OK `{ "success": true, "revokedId": "uuid" }`. Atomic audit log recorded.
 
 ## 10. Public API
 
@@ -267,12 +346,12 @@ Enforced via Worker-first asset routing (run_worker_first: ["/api/*"]) to ensure
 ## 12. API State Rules
 
 - Draft events are never public.
-- Published events require organizer confirmation.
+- Published events require organizer confirmation and verified road impact prerequisites.
 - Traffic updates require event-scoped authorization.
 - Expired road statuses are displayed as unconfirmed.
 - Cleanup completion does not open roads.
 - Cancelled events are not shown as active closures.
-- All important mutations create audit entries.
+- All important mutations create audit entries atomically with database changes.
 
 ## 13. API Testing
 

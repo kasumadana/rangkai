@@ -1,9 +1,29 @@
 import { z } from "zod";
+import { EVENT_STATUSES } from "../../db/schema";
 
-export const isoDateSchema = z.string().refine(
-	(val) => !isNaN(Date.parse(val)),
-	{ message: "Invalid ISO 8601 date format" },
-);
+// Explicit ISO 8601 regex requiring full date, time, and explicit timezone indicator (Z or +/-HH:MM)
+const ISO_8601_WITH_TIMEZONE_REGEX =
+	/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/i;
+
+export const isoDateSchema = z
+	.string()
+	.refine(
+		(val) =>
+			ISO_8601_WITH_TIMEZONE_REGEX.test(val) && !isNaN(Date.parse(val)),
+		{
+			message:
+				"Invalid ISO 8601 timestamp format. Explicit timezone information is required (e.g. '2026-11-10T08:00:00Z' or '+08:00').",
+		},
+	);
+
+export const uuidParamSchema = z.string().uuid("Invalid UUID format");
+
+export const listEventsQuerySchema = z.object({
+	page: z.coerce.number().int().min(1).default(1),
+	limit: z.coerce.number().int().min(1).max(100).default(20),
+	status: z.enum(EVENT_STATUSES).optional(),
+	organizationId: z.string().uuid().optional(),
+});
 
 export const createEventSchema = z
 	.object({
@@ -31,7 +51,7 @@ export const createEventSchema = z
 
 export const updateEventSchema = z
 	.object({
-		title: z.string().trim().min(1, "Title is required").max(255).optional(),
+		title: z.string().trim().min(1, "Title cannot be empty").max(255).optional(),
 		startsAt: isoDateSchema.optional().nullable(),
 		endsAt: isoDateSchema.optional().nullable(),
 		category: z.string().trim().max(100).optional().nullable(),
