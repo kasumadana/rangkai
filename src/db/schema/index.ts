@@ -1,0 +1,305 @@
+import { sql } from "drizzle-orm";
+import {
+	boolean,
+	check,
+	customType,
+	index,
+	integer,
+	jsonb,
+	numeric,
+	pgTable,
+	text,
+	timestamp,
+	unique,
+	uuid,
+} from "drizzle-orm/pg-core";
+import { user } from "../auth-schema";
+
+// ponytail: PostGIS geometry custom types mapping directly to typed geometries in PostGIS
+export const lineStringGeometry = customType<{ data: string; driverData: string }>({
+	dataType() {
+		return "geometry(LineString, 4326)";
+	},
+});
+
+export const pointGeometry = customType<{ data: string; driverData: string }>({
+	dataType() {
+		return "geometry(Point, 4326)";
+	},
+});
+
+export const organizations = pgTable("organizations", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	name: text("name").notNull(),
+	village: text("village"),
+	district: text("district"),
+	createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const memberships = pgTable(
+	"memberships",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		role: text("role").notNull(), // 'organizer' | 'officer'
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique("memberships_org_user_unique").on(table.organizationId, table.userId),
+	],
+);
+
+export const events = pgTable(
+	"events",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		createdBy: text("created_by")
+			.notNull()
+			.references(() => user.id),
+		title: text("title").notNull(),
+		category: text("category"),
+		description: text("description"),
+		venueName: text("venue_name"),
+		startsAt: timestamp("starts_at", { withTimezone: true }),
+		endsAt: timestamp("ends_at", { withTimezone: true }),
+		status: text("status").default("draft").notNull(), // draft | review | published | active | completed | cancelled | archived
+		publicSlug: text("public_slug").unique(),
+		permitReference: text("permit_reference"),
+		verifiedBy: text("verified_by"),
+		verifiedAt: timestamp("verified_at", { withTimezone: true }),
+		publishedAt: timestamp("published_at", { withTimezone: true }),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check(
+			"events_ends_at_after_starts_at",
+			sql`ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at`,
+		),
+		index("events_org_starts_at_idx").on(table.organizationId, table.startsAt),
+		index("events_status_starts_at_idx").on(table.status, table.startsAt),
+	],
+);
+
+export const documents = pgTable(
+	"documents",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		uploadedBy: text("uploaded_by")
+			.notNull()
+			.references(() => user.id),
+		r2Key: text("r2_key").notNull().unique(),
+		originalName: text("original_name").notNull(),
+		mimeType: text("mime_type").notNull(),
+		sizeBytes: integer("size_bytes").notNull(),
+		visibility: text("visibility").default("private").notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [index("documents_event_id_idx").on(table.eventId)],
+);
+
+export const aiExtractions = pgTable("ai_extractions", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	documentId: uuid("document_id")
+		.notNull()
+		.references(() => documents.id, { onDelete: "cascade" }),
+	modelName: text("model_name").notNull(),
+	promptVersion: text("prompt_version").notNull(),
+	schemaVersion: text("schema_version").notNull(),
+	outputJson: jsonb("output_json"),
+	status: text("status").default("pending").notNull(), // pending | processing | completed | failed
+	errorCode: text("error_code"),
+	latencyMs: integer("latency_ms"),
+	createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const roadSegments = pgTable(
+	"road_segments",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		displayName: text("display_name").notNull(),
+		geom: lineStringGeometry("geom").notNull(),
+		coverageArea: text("coverage_area").notNull(),
+		verifiedBy: text("verified_by"),
+		verifiedAt: timestamp("verified_at", { withTimezone: true }),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [index("road_segments_geom_gist_idx").using("gist", table.geom)],
+);
+
+export const roadImpacts = pgTable(
+	"road_impacts",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		roadSegmentId: uuid("road_segment_id")
+			.notNull()
+			.references(() => roadSegments.id, { onDelete: "restrict" }),
+		plannedFrom: timestamp("planned_from", { withTimezone: true }).notNull(),
+		plannedTo: timestamp("planned_to", { withTimezone: true }).notNull(),
+		impactType: text("impact_type").notNull(), // closure | intermittent | narrowing | procession
+		diversionNote: text("diversion_note"),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check("road_impacts_time_check", sql`planned_to > planned_from`),
+		index("road_impacts_event_id_idx").on(table.eventId),
+		index("road_impacts_segment_planned_idx").on(
+			table.roadSegmentId,
+			table.plannedFrom,
+		),
+	],
+);
+
+export const roadStatusUpdates = pgTable(
+	"road_status_updates",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		roadImpactId: uuid("road_impact_id")
+			.notNull()
+			.references(() => roadImpacts.id, { onDelete: "cascade" }),
+		status: text("status").notNull(), // open | intermittent | closed | unknown
+		observedAt: timestamp("observed_at", { withTimezone: true }).notNull(),
+		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+		updatedBy: text("updated_by")
+			.notNull()
+			.references(() => user.id),
+		note: text("note"),
+		mutationId: uuid("mutation_id").notNull().unique(),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index("road_status_updates_impact_created_idx").on(
+			table.roadImpactId,
+			table.createdAt.desc(),
+		),
+	],
+);
+
+export const eventAssignments = pgTable(
+	"event_assignments",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		userId: text("user_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		canUpdateTraffic: boolean("can_update_traffic").default(false).notNull(),
+		canUpdateCleanup: boolean("can_update_cleanup").default(false).notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		unique("event_assignments_event_user_unique").on(
+			table.eventId,
+			table.userId,
+		),
+	],
+);
+
+export const cleanupTasks = pgTable(
+	"cleanup_tasks",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		title: text("title").notNull(),
+		description: text("description"),
+		location: pointGeometry("location"),
+		assignedUserId: text("assigned_user_id").references(() => user.id, {
+			onDelete: "set null",
+		}),
+		status: text("status").default("todo").notNull(), // todo | in_progress | submitted | verified | reopened
+		dueAt: timestamp("due_at", { withTimezone: true }),
+		verifiedBy: text("verified_by"),
+		verifiedAt: timestamp("verified_at", { withTimezone: true }),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index("cleanup_tasks_event_status_idx").on(table.eventId, table.status),
+		index("cleanup_tasks_location_gist_idx").using("gist", table.location),
+	],
+);
+
+export const cleanupEvidence = pgTable("cleanup_evidence", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	taskId: uuid("task_id")
+		.notNull()
+		.references(() => cleanupTasks.id, { onDelete: "cascade" }),
+	uploadedBy: text("uploaded_by")
+		.notNull()
+		.references(() => user.id),
+	r2Key: text("r2_key").notNull().unique(),
+	stage: text("stage").notNull(), // before | after
+	createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const wasteRecords = pgTable(
+	"waste_records",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		taskId: uuid("task_id").references(() => cleanupTasks.id, {
+			onDelete: "set null",
+		}),
+		category: text("category").notNull(), // organic | recyclable | residual
+		quantityKg: numeric("quantity_kg", { precision: 10, scale: 2 }),
+		sackCount: integer("sack_count"),
+		measurementMethod: text("measurement_method").notNull(), // weighed | estimated
+		destination: text("destination"),
+		recordedBy: text("recorded_by")
+			.notNull()
+			.references(() => user.id),
+		recordedAt: timestamp("recorded_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	() => [
+		check(
+			"waste_records_quantity_check",
+			sql`quantity_kg IS NOT NULL OR sack_count IS NOT NULL`,
+		),
+	],
+);
+
+export const auditLogs = pgTable(
+	"audit_logs",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		eventId: uuid("event_id").references(() => events.id, {
+			onDelete: "set null",
+		}),
+		actorId: text("actor_id"), // preserved even if user is removed
+		action: text("action").notNull(),
+		entityType: text("entity_type").notNull(),
+		entityId: text("entity_id").notNull(),
+		beforeJson: jsonb("before_json"),
+		afterJson: jsonb("after_json"),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		index("audit_logs_event_created_idx").on(
+			table.eventId,
+			table.createdAt.desc(),
+		),
+	],
+);

@@ -143,10 +143,17 @@ Database:
 Use Neon serverless-compatible connection methods
 supported by Cloudflare Workers.
 
-Use Drizzle for typed queries and migrations.
-Use SQL migrations for PostGIS extension and indexes.
-
-Avoid opening persistent TCP connections from every request.
+- Worker runtime: use `@neondatabase/serverless` with `drizzle-orm/neon-http`
+  to execute stateless HTTP queries without persistent TCP or WebSocket connections.
+- Atomic mutations: `neon-http` does not support interactive multi-roundtrip
+  transactions (`db.transaction()`), but supports atomic batched execution
+  via `db.batch([ ... ])` in a single server-side transaction.
+- Migrations and CLI scripts: use `drizzle-kit` and unpooled connection
+  endpoints (stripping `-pooler.` from the hostname) to apply migrations
+  and DDL reliably.
+- PostGIS: enabled via `CREATE EXTENSION IF NOT EXISTS postgis;` in migrations;
+  geometries are strongly typed in Drizzle via custom geometry types and
+  indexed with GIST.
 
 ## 7. Geospatial Strategy
 
