@@ -157,28 +157,75 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 			expect(sanitized).toContain("[REDACTED_DATABASE_URL]");
 		});
 
-		it("migration CLI process does not leak credentials to stdout or stderr on failure", () => {
-			const secretMarker = "SYNTHETIC_PASSWORD_MARKER_XYZ123";
-			const malformedUrl = `postgresql://user:${secretMarker}@ep-invalid.aws.neon.tech:badport/neondb`;
-
-			const child = spawnSync(
-				process.execPath,
-				["node_modules/tsx/dist/cli.mjs", "src/db/migrate.ts"],
-				{
-					env: {
-						...process.env,
-						DATABASE_URL: malformedUrl,
-						DATABASE_URL_UNPOOLED: malformedUrl,
-					},
-					encoding: "utf8",
-				},
+		it("sanitizes error messages containing closing parenthesis or apostrophe inside credentials", () => {
+			const secretParen = "prefix)SUPER_SECRET_PAREN_999";
+			const errParen = new Error(
+				`Failed connecting to postgresql://admin:${secretParen}@ep-test.aws.neon.tech:badport/neondb`,
 			);
+			const sanitizedParen = sanitizeDatabaseError(errParen);
+			expect(sanitizedParen).not.toContain("SUPER_SECRET_PAREN_999");
+			expect(sanitizedParen).toContain("[REDACTED_DATABASE_URL]");
 
-			expect(child.status).toBe(1);
-			expect(child.stdout).not.toContain(secretMarker);
-			expect(child.stderr).not.toContain(secretMarker);
-			expect(child.stderr).toContain("[REDACTED_DATABASE_URL]");
+			const secretApos = "prefix'SUPER_SECRET_APOS_999";
+			const errApos = new Error(
+				`Failed connecting to postgresql://admin:${secretApos}@ep-test.aws.neon.tech:badport/neondb`,
+			);
+			const sanitizedApos = sanitizeDatabaseError(errApos);
+			expect(sanitizedApos).not.toContain("SUPER_SECRET_APOS_999");
+			expect(sanitizedApos).toContain("[REDACTED_DATABASE_URL]");
 		});
+
+		const CLI_SCRIPTS = [
+			{ name: "migrate", script: "src/db/migrate.ts" },
+			{ name: "seed", script: "src/db/seed.ts" },
+			{ name: "verify", script: "src/db/verify.ts" },
+		];
+
+		const DELIMITER_VARIANTS = [
+			{ label: "closing parenthesis", passwordPrefix: "prefix)" },
+			{ label: "apostrophe", passwordPrefix: "prefix'" },
+			{ label: "control (no delimiter)", passwordPrefix: "" },
+		];
+
+		for (const { name, script } of CLI_SCRIPTS) {
+			for (const { label, passwordPrefix } of DELIMITER_VARIANTS) {
+				it(`${name} CLI subprocess with ${label} synthetic password does not leak credentials to stdout or stderr`, () => {
+					const secretMarker = "SYNTHETIC_AUDIT_CREDENTIAL_20261103";
+					const malformedUrl = `postgresql://user:${passwordPrefix}${secretMarker}@ep-invalid.aws.neon.tech:badport/neondb`;
+
+					const child = spawnSync(
+						process.execPath,
+						["node_modules/tsx/dist/cli.mjs", script],
+						{
+							env: {
+								...process.env,
+								DATABASE_URL: malformedUrl,
+								DATABASE_URL_UNPOOLED: malformedUrl,
+							},
+							encoding: "utf8",
+						},
+					);
+
+					// Capture raw output privately and assert booleans only
+					const exitNonZero = child.status !== 0;
+					const markerInStdout = Boolean(
+						child.stdout && child.stdout.includes(secretMarker),
+					);
+					const markerInStderr = Boolean(
+						child.stderr && child.stderr.includes(secretMarker),
+					);
+					const redactionInStderr = Boolean(
+						child.stderr &&
+							child.stderr.includes("[REDACTED_DATABASE_URL]"),
+					);
+
+					expect(exitNonZero).toBe(true);
+					expect(markerInStdout).toBe(false);
+					expect(markerInStderr).toBe(false);
+					expect(redactionInStderr).toBe(true);
+				});
+			}
+		}
 	});
 
 	describe("Transactional migration failure and retry regression", () => {

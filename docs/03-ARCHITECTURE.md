@@ -149,7 +149,7 @@ supported by Cloudflare Workers.
   transactions (`db.transaction()`), but supports atomic batched execution
   via `db.batch([ ... ])` in a single server-side transaction.
 - Migrations and CLI scripts: `pnpm db:migrate` runs programmatic migrations
-  via `src/db/migrate.ts` (`drizzle-orm/neon-http/migrator`) using unpooled
+  via `src/db/migrate.ts` using `@neondatabase/serverless` `Pool` and transactional `drizzle-orm/neon-serverless/migrator` over unpooled
   endpoints (stripping `-pooler.` from the hostname). `drizzle.config.ts` is
   reserved for schema generation (`pnpm db:generate`).
 - PostGIS: enabled via `CREATE EXTENSION IF NOT EXISTS postgis;` in migrations;
