@@ -127,7 +127,7 @@ CHECK (planned_to > planned_from).
 ### road_status_updates
 
 - id: uuid PK
-- road_impact_id: uuid FK
+- road_impact_id: uuid FK (ON DELETE RESTRICT - preserves append-only operational history)
 - status: open | intermittent | closed | unknown
 - observed_at: timestamptz
 - expires_at: timestamptz
@@ -234,6 +234,8 @@ Spatial indexes:
 - A document belongs to exactly one event.
 - Event publication requires reviewed core information.
 - Deleting a user must not destroy historical audit records.
+- Road-status history is append-only: road_status_updates cannot be deleted or cascadingly deleted via road_impacts (ON DELETE RESTRICT).
+- Finite domain values are enforced via CHECK constraints on memberships (role), events (status), ai_extractions (status), road_impacts (impact_type), road_status_updates (status), cleanup_tasks (status), cleanup_evidence (stage), and waste_records (category, measurement_method).
 - Private file objects must never be exposed through
   public event API responses.
 
@@ -253,6 +255,9 @@ USING GIST (geom);
 ```
 
 Run migrations against a development Neon branch first.
+
+- 0000_premium_wallflower.sql: Initial baseline schema, PostGIS extension, spatial & B-tree indexes, Better Auth tables.
+- 0001_eager_ben_urich.sql: Additive follow-up applying finite domain CHECK constraints and altering road_status_updates.road_impact_id to ON DELETE RESTRICT.
 
 ## 6. Important Design Decisions
 

@@ -313,27 +313,29 @@ SELECT PostGIS_Version();
 
 Use a development database or Neon branch for local work.
 
-### 5. Set Up Drizzle
+### 5. Set Up Drizzle and Database
 
 Ensure `drizzle.config.ts` is configured to read the
-development database connection.
+development database connection from `.dev.vars` (unpooled).
 
-After the application schema exists, run:
+Generate and apply migrations, verify constraints, and seed development fixtures:
 
 ```bash
-pnpm exec drizzle-kit generate
-pnpm exec drizzle-kit migrate
+# Generate migrations from schemas
+pnpm db:generate
+
+# Apply migrations to development database
+pnpm db:migrate
+
+# Verify target Neon branch, PostGIS, tables, and constraints
+pnpm db:verify
+
+# Seed safe simulated development fixtures
+pnpm db:seed
 ```
 
-The schema is defined by `docs/04-ERD.md`.
-
-Better Auth requires its own authentication tables.
-
-Generate the Better Auth schema using the installed
-Better Auth CLI and merge it into the Drizzle schema
-before applying the complete migration set.
-
-Do not invent authentication tables manually.
+The schema is defined by `docs/04-ERD.md` and includes all domain tables
+plus Better Auth authentication tables (`user`, `session`, `account`, `verification`).
 
 ### 6. Set Up Cloudflare R2
 

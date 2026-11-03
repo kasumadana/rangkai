@@ -143,10 +143,28 @@ Database:
 Use Neon serverless-compatible connection methods
 supported by Cloudflare Workers.
 
-Use Drizzle for typed queries and migrations.
-Use SQL migrations for PostGIS extension and indexes.
-
-Avoid opening persistent TCP connections from every request.
+- Worker runtime: use `@neondatabase/serverless` with `drizzle-orm/neon-http`
+  to execute stateless HTTP queries without persistent TCP or WebSocket connections.
+- Atomic mutations: `neon-http` does not support interactive multi-roundtrip
+  transactions (`db.transaction()`), but supports atomic batched execution
+  via `db.batch([ ... ])` in a single server-side transaction.
+- Migrations and CLI scripts: `pnpm db:migrate` runs programmatic migrations
+  via `src/db/migrate.ts` using `@neondatabase/serverless` `Pool` and transactional `drizzle-orm/neon-serverless/migrator` over unpooled
+  endpoints (stripping `-pooler.` from the hostname). `drizzle.config.ts` is
+  reserved for schema generation (`pnpm db:generate`).
+- PostGIS: enabled via `CREATE EXTENSION IF NOT EXISTS postgis;` in migrations;
+  geometries are strongly typed in Drizzle via custom geometry types and
+  indexed with GIST.
+- Development branch guard: The migration runner (`src/db/migrate.ts`), seed
+  script (`src/db/seed.ts`), and test harnesses enforce a fail-closed preflight
+  check (`assertDevBranch`) verifying `current_setting('neon.branch_id', true) === 'br-wandering-paper-aogdxs48'`
+  with pinned connection resolution before any mutation or migration write.
+- Database catalog verification: `verifyDatabase` strictly asserts expected
+  Neon branch, PostGIS 3.x, 17+ core tables, 2 geometry columns (Point & LineString
+  with SRID 4326), 10 required indexes (table ownership, gist/btree method, column order),
+  and 12 required constraints (table ownership, types, definitions including
+  ON DELETE RESTRICT on road status history), failing nonzero on missing or
+  malformed catalog metadata.
 
 ## 7. Geospatial Strategy
 
