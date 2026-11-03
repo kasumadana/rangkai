@@ -970,6 +970,8 @@ eventsRouter.post("/:eventId/cancel", async (c) => {
 				updated_at = ${now}
 			FROM current_event c
 			WHERE e.id = c.id
+				AND e.status = c.status
+				AND e.status IN ('draft', 'review', 'published', 'active')
 			RETURNING e.*, c.status AS prev_status
 		),
 		logged AS (

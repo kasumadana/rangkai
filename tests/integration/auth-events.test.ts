@@ -3,6 +3,7 @@ import * as dotenv from "dotenv";
 import { and, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { hashPassword } from "better-auth/crypto";
+import { neon, Pool, neonConfig } from "@neondatabase/serverless";
 import { assertDevBranch, AUTHORIZED_DEV_BRANCH } from "../../src/db/guard";
 import { getDb, type DbClient } from "../../src/db/index";
 import {
@@ -72,6 +73,123 @@ function withHeldMutation<T>(
 			if (pending) await pending.catch(() => {});
 		}
 	})();
+}
+
+neonConfig.webSocketConstructor = WebSocket;
+
+async function executeWithLockOverlap<T, U>(
+	pinnedConnection: string,
+	test: (payload: { query?: string; params?: unknown[] }) => boolean,
+	first: () => Promise<T> | T,
+	second: () => Promise<U> | U,
+): Promise<{
+	results: [T, U];
+	overlapObserved: boolean;
+	hits: number;
+	firstPid: number;
+	secondPid: number;
+}> {
+	const pool = new Pool({ connectionString: pinnedConnection });
+	let client:
+		| {
+				query: (
+					sql: string,
+					params?: unknown[],
+				) => Promise<{ rows: Array<Record<string, unknown>> }>;
+				release: () => void;
+		  }
+		| undefined;
+	let firstPending: Promise<T> | undefined;
+	let secondPending: Promise<U> | undefined;
+	let gateHeld = false;
+	let hits = 0;
+	let firstPid = 0;
+	let secondPid = 0;
+	const fetchReal = globalThis.fetch;
+	const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+	try {
+		client = (await pool.connect()) as unknown as {
+			query: (
+				sql: string,
+				params?: unknown[],
+			) => Promise<{ rows: Array<Record<string, unknown>> }>;
+			release: () => void;
+		};
+		const identity = await client.query("SELECT current_setting('neon.branch_id', true) AS branch");
+		if (identity.rows[0]?.branch !== AUTHORIZED_DEV_BRANCH) {
+			throw new Error("Unauthorized gate connection");
+		}
+		await client.query("BEGIN");
+		const key = crypto.randomInt(1, 2000000000);
+		await client.query("SELECT pg_advisory_xact_lock($1)", [key]);
+		gateHeld = true;
+		const owner = (await client.query("SELECT pg_backend_pid() AS pid")).rows[0]?.pid as number;
+
+		globalThis.fetch = async (input, init) => {
+			let payload: { query?: string; params?: unknown[] } | undefined;
+			try {
+				payload = JSON.parse(init?.body as string);
+			} catch {
+				// ignore non-JSON request body
+			}
+			if (payload?.query && test(payload) && hits === 0) {
+				hits++;
+				const response = await fetchReal(input, {
+					...init,
+					body: JSON.stringify({
+						queries: [
+							payload,
+							{ query: "SELECT pg_advisory_xact_lock($1)", params: [key] },
+						],
+					}),
+				});
+				if (!response.ok) return response;
+				const data = (await response.json()) as { results?: unknown[] };
+				if (!data.results?.[0]) throw new Error("Missing batch result");
+				return new Response(JSON.stringify(data.results[0]), {
+					status: response.status,
+					headers: response.headers,
+				});
+			}
+			return fetchReal(input, init);
+		};
+
+		const q = neon(pinnedConnection);
+		const blockedBy = async (blocker: number) => {
+			const deadline = Date.now() + 20000;
+			while (Date.now() < deadline) {
+				const rows = await q`SELECT pid FROM pg_stat_activity WHERE ${blocker}::int = ANY(pg_blocking_pids(pid))`;
+				if (rows.length === 1) return rows[0].pid as number;
+				await pause(100);
+			}
+			throw new Error("Owned lock overlap not observed");
+		};
+
+		firstPending = Promise.resolve(first());
+		firstPid = await blockedBy(owner);
+		secondPending = Promise.resolve(second());
+		secondPid = await blockedBy(firstPid);
+
+		await client.query("COMMIT");
+		gateHeld = false;
+
+		const results = await Promise.all([firstPending, secondPending]);
+		return { results, overlapObserved: true, hits, firstPid, secondPid };
+	} finally {
+		if (gateHeld && client) {
+			try {
+				await client.query("ROLLBACK");
+			} catch {
+				// ignore rollback failure on closed client
+			}
+		}
+		globalThis.fetch = fetchReal;
+		if (firstPending) await firstPending.catch(() => {});
+		if (secondPending) await secondPending.catch(() => {});
+		client?.release();
+		await pool.end();
+	}
 }
 
 describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", () => {
@@ -1270,6 +1388,112 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 			}
 		});
 
+		it("rejects unfulfilled permission update with 409 and logs zero stale audits when overlapping with intervening permission update in database", async () => {
+			const overlapEventRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Assignment Overlap Race Event",
+					venueName: "Sentra Krematorium Overlap",
+					startsAt: new Date("2026-11-25T07:00:00Z"),
+					endsAt: new Date("2026-11-25T15:00:00Z"),
+					status: "draft",
+				})
+				.returning();
+			const overlapEventId = overlapEventRows[0].id;
+
+			await db.insert(eventAssignments).values({
+				id: crypto.randomUUID(),
+				eventId: overlapEventId,
+				userId: fixtureUserOfficerA.id,
+				canUpdateTraffic: true,
+				canUpdateCleanup: false,
+			});
+
+			try {
+				const overlapResult = await executeWithLockOverlap(
+					pinnedUrl,
+					(p) =>
+						Boolean(
+							p.query &&
+								p.query.includes("WITH upserted") &&
+								p.params?.includes(overlapEventId),
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${overlapEventId}/assignments`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({
+									userId: fixtureUserOfficerA.id,
+									canUpdateTraffic: true,
+									canUpdateCleanup: true,
+								}),
+							},
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${overlapEventId}/assignments`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({
+									userId: fixtureUserOfficerA.id,
+									canUpdateTraffic: false,
+									canUpdateCleanup: true,
+								}),
+							},
+						),
+				);
+
+				expect(overlapResult.overlapObserved).toBe(true);
+				expect(overlapResult.results[0].status).toBe(200);
+				expect(overlapResult.results[1].status).toBe(409);
+
+				// First update persists: traffic=true, cleanup=true
+				const assignmentsInDb = await db
+					.select()
+					.from(eventAssignments)
+					.where(
+						and(
+							eq(eventAssignments.eventId, overlapEventId),
+							eq(eventAssignments.userId, fixtureUserOfficerA.id),
+						),
+					);
+				expect(assignmentsInDb.length).toBe(1);
+				expect(assignmentsInDb[0].canUpdateTraffic).toBe(true);
+				expect(assignmentsInDb[0].canUpdateCleanup).toBe(true);
+
+				// Exactly one updated audit log for the successful first mutation
+				const updates = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, overlapEventId),
+							eq(auditLogs.action, "assignment.updated"),
+						),
+					);
+				expect(updates.length).toBe(1);
+				expect((updates[0].beforeJson as { canUpdateTraffic?: boolean })?.canUpdateTraffic).toBe(true);
+				expect((updates[0].beforeJson as { canUpdateCleanup?: boolean })?.canUpdateCleanup).toBe(false);
+				expect((updates[0].afterJson as { canUpdateTraffic?: boolean })?.canUpdateTraffic).toBe(true);
+				expect((updates[0].afterJson as { canUpdateCleanup?: boolean })?.canUpdateCleanup).toBe(true);
+			} finally {
+				await db.delete(auditLogs).where(eq(auditLogs.eventId, overlapEventId));
+				await db.delete(eventAssignments).where(eq(eventAssignments.eventId, overlapEventId));
+				await db.delete(events).where(eq(events.id, overlapEventId));
+			}
+		});
+
 		it("assigned officer can now view assigned event detail AND see it in event listing", async () => {
 			// Detail view allowed
 			const detailRes = await app.request(
@@ -1857,6 +2081,269 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 				await db.delete(auditLogs).where(eq(auditLogs.eventId, cancelRaceEventId));
 				await db.delete(roadImpacts).where(eq(roadImpacts.id, impactRows[0].id));
 				await db.delete(events).where(eq(events.id, cancelRaceEventId));
+			}
+		});
+
+		it("returns 409 conflict and writes zero cancellation audits when cancellation overlaps with intervening publication in database", async () => {
+			const overlapPubCancelRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Publish Then Cancel Overlap Event",
+					venueName: "Sentra Krematorium Overlap",
+					startsAt: new Date("2026-11-25T07:00:00Z"),
+					endsAt: new Date("2026-11-25T15:00:00Z"),
+					status: "review",
+					verifiedBy: fixtureUserOrganizerA.id,
+					verifiedAt: new Date(),
+				})
+				.returning();
+			const overlapPubCancelId = overlapPubCancelRows[0].id;
+
+			const impactRows = await db
+				.insert(roadImpacts)
+				.values({
+					eventId: overlapPubCancelId,
+					roadSegmentId: fixtureVerifiedRoadSegment.id,
+					plannedFrom: new Date("2026-11-25T07:00:00Z"),
+					plannedTo: new Date("2026-11-25T15:00:00Z"),
+					impactType: "closure",
+				})
+				.returning();
+
+			try {
+				const overlapResult = await executeWithLockOverlap(
+					pinnedUrl,
+					(p) =>
+						Boolean(
+							p.query &&
+								p.query.includes("'event.published'") &&
+								p.params?.includes(overlapPubCancelId),
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${overlapPubCancelId}/publish`,
+							{
+								method: "POST",
+								headers: { Cookie: organizerACookie },
+							},
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${overlapPubCancelId}/cancel`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({ reason: "Overlapping publish then cancel" }),
+							},
+						),
+				);
+
+				expect(overlapResult.overlapObserved).toBe(true);
+				expect(overlapResult.results[0].status).toBe(200);
+				expect(overlapResult.results[1].status).toBe(409);
+
+				// Event remains published
+				const eventInDb = await db
+					.select()
+					.from(events)
+					.where(eq(events.id, overlapPubCancelId));
+				expect(eventInDb.length).toBe(1);
+				expect(eventInDb[0].status).toBe("published");
+
+				// Publication audit exists, zero cancellation audits
+				const pubAudits = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, overlapPubCancelId),
+							eq(auditLogs.action, "event.published"),
+						),
+					);
+				expect(pubAudits.length).toBe(1);
+
+				const cancelAudits = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, overlapPubCancelId),
+							eq(auditLogs.action, "event.cancelled"),
+						),
+					);
+				expect(cancelAudits.length).toBe(0);
+			} finally {
+				await db.delete(auditLogs).where(eq(auditLogs.eventId, overlapPubCancelId));
+				await db.delete(roadImpacts).where(eq(roadImpacts.id, impactRows[0].id));
+				await db.delete(events).where(eq(events.id, overlapPubCancelId));
+			}
+		});
+
+		it("returns 409 conflict and records at most one cancellation audit when two cancellation requests overlap in the database", async () => {
+			const doubleCancelRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Double Cancel Overlap Event",
+					venueName: "Sentra Krematorium Overlap",
+					startsAt: new Date("2026-11-25T07:00:00Z"),
+					endsAt: new Date("2026-11-25T15:00:00Z"),
+					status: "draft",
+				})
+				.returning();
+			const doubleCancelId = doubleCancelRows[0].id;
+
+			try {
+				const overlapResult = await executeWithLockOverlap(
+					pinnedUrl,
+					(p) =>
+						Boolean(
+							p.query &&
+								p.query.includes("'event.cancelled'") &&
+								p.params?.includes(doubleCancelId),
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${doubleCancelId}/cancel`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({ reason: "First cancellation request" }),
+							},
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${doubleCancelId}/cancel`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({ reason: "Second cancellation request" }),
+							},
+						),
+				);
+
+				expect(overlapResult.overlapObserved).toBe(true);
+				expect(overlapResult.results[0].status).toBe(200);
+				expect(overlapResult.results[1].status).toBe(409);
+
+				const eventInDb = await db
+					.select()
+					.from(events)
+					.where(eq(events.id, doubleCancelId));
+				expect(eventInDb.length).toBe(1);
+				expect(eventInDb[0].status).toBe("cancelled");
+
+				// Exactly one cancellation audit recorded
+				const cancelAudits = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, doubleCancelId),
+							eq(auditLogs.action, "event.cancelled"),
+						),
+					);
+				expect(cancelAudits.length).toBe(1);
+			} finally {
+				await db.delete(auditLogs).where(eq(auditLogs.eventId, doubleCancelId));
+				await db.delete(events).where(eq(events.id, doubleCancelId));
+			}
+		});
+
+		it("returns 409 conflict, preserves completed status, and writes zero cancellation audits when cancellation overlaps with completion in database", async () => {
+			const completeCancelRows = await db
+				.insert(events)
+				.values({
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: "Complete Then Cancel Overlap Event",
+					venueName: "Sentra Krematorium Overlap",
+					startsAt: new Date("2026-11-25T07:00:00Z"),
+					endsAt: new Date("2026-11-25T15:00:00Z"),
+					status: "active",
+				})
+				.returning();
+			const completeCancelId = completeCancelRows[0].id;
+
+			try {
+				const overlapResult = await executeWithLockOverlap(
+					pinnedUrl,
+					(p) =>
+						Boolean(
+							p.query &&
+								p.query.includes("'event.completed'") &&
+								p.params?.includes(completeCancelId),
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${completeCancelId}/complete`,
+							{
+								method: "POST",
+								headers: { Cookie: organizerACookie },
+							},
+						),
+					() =>
+						app.request(
+							`http://localhost:5173/api/events/${completeCancelId}/cancel`,
+							{
+								method: "POST",
+								headers: {
+									"Content-Type": "application/json",
+									Cookie: organizerACookie,
+								},
+								body: JSON.stringify({ reason: "Cancel overlapping completion" }),
+							},
+						),
+				);
+
+				expect(overlapResult.overlapObserved).toBe(true);
+				expect(overlapResult.results[0].status).toBe(200);
+				expect(overlapResult.results[1].status).toBe(409);
+
+				// Completed status is preserved and NEVER overwritten to cancelled
+				const eventInDb = await db
+					.select()
+					.from(events)
+					.where(eq(events.id, completeCancelId));
+				expect(eventInDb.length).toBe(1);
+				expect(eventInDb[0].status).toBe("completed");
+
+				const completeAudits = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, completeCancelId),
+							eq(auditLogs.action, "event.completed"),
+						),
+					);
+				expect(completeAudits.length).toBe(1);
+
+				const cancelAudits = await db
+					.select()
+					.from(auditLogs)
+					.where(
+						and(
+							eq(auditLogs.eventId, completeCancelId),
+							eq(auditLogs.action, "event.cancelled"),
+						),
+					);
+				expect(cancelAudits.length).toBe(0);
+			} finally {
+				await db.delete(auditLogs).where(eq(auditLogs.eventId, completeCancelId));
+				await db.delete(events).where(eq(events.id, completeCancelId));
 			}
 		});
 	});

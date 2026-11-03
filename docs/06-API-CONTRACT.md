@@ -156,7 +156,7 @@ Request:
   "reason": "Alasan pembatalan kegiatan"
 }
 ```
-Constraints: cannot cancel completed or already cancelled events (409 Conflict).
+Constraints: cannot cancel completed or already cancelled events (409 Conflict). Zero-row concurrent conflicts or intervening state transitions return 409 Conflict without creating false audit records.
 Response: 200 OK with status "cancelled" and reason. Atomic audit log recorded.
 
 POST /api/events/:eventId/complete
@@ -295,7 +295,7 @@ Request:
 }
 ```
 Target user must be a member of the event's organization.
-Response: 201 Created with assignment object and target user details. Atomic audit log recorded.
+Response: 201 Created with assignment object and target user details (or 200 OK if updating existing assignment, or idempotent 200 OK if concurrent request established identical permissions). Atomic audit log recorded for actual mutations. Concurrent conflicts with mismatched permissions return 409 Conflict without creating false audit records.
 
 DELETE /api/events/:eventId/assignments/:assignmentId
 Permission: organizer

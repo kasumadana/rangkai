@@ -201,6 +201,8 @@ assignmentsRouter.post("/:eventId/assignments", async (c) => {
 				can_update_cleanup = ${canUpdateCleanup}
 			FROM upserted u
 			WHERE ea.id = u.id
+				AND ea.can_update_traffic IS NOT DISTINCT FROM u.can_update_traffic
+				AND ea.can_update_cleanup IS NOT DISTINCT FROM u.can_update_cleanup
 				AND (ea.can_update_traffic IS DISTINCT FROM ${canUpdateTraffic}
 					OR ea.can_update_cleanup IS DISTINCT FROM ${canUpdateCleanup})
 			RETURNING
