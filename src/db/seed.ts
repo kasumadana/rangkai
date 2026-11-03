@@ -1,6 +1,6 @@
 import * as dotenv from "dotenv";
 import { sql } from "drizzle-orm";
-import { assertDevBranch } from "./guard";
+import { assertDevBranch, sanitizeDatabaseError } from "./guard";
 import { getDb } from "./index";
 import {
 	cleanupTasks,
@@ -195,8 +195,9 @@ if (process.argv[1] && process.argv[1].endsWith("seed.ts")) {
 		.then(() => {
 			console.log("Safe simulated development fixtures successfully seeded.");
 		})
-		.catch((err) => {
-			console.error("Seeding failed:", err.message);
+		.catch((err: unknown) => {
+			const msg = sanitizeDatabaseError(err);
+			console.error("Seeding failed:", msg);
 			process.exit(1);
 		});
 }

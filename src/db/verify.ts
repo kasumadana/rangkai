@@ -1,6 +1,10 @@
 import * as dotenv from "dotenv";
 import { sql } from "drizzle-orm";
-import { assertDevBranch, AUTHORIZED_DEV_BRANCH } from "./guard";
+import {
+	assertDevBranch,
+	AUTHORIZED_DEV_BRANCH,
+	sanitizeDatabaseError,
+} from "./guard";
 import { getDb, type DbClient } from "./index";
 
 // ponytail: fail-closed schema, geometry, index, and constraint verification against Neon dev branch
@@ -52,7 +56,7 @@ export interface RequiredIndexSpec {
 	name: string;
 	table: string;
 	method: "gist" | "btree";
-	definitionMatch?: RegExp;
+	expectedColumns: readonly string[];
 }
 
 export const REQUIRED_INDEX_SPECS: readonly RequiredIndexSpec[] = [
@@ -60,63 +64,81 @@ export const REQUIRED_INDEX_SPECS: readonly RequiredIndexSpec[] = [
 		name: "audit_logs_event_created_idx",
 		table: "audit_logs",
 		method: "btree",
-		definitionMatch: /event_id.*created_at.*DESC/i,
+		expectedColumns: ["event_id", "created_at DESC NULLS LAST"],
 	},
 	{
 		name: "cleanup_tasks_event_status_idx",
 		table: "cleanup_tasks",
 		method: "btree",
-		definitionMatch: /event_id.*status/i,
+		expectedColumns: ["event_id", "status"],
 	},
 	{
 		name: "cleanup_tasks_location_gist_idx",
 		table: "cleanup_tasks",
 		method: "gist",
-		definitionMatch: /USING gist.*\(location\)/i,
+		expectedColumns: ["location"],
 	},
 	{
 		name: "documents_event_id_idx",
 		table: "documents",
 		method: "btree",
-		definitionMatch: /event_id/i,
+		expectedColumns: ["event_id"],
 	},
 	{
 		name: "events_org_starts_at_idx",
 		table: "events",
 		method: "btree",
-		definitionMatch: /organization_id.*starts_at/i,
+		expectedColumns: ["organization_id", "starts_at"],
 	},
 	{
 		name: "events_status_starts_at_idx",
 		table: "events",
 		method: "btree",
-		definitionMatch: /status.*starts_at/i,
+		expectedColumns: ["status", "starts_at"],
 	},
 	{
 		name: "road_impacts_event_id_idx",
 		table: "road_impacts",
 		method: "btree",
-		definitionMatch: /event_id/i,
+		expectedColumns: ["event_id"],
 	},
 	{
 		name: "road_impacts_segment_planned_idx",
 		table: "road_impacts",
 		method: "btree",
-		definitionMatch: /road_segment_id.*planned_from/i,
+		expectedColumns: ["road_segment_id", "planned_from"],
 	},
 	{
 		name: "road_segments_geom_gist_idx",
 		table: "road_segments",
 		method: "gist",
-		definitionMatch: /USING gist.*\(geom\)/i,
+		expectedColumns: ["geom"],
 	},
 	{
 		name: "road_status_updates_impact_created_idx",
 		table: "road_status_updates",
 		method: "btree",
-		definitionMatch: /road_impact_id.*created_at.*DESC/i,
+		expectedColumns: ["road_impact_id", "created_at DESC NULLS LAST"],
 	},
 ];
+
+export function parseIndexDefinition(indexdef: string): {
+	method: string;
+	columns: string[];
+	rawColumns: string;
+} {
+	const match = /USING\s+(\w+)\s*\((.+)\)/i.exec(indexdef.trim());
+	if (!match) {
+		throw new Error(`Unable to parse index definition: ${indexdef}`);
+	}
+	const method = match[1].toLowerCase();
+	const rawColumns = match[2].trim();
+	const columns = rawColumns
+		.split(",")
+		.map((col) => col.trim().replace(/\s+/g, " "));
+
+	return { method, columns, rawColumns };
+}
 
 export interface RequiredConstraintSpec {
 	name: string;
@@ -180,8 +202,10 @@ export const REQUIRED_CONSTRAINT_SPECS: readonly RequiredConstraintSpec[] = [
 		name: "road_status_updates_road_impact_id_road_impacts_id_fk",
 		table: "road_status_updates",
 		type: "f",
-		definitionMatch: /FOREIGN KEY.*REFERENCES.*road_impacts\(id\).*ON DELETE RESTRICT/i,
-		description: "foreign key on road_impacts(id) with ON DELETE RESTRICT (append-only history)",
+		definitionMatch:
+			/FOREIGN KEY.*REFERENCES.*road_impacts\(id\).*ON DELETE RESTRICT/i,
+		description:
+			"foreign key on road_impacts(id) with ON DELETE RESTRICT (append-only history)",
 	},
 	{
 		name: "road_status_updates_status_check",
@@ -281,7 +305,7 @@ export async function verifyDatabase(
 		}
 	}
 
-	// 5. Indexes assertion (including table ownership, method gist/btree, and column order)
+	// 5. Indexes assertion (validating table ownership, exact access method, and ordered key columns)
 	const indexesRes = await db.execute<{
 		tablename: string;
 		indexname: string;
@@ -302,17 +326,26 @@ export async function verifyDatabase(
 				`Verification failed: index '${spec.name}' expected on table '${spec.table}', found on '${found.tablename}'`,
 			);
 		}
-		const usesGist = /USING\s+gist/i.test(found.indexdef);
-		const expectedGist = spec.method === "gist";
-		if (usesGist !== expectedGist) {
+		const { method, columns } = parseIndexDefinition(found.indexdef);
+		if (method !== spec.method) {
 			throw new Error(
-				`Verification failed: index '${spec.name}' expected access method '${spec.method}', definition: ${found.indexdef}`,
+				`Verification failed: index '${spec.name}' expected access method '${spec.method}', found '${method}'`,
 			);
 		}
-		if (spec.definitionMatch && !spec.definitionMatch.test(found.indexdef)) {
+		if (columns.length !== spec.expectedColumns.length) {
 			throw new Error(
-				`Verification failed: index '${spec.name}' definition mismatch. Definition: ${found.indexdef}`,
+				`Verification failed: index '${spec.name}' column count mismatch: expected ${spec.expectedColumns.length}, found ${columns.length}`,
 			);
+		}
+		for (let idx = 0; idx < spec.expectedColumns.length; idx++) {
+			if (
+				columns[idx].toLowerCase() !==
+				spec.expectedColumns[idx].toLowerCase()
+			) {
+				throw new Error(
+					`Verification failed: index '${spec.name}' key column mismatch at position ${idx}: expected '${spec.expectedColumns[idx]}', found '${columns[idx]}'`,
+				);
+			}
 		}
 	}
 
@@ -390,7 +423,7 @@ if (process.argv[1] && process.argv[1].endsWith("verify.ts")) {
 			console.log("Verification successful: all assertions passed.");
 		})
 		.catch((err: unknown) => {
-			const msg = err instanceof Error ? err.message : String(err);
+			const msg = sanitizeDatabaseError(err);
 			console.error("Verification failed:", msg);
 			process.exit(1);
 		});

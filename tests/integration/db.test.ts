@@ -1,9 +1,17 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
 import * as dotenv from "dotenv";
 import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { beforeAll, describe, expect, it } from "vitest";
-import { assertDevBranch, AUTHORIZED_DEV_BRANCH } from "../../src/db/guard";
+import {
+	assertDevBranch,
+	AUTHORIZED_DEV_BRANCH,
+	sanitizeDatabaseError,
+} from "../../src/db/guard";
 import { getDb, type DbClient } from "../../src/db/index";
 import { runMigrations } from "../../src/db/migrate";
 import type { EventStatus } from "../../src/db/schema";
@@ -138,6 +146,132 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 				/Preflight verification failed connecting to target database/,
 			);
 		});
+
+		it("sanitizes database error messages and redacts connection strings and credentials", () => {
+			const secret = "SUPER_SECRET_PASSWORD_MARKER_999";
+			const rawError = new Error(
+				`Failed connecting to postgresql://admin:${secret}@ep-test.aws.neon.tech:5432/neondb?sslmode=require`,
+			);
+			const sanitized = sanitizeDatabaseError(rawError);
+			expect(sanitized).not.toContain(secret);
+			expect(sanitized).toContain("[REDACTED_DATABASE_URL]");
+		});
+
+		it("migration CLI process does not leak credentials to stdout or stderr on failure", () => {
+			const secretMarker = "SYNTHETIC_PASSWORD_MARKER_XYZ123";
+			const malformedUrl = `postgresql://user:${secretMarker}@ep-invalid.aws.neon.tech:badport/neondb`;
+
+			const child = spawnSync(
+				process.execPath,
+				["node_modules/tsx/dist/cli.mjs", "src/db/migrate.ts"],
+				{
+					env: {
+						...process.env,
+						DATABASE_URL: malformedUrl,
+						DATABASE_URL_UNPOOLED: malformedUrl,
+					},
+					encoding: "utf8",
+				},
+			);
+
+			expect(child.status).toBe(1);
+			expect(child.stdout).not.toContain(secretMarker);
+			expect(child.stderr).not.toContain(secretMarker);
+			expect(child.stderr).toContain("[REDACTED_DATABASE_URL]");
+		});
+	});
+
+	describe("Transactional migration failure and retry regression", () => {
+		it("rolls back partial DDL and journal entries atomically on migration statement failure, then succeeds on retry", async () => {
+			const runKey = crypto.randomUUID().slice(0, 8);
+			const testSchema = `test_mig_${runKey}`;
+			const tempDir = fs.mkdtempSync(
+				path.join(os.tmpdir(), "rangkai-mig-tx-test-"),
+			);
+			const metaDir = path.join(tempDir, "meta");
+			fs.mkdirSync(metaDir, { recursive: true });
+
+			const t0 = 1000000000000;
+			const t1 = 1000000001000;
+
+			// Migration 0: valid table creation
+			const m0Sql = `CREATE TABLE ${testSchema}.sample_zero (id text PRIMARY KEY);`;
+			fs.writeFileSync(path.join(tempDir, "0000_zero.sql"), m0Sql, "utf8");
+
+			// Migration 1: valid statement followed by invalid syntax statement (fails mid-migration)
+			const m1SqlFail = `CREATE TABLE ${testSchema}.sample_one (id text PRIMARY KEY);--> statement-breakpoint\nINVALID SQL SYNTAX FAILS;`;
+			fs.writeFileSync(path.join(tempDir, "0001_one.sql"), m1SqlFail, "utf8");
+
+			const journal = {
+				version: "7",
+				dialect: "postgresql",
+				entries: [
+					{ idx: 0, version: "7", when: t0, tag: "0000_zero", breakpoints: true },
+					{ idx: 1, version: "7", when: t1, tag: "0001_one", breakpoints: true },
+				],
+			};
+			fs.writeFileSync(
+				path.join(metaDir, "_journal.json"),
+				JSON.stringify(journal),
+				"utf8",
+			);
+
+			try {
+				await db.execute(sql.raw(`CREATE SCHEMA ${testSchema};`));
+
+				// Step 1: Execute migrations; migration 0 succeeds, migration 1 fails mid-flight
+				await expect(
+					runMigrations(pinnedUrl, {
+						migrationsFolder: tempDir,
+						migrationsSchema: testSchema,
+					}),
+				).rejects.toThrowError(/Migration execution failed/);
+
+				// Assert transactional rollback: sample_one MUST NOT exist in schema
+				const checkSampleOne = await db.execute(
+					sql.raw(`SELECT to_regclass('${testSchema}.sample_one') as tbl;`),
+				);
+				expect(checkSampleOne.rows[0]?.tbl).toBeNull();
+
+				// Assert journal rollback: 0001 MUST NOT be recorded in __drizzle_migrations
+				const checkJournal = await db.execute(
+					sql.raw(`SELECT * FROM ${testSchema}.__drizzle_migrations;`),
+				);
+				expect(
+					checkJournal.rows.some((r) => String(r.created_at) === String(t1)),
+				).toBe(false);
+
+				// Step 2: Fix migration 1 to be completely valid DDL
+				const m1SqlFixed = `CREATE TABLE ${testSchema}.sample_one (id text PRIMARY KEY);`;
+				fs.writeFileSync(path.join(tempDir, "0001_one.sql"), m1SqlFixed, "utf8");
+
+				// Step 3: Retry migration; should succeed cleanly
+				const retryResult = await runMigrations(pinnedUrl, {
+					migrationsFolder: tempDir,
+					migrationsSchema: testSchema,
+				});
+				expect(retryResult.branchId).toBe(AUTHORIZED_DEV_BRANCH);
+
+				// Verify sample_one was created
+				const checkSampleOneAfter = await db.execute(
+					sql.raw(`SELECT to_regclass('${testSchema}.sample_one') as tbl;`),
+				);
+				expect(checkSampleOneAfter.rows[0]?.tbl).not.toBeNull();
+
+				// Verify 0001 is now recorded in journal
+				const checkJournalAfter = await db.execute(
+					sql.raw(`SELECT * FROM ${testSchema}.__drizzle_migrations;`),
+				);
+				expect(
+					checkJournalAfter.rows.some(
+						(r) => String(r.created_at) === String(t1),
+					),
+				).toBe(true);
+			} finally {
+				await db.execute(sql.raw(`DROP SCHEMA IF EXISTS ${testSchema} CASCADE;`));
+				fs.rmSync(tempDir, { recursive: true, force: true });
+			}
+		});
 	});
 
 	describe("Database schema & catalog verification", () => {
@@ -231,6 +365,44 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 			);
 		});
 
+		it("rejects verification if documents_event_id_idx indexes wrong column (e.g. uploaded_by)", async () => {
+			const mockDbWrongColumn = createMockCatalogDb({
+				indexes: VALID_CATALOG.indexes.map((i) =>
+					i.indexname === "documents_event_id_idx"
+						? {
+								...i,
+								indexdef:
+									"CREATE INDEX documents_event_id_idx ON public.documents USING btree (uploaded_by)",
+							}
+						: i,
+				),
+			});
+			await expect(
+				verifyDatabase(mockDbWrongColumn),
+			).rejects.toThrowError(
+				/index 'documents_event_id_idx' key column mismatch at position 0: expected 'event_id', found 'uploaded_by'/,
+			);
+		});
+
+		it("rejects verification if documents_event_id_idx uses hash access method instead of btree", async () => {
+			const mockDbHashMethod = createMockCatalogDb({
+				indexes: VALID_CATALOG.indexes.map((i) =>
+					i.indexname === "documents_event_id_idx"
+						? {
+								...i,
+								indexdef:
+									"CREATE INDEX documents_event_id_idx ON public.documents USING hash (event_id)",
+							}
+						: i,
+				),
+			});
+			await expect(
+				verifyDatabase(mockDbHashMethod),
+			).rejects.toThrowError(
+				/index 'documents_event_id_idx' expected access method 'btree', found 'hash'/,
+			);
+		});
+
 		it("rejects verification if spatial index uses btree instead of gist", async () => {
 			const mockDbWrongMethod = createMockCatalogDb({
 				indexes: VALID_CATALOG.indexes.map((i) =>
@@ -246,7 +418,7 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 			await expect(
 				verifyDatabase(mockDbWrongMethod),
 			).rejects.toThrowError(
-				/index 'road_segments_geom_gist_idx' expected access method 'gist'/,
+				/index 'road_segments_geom_gist_idx' expected access method 'gist', found 'btree'/,
 			);
 		});
 

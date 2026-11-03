@@ -6,6 +6,30 @@ dotenv.config({ path: ".dev.vars" });
 
 export const AUTHORIZED_DEV_BRANCH = "br-wandering-paper-aogdxs48";
 
+// Centralized error message sanitizer that strips database connection strings, passwords, and tokens
+export function sanitizeDatabaseError(err: unknown): string {
+	if (!err) return "Unknown database error";
+	let message = err instanceof Error ? err.message : String(err);
+
+	// Redact full database connection strings
+	message = message.replace(
+		/postgres(?:ql)?:\/\/[^\s'"?#)]+/gi,
+		"[REDACTED_DATABASE_URL]",
+	);
+	// Redact user:password@ credentials if isolated
+	message = message.replace(
+		/(:\/\/[^:]+:)([^@]+)(@)/gi,
+		"$1[REDACTED]$3",
+	);
+	// Redact query parameter credentials
+	message = message.replace(
+		/(password|secret|token|key)=([^&\s]+)/gi,
+		"$1=[REDACTED]",
+	);
+
+	return message;
+}
+
 export function resolveDatabaseUrl(explicitUrl?: string): string {
 	const url =
 		explicitUrl !== undefined
@@ -34,9 +58,9 @@ export async function assertDevBranch(
 	try {
 		res = (await sql`SELECT current_setting('neon.branch_id', true) AS branch_id`) as unknown as Record<string, unknown>[];
 	} catch (err: unknown) {
-		const msg = err instanceof Error ? err.message : String(err);
+		const sanitized = sanitizeDatabaseError(err);
 		throw new Error(
-			`Preflight verification failed connecting to target database: ${msg}. Database writes are strictly forbidden.`,
+			`Preflight verification failed connecting to target database: ${sanitized}. Database writes are strictly forbidden.`,
 		);
 	}
 

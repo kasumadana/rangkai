@@ -1,21 +1,41 @@
 import * as dotenv from "dotenv";
-import { migrate } from "drizzle-orm/neon-http/migrator";
-import { assertDevBranch } from "./guard";
-import { getDb } from "./index";
+import { Pool, neonConfig } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-serverless";
+import { migrate } from "drizzle-orm/neon-serverless/migrator";
+import { assertDevBranch, sanitizeDatabaseError } from "./guard";
 
-// ponytail: fail-closed branch preflight assertion before running any database migrations
+// ponytail: fail-closed branch preflight assertion and transactional migration runner
 dotenv.config({ path: ".dev.vars" });
 
-export async function runMigrations(customUrl?: string) {
+if (typeof WebSocket !== "undefined") {
+	neonConfig.webSocketConstructor = WebSocket;
+}
+
+export async function runMigrations(
+	customUrl?: string,
+	options?: { migrationsFolder?: string; migrationsSchema?: string },
+) {
 	// Preflight guard: fail-closed if not targeting the authorized Neon development branch
 	const { branchId, pinnedUrl } = await assertDevBranch(customUrl);
 	// Pin connection strictly to verified endpoint (unpooled)
 	const unpooledUrl = pinnedUrl.replace("-pooler.", ".");
-	const db = getDb(unpooledUrl);
 
-	await migrate(db, { migrationsFolder: "./drizzle" });
+	const pool = new Pool({ connectionString: unpooledUrl });
+	const db = drizzle(pool);
 
-	return { branchId, pinnedUrl: unpooledUrl };
+	try {
+		await migrate(db, {
+			migrationsFolder: options?.migrationsFolder ?? "./drizzle",
+			migrationsSchema: options?.migrationsSchema,
+		});
+		return { branchId, pinnedUrl: unpooledUrl };
+	} catch (err: unknown) {
+		throw new Error(
+			`Migration execution failed: ${sanitizeDatabaseError(err)}`,
+		);
+	} finally {
+		await pool.end();
+	}
 }
 
 // CLI runner for `pnpm db:migrate`
@@ -27,7 +47,7 @@ if (process.argv[1] && process.argv[1].endsWith("migrate.ts")) {
 			);
 		})
 		.catch((err: unknown) => {
-			const msg = err instanceof Error ? err.message : String(err);
+			const msg = sanitizeDatabaseError(err);
 			console.error("[✗] Migration failed:", msg);
 			process.exit(1);
 		});
