@@ -262,6 +262,7 @@ Content-Type: application/json
 Semantics:
 Process liveness check only. Deterministic response identifying the service.
 Never asserts external dependency readiness (Neon, R2, Gemini) or operational readiness.
+Enforced via Worker-first asset routing (run_worker_first: ["/api/*"]) to ensure API responses are never intercepted by SPA fallback routing regardless of request navigation headers.
 
 ## 12. API State Rules
 
