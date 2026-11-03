@@ -18,7 +18,8 @@
 		"noUnusedLocals": true,
 		"noUnusedParameters": true,
 		"noFallthroughCasesInSwitch": true,
-		"noUncheckedSideEffectImports": true
+		"noUncheckedSideEffectImports": true,
+		"types": ["node", "./worker-configuration.d.ts"]
 	},
-	"include": ["vite.config.ts", "vitest.config.ts"]
+	"include": ["vite.config.ts", "vitest.config.ts", "tests"]
 }
