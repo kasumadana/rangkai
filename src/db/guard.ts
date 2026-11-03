@@ -30,7 +30,16 @@ export async function assertDevBranch(
 	const pinnedUrl = resolveDatabaseUrl(explicitUrl);
 	const sql = neon(pinnedUrl);
 
-	const res = await sql`SELECT current_setting('neon.branch_id', true) AS branch_id`;
+	let res: Record<string, unknown>[];
+	try {
+		res = (await sql`SELECT current_setting('neon.branch_id', true) AS branch_id`) as unknown as Record<string, unknown>[];
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.message : String(err);
+		throw new Error(
+			`Preflight verification failed connecting to target database: ${msg}. Database writes are strictly forbidden.`,
+		);
+	}
+
 	const branchId = res[0]?.branch_id;
 
 	if (branchId !== AUTHORIZED_DEV_BRANCH) {
@@ -39,5 +48,5 @@ export async function assertDevBranch(
 		);
 	}
 
-	return { branchId, pinnedUrl };
+	return { branchId: branchId as string, pinnedUrl };
 }

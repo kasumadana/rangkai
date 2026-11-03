@@ -45,7 +45,7 @@
 		"cf-typegen": "wrangler types",
 		"check": "tsc && vite build && wrangler deploy --dry-run",
 		"db:generate": "drizzle-kit generate",
-		"db:migrate": "drizzle-kit migrate",
+		"db:migrate": "tsx src/db/migrate.ts",
 		"db:seed": "tsx src/db/seed.ts",
 		"db:verify": "tsx src/db/verify.ts",
 		"deploy": "wrangler deploy",

@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import { beforeAll, describe, expect, it } from "vitest";
 import { assertDevBranch, AUTHORIZED_DEV_BRANCH } from "../../src/db/guard";
 import { getDb, type DbClient } from "../../src/db/index";
+import { runMigrations } from "../../src/db/migrate";
 import type { EventStatus } from "../../src/db/schema";
 import {
 	auditLogs,
@@ -17,6 +18,10 @@ import {
 } from "../../src/db/schema";
 import { user } from "../../src/db/auth-schema";
 import { verifyDatabase } from "../../src/db/verify";
+import {
+	createMockCatalogDb,
+	VALID_CATALOG,
+} from "../fixtures/catalog-fixture";
 
 dotenv.config({ path: ".dev.vars" });
 
@@ -43,7 +48,7 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 		db = getDb(pinnedUrl);
 	});
 
-	describe("Target branch and connection guards", () => {
+	describe("Target branch, migration, and connection guards", () => {
 		it("fails honestly with clear recovery instructions when DATABASE_URL is missing", () => {
 			expect(() => getDb("")).toThrowError(
 				/DATABASE_URL is not configured\. Please supply DATABASE_URL in \.dev\.vars/,
@@ -57,181 +62,261 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 		});
 
 		it("fails closed when connecting to an unauthorized branch", async () => {
-			// Test negative guard assertion using a mock or mismatched branch target
-			const mockDb = {
-				execute: async () => ({
-					rows: [{ branch_id: "br-wrong-production-branch" }],
-				}),
-			} as unknown as DbClient;
+			const mockDb = createMockCatalogDb({
+				branchId: "br-wrong-production-branch",
+			});
 
 			await expect(
 				verifyDatabase(mockDb, AUTHORIZED_DEV_BRANCH),
-			).rejects.toThrowError(/expected Neon branch 'br-wandering-paper-aogdxs48'/);
+			).rejects.toThrowError(
+				/expected Neon branch 'br-wandering-paper-aogdxs48'/,
+			);
+		});
+
+		it("runMigrations() rejects unauthorized target before running any migrations", async () => {
+			const origFetch = globalThis.fetch;
+			try {
+				globalThis.fetch = async () =>
+					new Response(
+						JSON.stringify({
+							fields: [{ name: "branch_id", dataTypeID: 25 }],
+							rows: [["br-unauthorized-target"]],
+						}),
+						{ status: 200, headers: { "Content-Type": "application/json" } },
+					);
+				await expect(
+					runMigrations(
+						"postgresql://unauthorized:pass@ep-unauth.aws.neon.tech/neondb?sslmode=require",
+					),
+				).rejects.toThrowError(
+					/Unauthorized database target: expected Neon development branch 'br-wandering-paper-aogdxs48'/,
+				);
+			} finally {
+				globalThis.fetch = origFetch;
+			}
+		});
+
+		it("runMigrations() rejects empty database url with clear recovery instructions", async () => {
+			await expect(runMigrations("")).rejects.toThrowError(
+				/DATABASE_URL is not configured\. Please supply DATABASE_URL in \.dev\.vars/,
+			);
+		});
+
+		it("runMigrations() fails closed when ambient DATABASE_URL_UNPOOLED points to unauthorized target", async () => {
+			const origUnpooled = process.env.DATABASE_URL_UNPOOLED;
+			const origFetch = globalThis.fetch;
+			try {
+				process.env.DATABASE_URL_UNPOOLED =
+					"postgresql://ambient:pass@ep-ambient.aws.neon.tech/neondb?sslmode=require";
+				globalThis.fetch = async () =>
+					new Response(
+						JSON.stringify({
+							fields: [{ name: "branch_id", dataTypeID: 25 }],
+							rows: [["br-unauthorized-target"]],
+						}),
+						{ status: 200, headers: { "Content-Type": "application/json" } },
+					);
+				await expect(runMigrations()).rejects.toThrowError(
+					/Unauthorized database target/,
+				);
+			} finally {
+				globalThis.fetch = origFetch;
+				if (origUnpooled !== undefined) {
+					process.env.DATABASE_URL_UNPOOLED = origUnpooled;
+				} else {
+					delete process.env.DATABASE_URL_UNPOOLED;
+				}
+			}
+		});
+
+		it("runMigrations() rejects unreachable network target before running any migrations", async () => {
+			await expect(
+				runMigrations(
+					"postgresql://unreachable:pass@ep-unreachable.invalid/neondb?sslmode=require",
+				),
+			).rejects.toThrowError(
+				/Preflight verification failed connecting to target database/,
+			);
 		});
 	});
 
 	describe("Database schema & catalog verification", () => {
-		it("runs verifyDatabase() and confirms branch, PostGIS, tables, indexes, constraints", async () => {
+		it("runs verifyDatabase() and confirms branch, PostGIS, tables, geometry, indexes, constraints on real DB", async () => {
 			const result = await verifyDatabase(db);
 			expect(result.branchId).toBe(AUTHORIZED_DEV_BRANCH);
 			expect(result.postgisVersion).toMatch(/^3\./);
 			expect(result.tableNames.length).toBeGreaterThanOrEqual(17);
+			expect(result.geometries.length).toBe(2);
 			expect(result.indexes.length).toBeGreaterThanOrEqual(10);
 			expect(result.constraints.length).toBeGreaterThanOrEqual(100);
 		});
 
-		it("rejects verification if PostGIS extension is missing or incompatible", async () => {
-			const mockDb = {
-				execute: async (query: unknown) => {
-					const str = JSON.stringify(query);
-					if (str.includes("neon.branch_id")) {
-						return { rows: [{ branch_id: AUTHORIZED_DEV_BRANCH }] };
-					}
-					if (str.includes("pg_extension")) {
-						return { rows: [] }; // missing PostGIS
-					}
-					return { rows: [] };
-				},
-			} as unknown as DbClient;
+		it("accepts valid catalog mock matching required schema structure", async () => {
+			const mockDb = createMockCatalogDb();
+			const result = await verifyDatabase(mockDb);
+			expect(result.branchId).toBe(AUTHORIZED_DEV_BRANCH);
+			expect(result.geometries.length).toBe(2);
+		});
 
+		it("rejects verification if PostGIS extension is missing or incompatible", async () => {
+			const mockDb = createMockCatalogDb({ postgisVersion: "2.5.0" });
 			await expect(verifyDatabase(mockDb)).rejects.toThrowError(
 				/PostGIS 3\.x is required/,
 			);
 		});
 
 		it("rejects verification if required application tables are missing", async () => {
-			const mockDb = {
-				execute: async (query: unknown) => {
-					const str = JSON.stringify(query);
-					if (str.includes("neon.branch_id")) {
-						return { rows: [{ branch_id: AUTHORIZED_DEV_BRANCH }] };
-					}
-					if (str.includes("pg_extension")) {
-						return { rows: [{ extname: "postgis", extversion: "3.6.4" }] };
-					}
-					if (str.includes("information_schema.tables")) {
-						return { rows: [{ table_name: "events" }] }; // only 1 table
-					}
-					return { rows: [] };
-				},
-			} as unknown as DbClient;
-
+			const mockDb = createMockCatalogDb({ tables: ["events"] });
 			await expect(verifyDatabase(mockDb)).rejects.toThrowError(
 				/missing required application table\(s\)/,
 			);
 		});
 
-		it("rejects verification if required indexes are missing", async () => {
-			const mockDb = {
-				execute: async (query: unknown) => {
-					const str = JSON.stringify(query);
-					if (str.includes("neon.branch_id")) {
-						return { rows: [{ branch_id: AUTHORIZED_DEV_BRANCH }] };
-					}
-					if (str.includes("pg_extension")) {
-						return { rows: [{ extname: "postgis", extversion: "3.6.4" }] };
-					}
-					if (str.includes("information_schema.tables")) {
-						return {
-							rows: [
-								{ table_name: "account" },
-								{ table_name: "ai_extractions" },
-								{ table_name: "audit_logs" },
-								{ table_name: "cleanup_evidence" },
-								{ table_name: "cleanup_tasks" },
-								{ table_name: "documents" },
-								{ table_name: "event_assignments" },
-								{ table_name: "events" },
-								{ table_name: "memberships" },
-								{ table_name: "organizations" },
-								{ table_name: "road_impacts" },
-								{ table_name: "road_segments" },
-								{ table_name: "road_status_updates" },
-								{ table_name: "session" },
-								{ table_name: "user" },
-								{ table_name: "verification" },
-								{ table_name: "waste_records" },
-							],
-						};
-					}
-					if (str.includes("pg_indexes")) {
-						return { rows: [] }; // missing indexes
-					}
-					return { rows: [] };
-				},
-			} as unknown as DbClient;
+		it("rejects verification if geometry column has wrong type or SRID", async () => {
+			const mockDbWrongType = createMockCatalogDb({
+				geometryColumns: [
+					{
+						f_table_name: "road_segments",
+						f_geometry_column: "geom",
+						type: "POLYGON",
+						srid: 4326,
+					},
+					{
+						f_table_name: "cleanup_tasks",
+						f_geometry_column: "location",
+						type: "POINT",
+						srid: 4326,
+					},
+				],
+			});
+			await expect(verifyDatabase(mockDbWrongType)).rejects.toThrowError(
+				/expected type LINESTRING SRID 4326, found type POLYGON SRID 4326/,
+			);
 
-			await expect(verifyDatabase(mockDb)).rejects.toThrowError(
-				/missing required index\(es\)/,
+			const mockDbWrongSrid = createMockCatalogDb({
+				geometryColumns: [
+					{
+						f_table_name: "road_segments",
+						f_geometry_column: "geom",
+						type: "LINESTRING",
+						srid: 3857,
+					},
+					{
+						f_table_name: "cleanup_tasks",
+						f_geometry_column: "location",
+						type: "POINT",
+						srid: 4326,
+					},
+				],
+			});
+			await expect(verifyDatabase(mockDbWrongSrid)).rejects.toThrowError(
+				/expected type LINESTRING SRID 4326, found type LINESTRING SRID 3857/,
 			);
 		});
 
-		it("rejects verification if required constraints are missing", async () => {
-			const mockDb = {
-				execute: async (query: unknown) => {
-					const str = JSON.stringify(query);
-					if (str.includes("neon.branch_id")) {
-						return { rows: [{ branch_id: AUTHORIZED_DEV_BRANCH }] };
-					}
-					if (str.includes("pg_extension")) {
-						return { rows: [{ extname: "postgis", extversion: "3.6.4" }] };
-					}
-					if (str.includes("information_schema.tables")) {
-						return {
-							rows: [
-								{ table_name: "account" },
-								{ table_name: "ai_extractions" },
-								{ table_name: "audit_logs" },
-								{ table_name: "cleanup_evidence" },
-								{ table_name: "cleanup_tasks" },
-								{ table_name: "documents" },
-								{ table_name: "event_assignments" },
-								{ table_name: "events" },
-								{ table_name: "memberships" },
-								{ table_name: "organizations" },
-								{ table_name: "road_impacts" },
-								{ table_name: "road_segments" },
-								{ table_name: "road_status_updates" },
-								{ table_name: "session" },
-								{ table_name: "user" },
-								{ table_name: "verification" },
-								{ table_name: "waste_records" },
-							],
-						};
-					}
-					if (str.includes("pg_indexes")) {
-						return {
-							rows: [
-								{ indexname: "audit_logs_event_created_idx" },
-								{ indexname: "cleanup_tasks_event_status_idx" },
-								{ indexname: "cleanup_tasks_location_gist_idx" },
-								{ indexname: "documents_event_id_idx" },
-								{ indexname: "events_org_starts_at_idx" },
-								{ indexname: "events_status_starts_at_idx" },
-								{ indexname: "road_impacts_event_id_idx" },
-								{ indexname: "road_impacts_segment_planned_idx" },
-								{ indexname: "road_segments_geom_gist_idx" },
-								{ indexname: "road_status_updates_impact_created_idx" },
-							],
-						};
-					}
-					if (str.includes("pg_constraint")) {
-						return { rows: [] }; // missing constraints
-					}
-					return { rows: [] };
-				},
-			} as unknown as DbClient;
+		it("rejects verification if required index is missing or on wrong table", async () => {
+			const mockDbMissingIndex = createMockCatalogDb({ indexes: [] });
+			await expect(
+				verifyDatabase(mockDbMissingIndex),
+			).rejects.toThrowError(/missing required index/);
 
-			await expect(verifyDatabase(mockDb)).rejects.toThrowError(
-				/no application constraints found/,
+			const mockDbWrongTable = createMockCatalogDb({
+				indexes: VALID_CATALOG.indexes.map((i) => ({
+					...i,
+					tablename: "wrong_table",
+				})),
+			});
+			await expect(verifyDatabase(mockDbWrongTable)).rejects.toThrowError(
+				/expected on table 'audit_logs', found on 'wrong_table'/,
+			);
+		});
+
+		it("rejects verification if spatial index uses btree instead of gist", async () => {
+			const mockDbWrongMethod = createMockCatalogDb({
+				indexes: VALID_CATALOG.indexes.map((i) =>
+					i.indexname === "road_segments_geom_gist_idx"
+						? {
+								...i,
+								indexdef:
+									"CREATE INDEX road_segments_geom_gist_idx ON public.road_segments USING btree (geom)",
+							}
+						: i,
+				),
+			});
+			await expect(
+				verifyDatabase(mockDbWrongMethod),
+			).rejects.toThrowError(
+				/index 'road_segments_geom_gist_idx' expected access method 'gist'/,
+			);
+		});
+
+		it("rejects verification if constraints are missing, on wrong table, or have wrong type", async () => {
+			const mockDbNoConstraints = createMockCatalogDb({
+				constraints: [],
+			});
+			await expect(
+				verifyDatabase(mockDbNoConstraints),
+			).rejects.toThrowError(/no application constraints found/);
+
+			const mockDbWrongTable = createMockCatalogDb({
+				constraints: VALID_CATALOG.constraints.map((c) => ({
+					...c,
+					table_name: "wrong_table",
+				})),
+			});
+			await expect(verifyDatabase(mockDbWrongTable)).rejects.toThrowError(
+				/expected on table/,
+			);
+
+			const mockDbWrongType = createMockCatalogDb({
+				constraints: VALID_CATALOG.constraints.map((c) =>
+					c.constraint_name === "events_status_check"
+						? { ...c, constraint_type: "u" }
+						: c,
+				),
+			});
+			await expect(verifyDatabase(mockDbWrongType)).rejects.toThrowError(
+				/constraint 'events_status_check' expected type 'c', found 'u'/,
+			);
+		});
+
+		it("rejects verification if check constraint is weakened (e.g. CHECK (true))", async () => {
+			const mockDbWeakenedCheck = createMockCatalogDb({
+				constraints: VALID_CATALOG.constraints.map((c) =>
+					c.constraint_name === "events_status_check"
+						? { ...c, constraint_def: "CHECK (true)" }
+						: c,
+				),
+			});
+			await expect(
+				verifyDatabase(mockDbWeakenedCheck),
+			).rejects.toThrowError(
+				/constraint 'events_status_check' definition failed validation/,
+			);
+		});
+
+		it("rejects verification if road_status_updates foreign key uses CASCADE instead of RESTRICT", async () => {
+			const mockDbCascadeFk = createMockCatalogDb({
+				constraints: VALID_CATALOG.constraints.map((c) =>
+					c.constraint_name ===
+					"road_status_updates_road_impact_id_road_impacts_id_fk"
+						? {
+								...c,
+								constraint_def:
+									"FOREIGN KEY (road_impact_id) REFERENCES road_impacts(id) ON DELETE CASCADE",
+							}
+						: c,
+				),
+			});
+			await expect(verifyDatabase(mockDbCascadeFk)).rejects.toThrowError(
+				/constraint 'road_status_updates_road_impact_id_road_impacts_id_fk' definition failed validation/,
 			);
 		});
 	});
 
 	describe("Isolated fixture mutation & constraint enforcement", () => {
-		it("enforces events date check constraint (ends_at > starts_at) with run-owned fixtures", async () => {
+		it("enforces events date check constraint (ends_at > starts_at)", async () => {
 			const ids = createRunIds();
-
 			try {
 				await db.insert(organizations).values({
 					id: ids.orgId,
@@ -244,19 +329,18 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 					emailVerified: true,
 				});
 
-				// Invalid: endsAt is earlier than startsAt
+				// Invalid: endsAt before startsAt
 				await expect(
 					db.insert(events).values({
 						id: ids.eventId,
 						organizationId: ids.orgId,
 						createdBy: ids.userId,
-						title: "Invalid Event Date",
-						startsAt: new Date("2026-11-10T10:00:00Z"),
-						endsAt: new Date("2026-11-10T08:00:00Z"),
+						title: "Invalid Date Event",
+						startsAt: new Date("2026-11-10T12:00:00Z"),
+						endsAt: new Date("2026-11-10T10:00:00Z"),
 					}),
 				).rejects.toThrow();
 			} finally {
-				// Clean only run-owned fixtures
 				await db.delete(events).where(eq(events.id, ids.eventId));
 				await db.delete(organizations).where(eq(organizations.id, ids.orgId));
 				await db.delete(user).where(eq(user.id, ids.userId));
@@ -265,7 +349,6 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 
 		it("enforces events status domain check constraint", async () => {
 			const ids = createRunIds();
-
 			try {
 				await db.insert(organizations).values({
 					id: ids.orgId,
@@ -314,29 +397,31 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 					id: ids.eventId,
 					organizationId: ids.orgId,
 					createdBy: ids.userId,
-					title: "Impact Event Test",
+					title: "Test Event Impact Time",
 				});
 				await db.insert(roadSegments).values({
 					id: ids.segmentId,
-					displayName: "Test Segment Time Check",
-					geom: sql`ST_GeomFromEWKT('SRID=4326;LINESTRING(115.2 -8.6, 115.3 -8.7)')`,
-					coverageArea: "Area Test",
+					displayName: "Jl. Test Segment Time",
+					coverageArea: "Denpasar Selatan",
+					geom: "SRID=4326;LINESTRING(115.2166 -8.6500, 115.2180 -8.6520)",
 				});
 
-				// Invalid: plannedTo is equal to plannedFrom
+				// Invalid: plannedTo before plannedFrom
 				await expect(
 					db.insert(roadImpacts).values({
 						id: impactId,
 						eventId: ids.eventId,
 						roadSegmentId: ids.segmentId,
-						plannedFrom: new Date("2026-11-10T08:00:00Z"),
-						plannedTo: new Date("2026-11-10T08:00:00Z"),
+						plannedFrom: new Date("2026-11-10T12:00:00Z"),
+						plannedTo: new Date("2026-11-10T10:00:00Z"),
 						impactType: "closure",
 					}),
 				).rejects.toThrow();
 			} finally {
 				await db.delete(roadImpacts).where(eq(roadImpacts.id, impactId));
-				await db.delete(roadSegments).where(eq(roadSegments.id, ids.segmentId));
+				await db
+					.delete(roadSegments)
+					.where(eq(roadSegments.id, ids.segmentId));
 				await db.delete(events).where(eq(events.id, ids.eventId));
 				await db.delete(organizations).where(eq(organizations.id, ids.orgId));
 				await db.delete(user).where(eq(user.id, ids.userId));
@@ -362,7 +447,7 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 					id: ids.eventId,
 					organizationId: ids.orgId,
 					createdBy: ids.userId,
-					title: "Waste Event Test",
+					title: "Test Event Waste Check",
 				});
 
 				// Invalid: both quantityKg and sackCount are null
@@ -391,7 +476,7 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 			try {
 				await db.insert(organizations).values({
 					id: ids.orgId,
-					name: "Test Org Restrict Status",
+					name: "Test Org Restrict Check",
 				});
 				await db.insert(user).values({
 					id: ids.userId,
@@ -403,13 +488,13 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 					id: ids.eventId,
 					organizationId: ids.orgId,
 					createdBy: ids.userId,
-					title: "Restrict Impact Event",
+					title: "Test Event Restrict Check",
 				});
 				await db.insert(roadSegments).values({
 					id: ids.segmentId,
-					displayName: "Test Segment Restrict",
-					geom: sql`ST_GeomFromEWKT('SRID=4326;LINESTRING(115.2 -8.6, 115.3 -8.7)')`,
-					coverageArea: "Area Restrict",
+					displayName: "Jl. Restrict Segment",
+					coverageArea: "Denpasar Selatan",
+					geom: "SRID=4326;LINESTRING(115.2166 -8.6500, 115.2180 -8.6520)",
 				});
 				await db.insert(roadImpacts).values({
 					id: impactId,
@@ -423,21 +508,25 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 					id: updateId,
 					roadImpactId: impactId,
 					status: "closed",
-					observedAt: new Date("2026-11-10T08:00:00Z"),
-					expiresAt: new Date("2026-11-10T09:00:00Z"),
+					observedAt: new Date("2026-11-10T08:15:00Z"),
+					expiresAt: new Date("2026-11-10T12:00:00Z"),
 					updatedBy: ids.userId,
 					mutationId: ids.mutationId,
 				});
 
-				// Deleting roadImpact MUST be restricted because road_status_updates references it
+				// Deleting roadImpact MUST fail because roadStatusUpdates has ON DELETE RESTRICT
 				await expect(
 					db.delete(roadImpacts).where(eq(roadImpacts.id, impactId)),
 				).rejects.toThrow();
 			} finally {
-				// Clean only run-owned fixtures in correct dependent order
-				await db.delete(roadStatusUpdates).where(eq(roadStatusUpdates.id, updateId));
+				// Clean up in reverse dependency order
+				await db
+					.delete(roadStatusUpdates)
+					.where(eq(roadStatusUpdates.id, updateId));
 				await db.delete(roadImpacts).where(eq(roadImpacts.id, impactId));
-				await db.delete(roadSegments).where(eq(roadSegments.id, ids.segmentId));
+				await db
+					.delete(roadSegments)
+					.where(eq(roadSegments.id, ids.segmentId));
 				await db.delete(events).where(eq(events.id, ids.eventId));
 				await db.delete(organizations).where(eq(organizations.id, ids.orgId));
 				await db.delete(user).where(eq(user.id, ids.userId));
@@ -446,51 +535,52 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 
 		it("supports atomic batch operations with run-owned fixtures", async () => {
 			const ids = createRunIds();
+			const auditId = crypto.randomUUID();
 
 			try {
 				await db.insert(organizations).values({
 					id: ids.orgId,
-					name: "Test Org Atomic Batch",
+					name: "Test Org Batch Success",
 				});
 				await db.insert(user).values({
 					id: ids.userId,
-					name: "Atomic Tester",
+					name: "Tester Batch Success",
 					email: `${ids.userId}@test.local`,
 					emailVerified: true,
 				});
 
+				// Atomic batch insert: event + audit log together
 				await db.batch([
 					db.insert(events).values({
 						id: ids.eventId,
 						organizationId: ids.orgId,
 						createdBy: ids.userId,
-						title: "Atomic Batch Event",
-						status: "draft",
+						title: "Batch Atomic Event",
 					}),
 					db.insert(auditLogs).values({
+						id: auditId,
 						organizationId: ids.orgId,
 						eventId: ids.eventId,
 						actorId: ids.userId,
-						action: "event:create",
+						action: "event.created",
 						entityType: "event",
 						entityId: ids.eventId,
-						afterJson: { title: "Atomic Batch Event" },
 					}),
 				]);
 
-				const eventRows = await db
+				const eventRow = await db
 					.select()
 					.from(events)
 					.where(eq(events.id, ids.eventId));
-				expect(eventRows.length).toBe(1);
+				expect(eventRow.length).toBe(1);
 
-				const auditRows = await db
+				const auditRow = await db
 					.select()
 					.from(auditLogs)
-					.where(eq(auditLogs.eventId, ids.eventId));
-				expect(auditRows.length).toBe(1);
+					.where(eq(auditLogs.id, auditId));
+				expect(auditRow.length).toBe(1);
 			} finally {
-				await db.delete(auditLogs).where(eq(auditLogs.eventId, ids.eventId));
+				await db.delete(auditLogs).where(eq(auditLogs.id, auditId));
 				await db.delete(events).where(eq(events.id, ids.eventId));
 				await db.delete(organizations).where(eq(organizations.id, ids.orgId));
 				await db.delete(user).where(eq(user.id, ids.userId));
@@ -499,43 +589,49 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 
 		it("rolls back batch operations atomically without leaving run-owned records", async () => {
 			const ids = createRunIds();
+			const auditId = crypto.randomUUID();
+			const nonExistentOrgId = crypto.randomUUID();
 
 			try {
 				await db.insert(organizations).values({
 					id: ids.orgId,
-					name: "Test Org Rollback",
+					name: "Test Org Batch Rollback",
 				});
 				await db.insert(user).values({
 					id: ids.userId,
-					name: "Rollback Tester",
+					name: "Tester Batch Rollback",
 					email: `${ids.userId}@test.local`,
 					emailVerified: true,
 				});
 
+				// Batch with valid first statement and invalid second statement (FK violation)
 				await expect(
 					db.batch([
 						db.insert(events).values({
 							id: ids.eventId,
 							organizationId: ids.orgId,
 							createdBy: ids.userId,
-							title: "Rollback Candidate Event",
-							status: "draft",
+							title: "Rolled Back Event",
 						}),
-						db.insert(events).values({
-							id: crypto.randomUUID(),
-							organizationId: crypto.randomUUID(), // non-existent org FK
-							createdBy: ids.userId,
-							title: "Invalid FK Event",
+						db.insert(auditLogs).values({
+							id: auditId,
+							organizationId: nonExistentOrgId, // Fails foreign key constraint
+							actorId: ids.userId,
+							action: "event.created",
+							entityType: "event",
+							entityId: ids.eventId,
 						}),
 					]),
 				).rejects.toThrow();
 
-				const rows = await db
+				// Verify first statement was rolled back
+				const eventRow = await db
 					.select()
 					.from(events)
 					.where(eq(events.id, ids.eventId));
-				expect(rows.length).toBe(0);
+				expect(eventRow.length).toBe(0);
 			} finally {
+				await db.delete(auditLogs).where(eq(auditLogs.id, auditId));
 				await db.delete(events).where(eq(events.id, ids.eventId));
 				await db.delete(organizations).where(eq(organizations.id, ids.orgId));
 				await db.delete(user).where(eq(user.id, ids.userId));
@@ -543,9 +639,9 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 		});
 	});
 
-	describe("Isolated Workers connection smoke harness", () => {
-		it("executes database queries through an isolated test-only Hono harness without deployable public routes", async () => {
-			// ponytail: isolated test-only harness verifying Workers Hono handler connectivity
+	describe("Isolated Hono handler database smoke (Node test harness)", () => {
+		it("executes database queries through an in-memory Hono handler without deployable public routes", async () => {
+			// ponytail: isolated test-only harness verifying in-memory Hono handler database query execution
 			const testApp = new Hono<{ Bindings: { DATABASE_URL: string } }>();
 			testApp.get("/test/db-smoke", async (c) => {
 				const testDb = getDb(c.env.DATABASE_URL);

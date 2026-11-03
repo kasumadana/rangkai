@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { assertDevBranch, AUTHORIZED_DEV_BRANCH } from "./guard";
 import { getDb, type DbClient } from "./index";
 
-// ponytail: fail-closed schema & constraint verification against Neon development branch
+// ponytail: fail-closed schema, geometry, index, and constraint verification against Neon dev branch
 dotenv.config({ path: ".dev.vars" });
 
 export const REQUIRED_TABLES = [
@@ -26,18 +26,192 @@ export const REQUIRED_TABLES = [
 	"waste_records",
 ] as const;
 
-export const REQUIRED_INDEXES = [
-	"audit_logs_event_created_idx",
-	"cleanup_tasks_event_status_idx",
-	"cleanup_tasks_location_gist_idx",
-	"documents_event_id_idx",
-	"events_org_starts_at_idx",
-	"events_status_starts_at_idx",
-	"road_impacts_event_id_idx",
-	"road_impacts_segment_planned_idx",
-	"road_segments_geom_gist_idx",
-	"road_status_updates_impact_created_idx",
-] as const;
+export interface RequiredGeometrySpec {
+	table: string;
+	column: string;
+	type: "POINT" | "LINESTRING";
+	srid: number;
+}
+
+export const REQUIRED_GEOMETRY_SPECS: readonly RequiredGeometrySpec[] = [
+	{
+		table: "cleanup_tasks",
+		column: "location",
+		type: "POINT",
+		srid: 4326,
+	},
+	{
+		table: "road_segments",
+		column: "geom",
+		type: "LINESTRING",
+		srid: 4326,
+	},
+];
+
+export interface RequiredIndexSpec {
+	name: string;
+	table: string;
+	method: "gist" | "btree";
+	definitionMatch?: RegExp;
+}
+
+export const REQUIRED_INDEX_SPECS: readonly RequiredIndexSpec[] = [
+	{
+		name: "audit_logs_event_created_idx",
+		table: "audit_logs",
+		method: "btree",
+		definitionMatch: /event_id.*created_at.*DESC/i,
+	},
+	{
+		name: "cleanup_tasks_event_status_idx",
+		table: "cleanup_tasks",
+		method: "btree",
+		definitionMatch: /event_id.*status/i,
+	},
+	{
+		name: "cleanup_tasks_location_gist_idx",
+		table: "cleanup_tasks",
+		method: "gist",
+		definitionMatch: /USING gist.*\(location\)/i,
+	},
+	{
+		name: "documents_event_id_idx",
+		table: "documents",
+		method: "btree",
+		definitionMatch: /event_id/i,
+	},
+	{
+		name: "events_org_starts_at_idx",
+		table: "events",
+		method: "btree",
+		definitionMatch: /organization_id.*starts_at/i,
+	},
+	{
+		name: "events_status_starts_at_idx",
+		table: "events",
+		method: "btree",
+		definitionMatch: /status.*starts_at/i,
+	},
+	{
+		name: "road_impacts_event_id_idx",
+		table: "road_impacts",
+		method: "btree",
+		definitionMatch: /event_id/i,
+	},
+	{
+		name: "road_impacts_segment_planned_idx",
+		table: "road_impacts",
+		method: "btree",
+		definitionMatch: /road_segment_id.*planned_from/i,
+	},
+	{
+		name: "road_segments_geom_gist_idx",
+		table: "road_segments",
+		method: "gist",
+		definitionMatch: /USING gist.*\(geom\)/i,
+	},
+	{
+		name: "road_status_updates_impact_created_idx",
+		table: "road_status_updates",
+		method: "btree",
+		definitionMatch: /road_impact_id.*created_at.*DESC/i,
+	},
+];
+
+export interface RequiredConstraintSpec {
+	name: string;
+	table: string;
+	type: "c" | "f" | "u";
+	definitionMatch: RegExp;
+	description: string;
+}
+
+export const REQUIRED_CONSTRAINT_SPECS: readonly RequiredConstraintSpec[] = [
+	{
+		name: "event_assignments_event_user_unique",
+		table: "event_assignments",
+		type: "u",
+		definitionMatch: /UNIQUE.*\(event_id,\s*user_id\)/i,
+		description: "unique assignment per event and user",
+	},
+	{
+		name: "events_ends_at_after_starts_at",
+		table: "events",
+		type: "c",
+		definitionMatch: /ends_at\s*>\s*starts_at/i,
+		description: "ends_at must be after starts_at",
+	},
+	{
+		name: "events_status_check",
+		table: "events",
+		type: "c",
+		definitionMatch: /status.*ARRAY\['draft'/i,
+		description: "finite event status domain check",
+	},
+	{
+		name: "memberships_org_user_unique",
+		table: "memberships",
+		type: "u",
+		definitionMatch: /UNIQUE.*\(organization_id,\s*user_id\)/i,
+		description: "unique membership per organization and user",
+	},
+	{
+		name: "memberships_role_check",
+		table: "memberships",
+		type: "c",
+		definitionMatch: /role.*ARRAY\['organizer'/i,
+		description: "finite membership role domain check",
+	},
+	{
+		name: "road_impacts_time_check",
+		table: "road_impacts",
+		type: "c",
+		definitionMatch: /planned_to\s*>\s*planned_from/i,
+		description: "planned_to must be after planned_from",
+	},
+	{
+		name: "road_impacts_type_check",
+		table: "road_impacts",
+		type: "c",
+		definitionMatch: /impact_type.*ARRAY\['closure'/i,
+		description: "finite road impact type domain check",
+	},
+	{
+		name: "road_status_updates_road_impact_id_road_impacts_id_fk",
+		table: "road_status_updates",
+		type: "f",
+		definitionMatch: /FOREIGN KEY.*REFERENCES.*road_impacts\(id\).*ON DELETE RESTRICT/i,
+		description: "foreign key on road_impacts(id) with ON DELETE RESTRICT (append-only history)",
+	},
+	{
+		name: "road_status_updates_status_check",
+		table: "road_status_updates",
+		type: "c",
+		definitionMatch: /status.*ARRAY\['open'/i,
+		description: "finite road status domain check",
+	},
+	{
+		name: "waste_records_category_check",
+		table: "waste_records",
+		type: "c",
+		definitionMatch: /category.*ARRAY\['organic'/i,
+		description: "finite waste category domain check",
+	},
+	{
+		name: "waste_records_method_check",
+		table: "waste_records",
+		type: "c",
+		definitionMatch: /measurement_method.*ARRAY\['weighed'/i,
+		description: "finite waste measurement method domain check",
+	},
+	{
+		name: "waste_records_quantity_check",
+		table: "waste_records",
+		type: "c",
+		definitionMatch: /quantity_kg IS NOT NULL.*sack_count IS NOT NULL/i,
+		description: "at least one quantity or sack_count required",
+	},
+];
 
 export async function verifyDatabase(
 	customDb?: DbClient,
@@ -80,7 +254,34 @@ export async function verifyDatabase(
 		);
 	}
 
-	// 4. Indexes assertion (including spatial GIST indexes)
+	// 4. Geometry columns & SRID assertion
+	const geomRes = await db.execute<{
+		f_table_name: string;
+		f_geometry_column: string;
+		type: string;
+		srid: number;
+	}>(
+		sql`SELECT f_table_name, f_geometry_column, type, srid FROM geometry_columns WHERE f_table_schema = 'public'`,
+	);
+	for (const spec of REQUIRED_GEOMETRY_SPECS) {
+		const found = geomRes.rows.find(
+			(g) =>
+				g.f_table_name === spec.table &&
+				g.f_geometry_column === spec.column,
+		);
+		if (!found) {
+			throw new Error(
+				`Verification failed: missing required geometry column '${spec.table}.${spec.column}'`,
+			);
+		}
+		if (found.type !== spec.type || Number(found.srid) !== spec.srid) {
+			throw new Error(
+				`Verification failed: geometry '${spec.table}.${spec.column}' expected type ${spec.type} SRID ${spec.srid}, found type ${found.type} SRID ${found.srid}`,
+			);
+		}
+	}
+
+	// 5. Indexes assertion (including table ownership, method gist/btree, and column order)
 	const indexesRes = await db.execute<{
 		tablename: string;
 		indexname: string;
@@ -88,15 +289,34 @@ export async function verifyDatabase(
 	}>(
 		sql`SELECT tablename, indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' ORDER BY tablename, indexname`,
 	);
-	const indexSet = new Set(indexesRes.rows.map((r) => r.indexname));
-	const missingIndexes = REQUIRED_INDEXES.filter((i) => !indexSet.has(i));
-	if (missingIndexes.length > 0) {
-		throw new Error(
-			`Verification failed: missing required index(es): ${missingIndexes.join(", ")}`,
-		);
+
+	for (const spec of REQUIRED_INDEX_SPECS) {
+		const found = indexesRes.rows.find((i) => i.indexname === spec.name);
+		if (!found) {
+			throw new Error(
+				`Verification failed: missing required index '${spec.name}'`,
+			);
+		}
+		if (found.tablename !== spec.table) {
+			throw new Error(
+				`Verification failed: index '${spec.name}' expected on table '${spec.table}', found on '${found.tablename}'`,
+			);
+		}
+		const usesGist = /USING\s+gist/i.test(found.indexdef);
+		const expectedGist = spec.method === "gist";
+		if (usesGist !== expectedGist) {
+			throw new Error(
+				`Verification failed: index '${spec.name}' expected access method '${spec.method}', definition: ${found.indexdef}`,
+			);
+		}
+		if (spec.definitionMatch && !spec.definitionMatch.test(found.indexdef)) {
+			throw new Error(
+				`Verification failed: index '${spec.name}' definition mismatch. Definition: ${found.indexdef}`,
+			);
+		}
 	}
 
-	// 5. Constraints assertion from pg_constraint catalog
+	// 6. Constraints assertion from pg_constraint catalog (table ownership, type, actions, checks)
 	const constraintsRes = await db.execute<{
 		table_name: string;
 		constraint_name: string;
@@ -117,29 +337,30 @@ export async function verifyDatabase(
 		);
 	}
 
-	// Verify key integrity constraints
-	const constraintNames = new Set(
-		constraintsRes.rows.map((c) => c.constraint_name),
-	);
-	const requiredConstraints = [
-		"events_ends_at_after_starts_at",
-		"events_status_check",
-		"road_impacts_time_check",
-		"road_impacts_type_check",
-		"road_status_updates_status_check",
-		"road_status_updates_road_impact_id_road_impacts_id_fk",
-		"waste_records_quantity_check",
-		"memberships_org_user_unique",
-		"event_assignments_event_user_unique",
-	];
-
-	const missingConstraints = requiredConstraints.filter(
-		(c) => !constraintNames.has(c),
-	);
-	if (missingConstraints.length > 0) {
-		throw new Error(
-			`Verification failed: missing required constraint(s): ${missingConstraints.join(", ")}`,
+	for (const spec of REQUIRED_CONSTRAINT_SPECS) {
+		const found = constraintsRes.rows.find(
+			(c) => c.constraint_name === spec.name,
 		);
+		if (!found) {
+			throw new Error(
+				`Verification failed: missing required constraint '${spec.name}' (${spec.description})`,
+			);
+		}
+		if (found.table_name !== spec.table) {
+			throw new Error(
+				`Verification failed: constraint '${spec.name}' expected on table '${spec.table}', found on '${found.table_name}'`,
+			);
+		}
+		if (found.constraint_type !== spec.type) {
+			throw new Error(
+				`Verification failed: constraint '${spec.name}' expected type '${spec.type}', found '${found.constraint_type}'`,
+			);
+		}
+		if (!spec.definitionMatch.test(found.constraint_def)) {
+			throw new Error(
+				`Verification failed: constraint '${spec.name}' definition failed validation. Definition: ${found.constraint_def}`,
+			);
+		}
 	}
 
 	return {
@@ -148,9 +369,11 @@ export async function verifyDatabase(
 		tableNames: tablesRes.rows.map((r) => r.table_name),
 		indexes: indexesRes.rows,
 		constraints: constraintsRes.rows,
+		geometries: geomRes.rows,
 	};
 }
 
+// CLI runner
 if (process.argv[1] && process.argv[1].endsWith("verify.ts")) {
 	verifyDatabase()
 		.then((result) => {
@@ -158,6 +381,7 @@ if (process.argv[1] && process.argv[1].endsWith("verify.ts")) {
 			console.log("Target Neon Branch ID:", result.branchId);
 			console.log("PostGIS Extension Version:", result.postgisVersion);
 			console.log("Application Tables Count:", result.tableNames.length);
+			console.log("Geometry Columns Count:", result.geometries.length);
 			console.log("Public Indexes Count:", result.indexes.length);
 			console.log(
 				"Application Constraints Count (pg_constraint):",
@@ -165,8 +389,9 @@ if (process.argv[1] && process.argv[1].endsWith("verify.ts")) {
 			);
 			console.log("Verification successful: all assertions passed.");
 		})
-		.catch((err) => {
-			console.error("Verification failed:", err.message);
+		.catch((err: unknown) => {
+			const msg = err instanceof Error ? err.message : String(err);
+			console.error("Verification failed:", msg);
 			process.exit(1);
 		});
 }
