@@ -200,25 +200,63 @@ Failed update:
 
 No login, account creation, or app download required.
 
-## 7. Empty and Error States
+## 7. Empty, Error, and Shared States (Microcopy Standards)
 
-No events:
-"Belum ada kegiatan yang dipublikasikan."
+Standard microcopy adheres to Pramana ethics (Honest System States). Titles adopt polite Balinese phrasing (*basa alus*), while subtitles, messages, and action buttons remain clear and functional in Indonesian.
 
-No matching road:
-"Ruas jalan belum ditemukan. Pilih secara manual."
+### D1: No Events (Empty State)
+- Title: "Durung wenten parikrama sane kasobyahang"
+- Subtitle: "Saat ini belum ada kegiatan adat yang dipublikasikan berdampak pada ruas jalan umum pada filter waktu atau wilayah yang dipilih."
+- Actions: [Reset Filter Pencarian] [Kembali ke Beranda]
 
-AI unavailable:
-"Ekstraksi otomatis belum tersedia. Isi data secara manual."
+### D2: No Matching Road (Empty State)
+- Title: "Margi durung kapanggih"
+- Subtitle: "Ruas jalan belum ditemukan atau belum dipilih. Sistem tidak menebak rute secara otomatis, silakan tandai segmen jalan terverifikasi langsung pada peta."
+- Actions: [Pilih Segmen di Peta] [Ubah Kata Kunci]
 
-Stale status:
-"Status terakhir belum dikonfirmasi ulang."
+### D3: AI Unavailable (Fallback State)
+- Title: "Ampura, ekstraksi AI durung prasida memargi"
+- Subtitle: "Layanan pembacaan otomatis dokumen pengumuman sedang tidak dapat dijangkau. Berkas Anda tetap tersimpan dengan aman di penyimpanan privat."
+- Actions: [Isi Formulir Manual] [Coba Ekstraksi Ulang]
 
-Map unavailable:
-"Peta tidak tersedia. Informasi jalan tetap dapat dibaca."
+### D4: Upload Failed (Error State)
+- Title: "Ampura, berkas durung prasida kasimpen"
+- Subtitle: "Berkas belum berhasil tersimpan ke penyimpanan server. Pastikan ukuran file maksimal 8 MB dengan format PDF, JPG, atau PNG, lalu coba kembali."
+- Actions: [Coba Unggah Kembali] [Pilih Berkas Lain]
 
-Upload failed:
-"Dokumen belum tersimpan. Coba unggah kembali."
+### D5: Stale Road Status (Warning State)
+- Title: "Kasinahang durung pasti"
+- Subtitle: "Status terakhir belum dikonfirmasi ulang oleh petugas lapangan lebih dari 2 jam. Sesuai aturan operasional, kondisi jalan tidak otomatis dianggap lancar."
+- Actions: [Lihat Waktu Pembaruan] [Minta Konfirmasi Petugas]
+
+### D6: Map Unavailable (Fallback State)
+- Title: "Peta durung prasida kacingak"
+- Subtitle: "Peta digital tidak dapat dimuat karena kendala koneksi. Informasi nama ruas jalan, jam penutupan, dan status jalur tetap dapat dibaca pada daftar teks di bawah."
+- Actions: [Muat Ulang Peta] [Buka Daftar Ruas Jalan]
+
+### D7: Update Failed (Field Error State)
+- Title: "Ampura, pembaruan status durung kintun"
+- Subtitle: "Laporan status belum berhasil diterima oleh server. Pilihan status dan catatan yang sudah Anda ketik tetap tersimpan aman di layar ini."
+- Actions: [Kirim Ulang Sekarang] [Periksa Isian Form]
+
+### D8: Cleanup Pending Verification (Pending State)
+- Title: "Ngantos pamutus verifikasi saking Prajuru"
+- Subtitle: "Foto bukti dan catatan timbangan sampah telah diterima. Menunggu pemeriksaan dan persetujuan verifikasi resmi dari pihak Prajuru Banjar."
+- Actions: [Tinjau Bukti Foto] [Kembali ke Daftar Tugas]
+
+### D9: Publication Successful (Success State)
+- Title: "Matur suksma, parikrama sampun memargi antar"
+- Subtitle: "Informasi kegiatan adat berhasil dipublikasikan. Tautan publik telah aktif dan waktu rilis telah dicatat ke dalam audit log resmi."
+- Actions: [Salin Tautan Publik] [Lihat Halaman Kegiatan]
+
+### D10: Unsaved Changes (Modal Confirmation)
+- Title: "Elingan, wenten parubahan sane durung kasimpen"
+- Subtitle: "Koreksi data AI atau isian formulir yang belum disimpan sebagai draf akan hilang jika Anda berpindah ke halaman lain sekarang."
+- Actions: [Simpan Draf & Keluar] [Tetap di Halaman Ini]
+
+### D11: Loading States (Asynchronous Progress)
+- Title: "Ngiring antos ajebos..."
+- Subtitle: "Sedang memuat dan memvalidasi data terverifikasi dari server. Mohon tunggu sejenak dan jangan menutup peramban."
 
 ## 8. Accessibility
 
