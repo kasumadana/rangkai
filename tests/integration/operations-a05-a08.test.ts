@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import * as dotenv from "dotenv";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { hashPassword } from "better-auth/crypto";
 import { getDb, type DbClient } from "../../src/db/index";
@@ -13,6 +13,8 @@ import {
 	EVENT_STATUSES,
 	aiExtractions,
 	auditLogs,
+	cleanupEvidence,
+	cleanupTasks,
 	documents,
 	eventAssignments,
 	events,
@@ -21,6 +23,7 @@ import {
 	roadImpacts,
 	roadSegments,
 	roadStatusUpdates,
+	wasteRecords,
 } from "../../src/db/schema";
 import app from "../../src/worker/index";
 import { resetUploadRateLimits } from "../../src/worker/validators/documents";
@@ -397,6 +400,24 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 
 			const eventIds = testEvents.map((e) => e.id);
 			if (eventIds.length > 0) {
+				// Delete waste records
+				await db.delete(wasteRecords).where(inArray(wasteRecords.eventId, eventIds));
+
+				// Delete cleanup evidence and tasks
+				const tasks = await db
+					.select({ id: cleanupTasks.id })
+					.from(cleanupTasks)
+					.where(inArray(cleanupTasks.eventId, eventIds));
+				const taskIds = tasks.map((t) => t.id);
+				if (taskIds.length > 0) {
+					await db
+						.delete(cleanupEvidence)
+						.where(inArray(cleanupEvidence.taskId, taskIds));
+					await db
+						.delete(cleanupTasks)
+						.where(inArray(cleanupTasks.eventId, eventIds));
+				}
+
 				// Delete road status updates
 				const impacts = await db
 					.select({ id: roadImpacts.id })
@@ -1689,6 +1710,626 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			expect(road.isExpired).toBe(true);
 			// Retains last confirmed observation time
 			expect(road.lastConfirmedAt).toBeDefined();
+		});
+	});
+
+	describe("5. A08 - Cleanup Tasks, Private Photo Evidence, Waste Records and Verification", () => {
+		let cleanupTaskId: string;
+		let beforeEvidenceId: string;
+
+		const createPngBytes = () => {
+			const bytes = new Uint8Array(16);
+			bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+			return bytes;
+		};
+
+		const createJpegBytes = () => {
+			const bytes = new Uint8Array(16);
+			bytes.set([0xff, 0xd8, 0xff, 0xe0]);
+			return bytes;
+		};
+
+		it("LISTS cleanup tasks for event initially empty (200)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/cleanup-tasks`,
+				{
+					method: "GET",
+					headers: { Cookie: organizerACookie },
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { cleanupTasks: unknown[] };
+			expect(Array.isArray(body.cleanupTasks)).toBe(true);
+			expect(body.cleanupTasks.length).toBe(0);
+		});
+
+		it("REJECTS cleanup task creation by non-organizer officer (403)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/cleanup-tasks`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						title: "Pembersihan Area Upacara",
+					}),
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(403);
+		});
+
+		it("REJECTS cleanup task with invalid coordinates (422)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/cleanup-tasks`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: organizerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						title: "Pembersihan Invalid Coordinate",
+						location: { lng: 115.2, lat: 95.0 }, // Invalid lat > 90
+					}),
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(422);
+		});
+
+		it("REJECTS cleanup task assigning user outside organization (422)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/cleanup-tasks`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: organizerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						title: "Pembersihan Area Upacara",
+						assignedUserId: fixtureUserOrganizerB.id, // Org B user
+					}),
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(422);
+		});
+
+		it("CREATES valid cleanup task atomically with audit log (201)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/cleanup-tasks`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: organizerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						title: "Pembersihan Pura Sanur Pasca Upacara",
+						description: "Pengangkutan sampah canang dan wadah sisa sesajen.",
+						location: { lng: 115.2166, lat: -8.65 },
+						assignedUserId: fixtureUserCleanupOfficerA.id,
+						dueAt: "2026-11-20T16:00:00+08:00",
+					}),
+				},
+				testEnv,
+			);
+
+			expect(res.status).toBe(201);
+			const body = (await res.json()) as {
+				cleanupTask: {
+					id: string;
+					title: string;
+					status: string;
+					assignedUserId: string;
+					location: { lng: number; lat: number };
+				};
+			};
+
+			expect(body.cleanupTask.id).toBeDefined();
+			expect(body.cleanupTask.title).toBe("Pembersihan Pura Sanur Pasca Upacara");
+			expect(body.cleanupTask.status).toBe("todo");
+			expect(body.cleanupTask.assignedUserId).toBe(fixtureUserCleanupOfficerA.id);
+			expect(body.cleanupTask.location).toEqual({ lng: 115.2166, lat: -8.65 });
+			cleanupTaskId = body.cleanupTask.id;
+
+			// Verify audit log committed
+			const audits = await db
+				.select()
+				.from(auditLogs)
+				.where(
+					and(
+						eq(auditLogs.entityId, cleanupTaskId),
+						eq(auditLogs.action, "cleanup_task.created"),
+					),
+				);
+			expect(audits.length).toBe(1);
+			expect(audits[0].entityType).toBe("cleanup_task");
+		});
+
+		it("ROLE CHECK: Rejects officer modifying administrative fields via PATCH (403)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}`,
+				{
+					method: "PATCH",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						title: "Judul Baru Yang Tidak Diizinkan",
+						dueAt: "2026-11-21T18:00:00+08:00",
+					}),
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(403);
+		});
+
+		it("ALLOWS cleanup officer to update task status to in_progress via PATCH (200)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}`,
+				{
+					method: "PATCH",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						status: "in_progress",
+					}),
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { cleanupTask: { status: string } };
+			expect(body.cleanupTask.status).toBe("in_progress");
+		});
+
+		it("ALLOWS organizer to update task title and description via PATCH (200)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}`,
+				{
+					method: "PATCH",
+					headers: {
+						Cookie: organizerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						title: "Pembersihan Kawasan Pura Sanur & Pantai",
+						description: "Fokus pada area parkir dan tepi pantai.",
+					}),
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { cleanupTask: { title: string; description: string } };
+			expect(body.cleanupTask.title).toBe("Pembersihan Kawasan Pura Sanur & Pantai");
+			expect(body.cleanupTask.description).toBe("Fokus pada area parkir dan tepi pantai.");
+		});
+
+		it("REJECTS evidence photo upload with invalid/spoofed file (422)", async () => {
+			resetUploadRateLimits();
+			const form = new FormData();
+			form.append("stage", "before");
+			form.append(
+				"file",
+				new File([new TextEncoder().encode("not an image")], "fake.jpg", {
+					type: "image/jpeg",
+				}),
+			);
+
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/evidence`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+					},
+					body: form,
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(422);
+		});
+
+		it("REJECTS evidence photo upload with invalid stage (422)", async () => {
+			const form = new FormData();
+			form.append("stage", "during"); // Invalid stage
+			form.append(
+				"file",
+				new File([createPngBytes()], "valid.png", { type: "image/png" }),
+			);
+
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/evidence`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+					},
+					body: form,
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(422);
+		});
+
+		it("ACCEPTS valid before photo evidence upload to R2 (201)", async () => {
+			const form = new FormData();
+			form.append("stage", "before");
+			form.append(
+				"file",
+				new File([createPngBytes()], "before_cleaning.png", {
+					type: "image/png",
+				}),
+			);
+
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/evidence`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+					},
+					body: form,
+				},
+				testEnv,
+			);
+
+			expect(res.status).toBe(201);
+			const body = (await res.json()) as {
+				evidence: { id: string; taskId: string; stage: string; createdAt: string };
+			};
+			expect(body.evidence.id).toBeDefined();
+			expect(body.evidence.taskId).toBe(cleanupTaskId);
+			expect(body.evidence.stage).toBe("before");
+			beforeEvidenceId = body.evidence.id;
+
+			// Verify safe metadata returned - no raw R2 key leaked
+			expect((body.evidence as Record<string, unknown>).r2Key).toBeUndefined();
+		});
+
+		it("ACCEPTS valid after photo evidence upload to R2 (201)", async () => {
+			const form = new FormData();
+			form.append("stage", "after");
+			form.append(
+				"file",
+				new File([createJpegBytes()], "after_cleaning.jpg", {
+					type: "image/jpeg",
+				}),
+			);
+
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/evidence`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+					},
+					body: form,
+				},
+				testEnv,
+			);
+
+			expect(res.status).toBe(201);
+			const body = (await res.json()) as {
+				evidence: { id: string; taskId: string; stage: string; createdAt: string };
+			};
+			expect(body.evidence.id).toBeDefined();
+			expect(body.evidence.stage).toBe("after");
+		});
+
+		it("CONTROLLED RETRIEVAL: Downloads evidence photo for authorized officer (200)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/evidence/${beforeEvidenceId}`,
+				{
+					method: "GET",
+					headers: { Cookie: cleanupOfficerACookie },
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(200);
+			expect(res.headers.get("Cache-Control")).toContain("private");
+		});
+
+		it("CONTROLLED RETRIEVAL: Rejects unauthorized user downloading evidence (403)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/evidence/${beforeEvidenceId}`,
+				{
+					method: "GET",
+					headers: { Cookie: organizerBCookie }, // Other org
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(403);
+		});
+
+		it("SUBMISSION: Officer submits completed cleanup task (200)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/submit`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+					},
+				},
+				testEnv,
+			);
+
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { cleanupTask: { status: string } };
+			expect(body.cleanupTask.status).toBe("submitted");
+
+			// Audit logged
+			const audits = await db
+				.select()
+				.from(auditLogs)
+				.where(
+					and(
+						eq(auditLogs.entityId, cleanupTaskId),
+						eq(auditLogs.action, "cleanup_task.submitted"),
+					),
+				);
+			expect(audits.length).toBe(1);
+		});
+
+		it("VERIFICATION: Rejects officer attempting task verification (403)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/verify`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+					},
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(403);
+		});
+
+		it("VERIFICATION & INDEPENDENCE: Organizer verifies task WITHOUT opening roads (200)", async () => {
+			// Query initial road impact status on the event
+			const roadStatusBefore = await db
+				.select()
+				.from(roadStatusUpdates)
+				.where(eq(roadStatusUpdates.roadImpactId, createdImpactId))
+				.orderBy(desc(roadStatusUpdates.observedAt))
+				.limit(1);
+
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/verify`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: organizerACookie,
+						Origin: "http://localhost:5173",
+					},
+				},
+				testEnv,
+			);
+
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as {
+				cleanupTask: { status: string; verifiedBy: string; verifiedAt: string };
+			};
+			expect(body.cleanupTask.status).toBe("verified");
+			expect(body.cleanupTask.verifiedBy).toBe(fixtureUserOrganizerA.id);
+			expect(body.cleanupTask.verifiedAt).toBeDefined();
+
+			// CRITICAL DOMAIN INVARIANT (AGENTS §13 & SRS FR-056):
+			// Cleanup verification must NOT automatically reopen or alter road status!
+			const roadStatusAfter = await db
+				.select()
+				.from(roadStatusUpdates)
+				.where(eq(roadStatusUpdates.roadImpactId, createdImpactId))
+				.orderBy(desc(roadStatusUpdates.observedAt))
+				.limit(1);
+
+			expect(roadStatusAfter.length).toBe(roadStatusBefore.length);
+			if (roadStatusBefore[0]) {
+				expect(roadStatusAfter[0].status).toBe(roadStatusBefore[0].status);
+			}
+		});
+
+		it("REOPEN: Organizer reopens verified task (200)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/reopen`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: organizerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						reason: "Perlu pembersihan tambahan di bagian sudut pelataran.",
+					}),
+				},
+				testEnv,
+			);
+
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as {
+				cleanupTask: { status: string; verifiedBy: string | null; verifiedAt: string | null };
+			};
+			expect(body.cleanupTask.status).toBe("reopened");
+			expect(body.cleanupTask.verifiedBy).toBeNull();
+			expect(body.cleanupTask.verifiedAt).toBeNull();
+		});
+
+		it("WASTE RECORDS: Rejects waste record with neither quantityKg nor sackCount (422)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/waste-records`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						category: "organic",
+						measurementMethod: "weighed",
+					}),
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(422);
+		});
+
+		it("WASTE RECORDS: Creates weighed organic waste record (201)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/waste-records`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						category: "organic",
+						quantityKg: 42.5,
+						measurementMethod: "weighed",
+						destination: "Kompos TPS3R Sanur",
+						taskId: cleanupTaskId,
+					}),
+				},
+				testEnv,
+			);
+
+			expect(res.status).toBe(201);
+			const body = (await res.json()) as {
+				wasteRecord: {
+					id: string;
+					category: string;
+					quantityKg: number;
+					measurementMethod: string;
+					destination: string;
+				};
+			};
+
+			expect(body.wasteRecord.id).toBeDefined();
+			expect(body.wasteRecord.category).toBe("organic");
+			expect(body.wasteRecord.quantityKg).toBe(42.5);
+			expect(body.wasteRecord.measurementMethod).toBe("weighed");
+			expect(body.wasteRecord.destination).toBe("Kompos TPS3R Sanur");
+		});
+
+		it("WASTE RECORDS: Creates estimated residual waste record with sack count (201)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/waste-records`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						category: "residual",
+						sackCount: 5,
+						measurementMethod: "estimated",
+						destination: "TPA Suwung",
+					}),
+				},
+				testEnv,
+			);
+
+			expect(res.status).toBe(201);
+			const body = (await res.json()) as {
+				wasteRecord: {
+					id: string;
+					category: string;
+					sackCount: number;
+					measurementMethod: string;
+				};
+			};
+
+			expect(body.wasteRecord.category).toBe("residual");
+			expect(body.wasteRecord.sackCount).toBe(5);
+			expect(body.wasteRecord.measurementMethod).toBe("estimated");
+		});
+
+		it("WASTE RECORDS: Lists waste records for event (200)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/waste-records`,
+				{
+					method: "GET",
+					headers: { Cookie: organizerACookie },
+				},
+				testEnv,
+			);
+
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as { wasteRecords: Array<{ category: string }> };
+			expect(body.wasteRecords.length).toBeGreaterThanOrEqual(2);
+		});
+
+		it("PUBLIC: Returns aggregated cleanup summary without private details (200)", async () => {
+			// Publish the draft event or create cleanup items on published event
+			await db.insert(cleanupTasks).values({
+				id: crypto.randomUUID(),
+				eventId: publishedEventId,
+				title: "Pembersihan Area Upacara Publik",
+				status: "verified",
+				assignedUserId: fixtureUserCleanupOfficerA.id,
+			});
+
+			await db.insert(wasteRecords).values({
+				id: crypto.randomUUID(),
+				eventId: publishedEventId,
+				category: "organic",
+				quantityKg: "35.00",
+				measurementMethod: "weighed",
+				recordedBy: fixtureUserOrganizerA.id,
+			});
+
+			const res = await app.request(
+				`http://localhost:5173/api/public/events/${publishedEventSlug}/cleanup-summary`,
+				{ method: "GET" },
+				testEnv,
+			);
+
+			expect(res.status).toBe(200);
+			const body = (await res.json()) as {
+				cleanupSummary: {
+					totalTasks: number;
+					verifiedTasks: number;
+					wasteTotals: {
+						totalKg: number;
+						byCategory: Record<string, { totalKg: number; totalSacks: number }>;
+					};
+				};
+			};
+
+			expect(body.cleanupSummary).toBeDefined();
+			expect(body.cleanupSummary.totalTasks).toBeGreaterThanOrEqual(1);
+			expect(body.cleanupSummary.verifiedTasks).toBeGreaterThanOrEqual(1);
+			expect(body.cleanupSummary.wasteTotals.totalKg).toBeGreaterThanOrEqual(35);
+
+			// PRIVACY CHECK: Zero private notes, keys, assignee emails
+			expect((body.cleanupSummary as Record<string, unknown>).assignedUserEmail).toBeUndefined();
+			expect((body.cleanupSummary as Record<string, unknown>).r2Key).toBeUndefined();
 		});
 	});
 });

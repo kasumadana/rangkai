@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import { events } from "../../db/schema";
+import { cleanupTasks, events, wasteRecords } from "../../db/schema";
 import { sendError } from "../lib/errors";
 import type { AppVariables, Env } from "../types";
 import { publicEventsQuerySchema } from "../validators/public";
@@ -241,7 +241,7 @@ publicRouter.get("/events/:slug/roads", async (c) => {
 	return c.json({ roads }, 200);
 });
 
-// GET /api/public/events/:slug/cleanup-summary - Public cleanup summary placeholder
+// GET /api/public/events/:slug/cleanup-summary - Public aggregate cleanup summary
 publicRouter.get("/events/:slug/cleanup-summary", async (c) => {
 	const slug = c.req.param("slug");
 	const db = c.get("db");
@@ -266,5 +266,55 @@ publicRouter.get("/events/:slug/cleanup-summary", async (c) => {
 		);
 	}
 
-	return c.json({ summary: null }, 200);
+	const eventId = eventRows[0].id;
+
+	// Aggregate cleanup tasks: count total and verified
+	const taskStats = await db
+		.select({
+			totalTasks: sql<number>`count(*)::int`,
+			verifiedTasks: sql<number>`count(*) filter (where ${cleanupTasks.status} = 'verified')::int`,
+		})
+		.from(cleanupTasks)
+		.where(eq(cleanupTasks.eventId, eventId));
+
+	// Aggregate waste records
+	const wasteRows = await db
+		.select({
+			category: wasteRecords.category,
+			quantityKg: wasteRecords.quantityKg,
+			sackCount: wasteRecords.sackCount,
+		})
+		.from(wasteRecords)
+		.where(eq(wasteRecords.eventId, eventId));
+
+	let totalKg = 0;
+	const byCategory: Record<string, { totalKg: number; totalSacks: number }> = {
+		organic: { totalKg: 0, totalSacks: 0 },
+		recyclable: { totalKg: 0, totalSacks: 0 },
+		residual: { totalKg: 0, totalSacks: 0 },
+	};
+
+	for (const row of wasteRows) {
+		const kg = row.quantityKg ? Number(row.quantityKg) : 0;
+		const sacks = row.sackCount ? Number(row.sackCount) : 0;
+		totalKg += kg;
+		if (byCategory[row.category]) {
+			byCategory[row.category].totalKg += kg;
+			byCategory[row.category].totalSacks += sacks;
+		}
+	}
+
+	return c.json(
+		{
+			cleanupSummary: {
+				totalTasks: taskStats[0]?.totalTasks ?? 0,
+				verifiedTasks: taskStats[0]?.verifiedTasks ?? 0,
+				wasteTotals: {
+					totalKg,
+					byCategory,
+				},
+			},
+		},
+		200,
+	);
 });

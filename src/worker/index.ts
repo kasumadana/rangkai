@@ -4,6 +4,7 @@ import { AuthConfigError, createAuth } from "./auth";
 import { formatErrorEnvelope } from "./lib/errors";
 import { csrfAndOriginProtection } from "./middleware/csrf";
 import { assignmentsRouter } from "./routes/assignments";
+import { cleanupTasksRouter, eventsCleanupRouter } from "./routes/cleanup";
 import { documentsRouter } from "./routes/documents";
 import { eventsRouter } from "./routes/events";
 import {
@@ -117,10 +118,14 @@ app.route("/api/road-segments", roadSegmentsRouter);
 // Mount Live Road Status updates router
 app.route("/api/road-impacts", roadStatusRouter);
 
+// Mount Cleanup Tasks direct router
+app.route("/api/cleanup-tasks", cleanupTasksRouter);
+
 // Mount Extractions detail router
 app.route("/api/extractions", extractionsRouter);
 
-// Mount Events-scoped routers (Documents, Extractions, Road Impacts, Assignments, Events)
+// Mount Events-scoped routers (Cleanup, Documents, Extractions, Road Impacts, Assignments, Events)
+app.route("/api/events", eventsCleanupRouter);
 app.route("/api/events", documentsRouter);
 app.route("/api/events", eventsExtractionsRouter);
 app.route("/api/events", roadImpactsRouter);

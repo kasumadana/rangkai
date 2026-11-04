@@ -64,12 +64,18 @@ export const csrfAndOriginProtection: MiddlewareHandler<{
 	}
 
 	// 3. Content-Type enforcement:
-	// Narrow exception for multipart document upload: POST /api/events/:eventId/documents
+	// Narrow exception for multipart file uploads:
+	// - POST /api/events/:eventId/documents
+	// - POST /api/cleanup-tasks/:taskId/evidence
 	const isDocumentUpload =
 		c.req.method.toUpperCase() === "POST" &&
 		/^\/api\/events\/[^/]+\/documents$/.test(requestUrl.pathname);
 
-	if (isDocumentUpload) {
+	const isCleanupEvidenceUpload =
+		c.req.method.toUpperCase() === "POST" &&
+		/^\/api\/cleanup-tasks\/[^/]+\/evidence$/.test(requestUrl.pathname);
+
+	if (isDocumentUpload || isCleanupEvidenceUpload) {
 		if (
 			contentType.startsWith("application/x-www-form-urlencoded") ||
 			contentType.startsWith("text/plain")
@@ -77,7 +83,7 @@ export const csrfAndOriginProtection: MiddlewareHandler<{
 			return sendError(
 				c,
 				"BAD_REQUEST",
-				"Unsupported Content-Type for document upload. Multipart/form-data is required.",
+				"Unsupported Content-Type for file upload. Multipart/form-data is required.",
 				400,
 			);
 		}
@@ -85,7 +91,7 @@ export const csrfAndOriginProtection: MiddlewareHandler<{
 			return sendError(
 				c,
 				"BAD_REQUEST",
-				"Unsupported Content-Type. Document upload requires multipart/form-data.",
+				"Unsupported Content-Type. File upload requires multipart/form-data.",
 				400,
 			);
 		}
