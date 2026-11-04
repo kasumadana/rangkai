@@ -1,0 +1,74 @@
+{
+  "doc_id": "DOC-01-DENPASAR-PEDESTRIAN",
+  "category": "missing_date",
+  "filename": "1.png",
+  "event_name": {
+    "value": "Pekerjaan Rehabilitasi Jalan dan Penataan Pedestrian Kawasan Kota Denpasar",
+    "evidence": "PEKERJAAN REHABILITASI JALAN DAN PENATAAN PEDESTRIAN",
+    "needs_review": false
+  },
+  "event_category": "infrastructure_work",
+  "start_datetime": {
+    "value": null,
+    "evidence": null,
+    "needs_review": true
+  },
+  "end_datetime": {
+    "value": "2026-12-16T23:59:59+08:00",
+    "evidence": "hingga Rabu, 16 Desember 2026",
+    "needs_review": false
+  },
+  "venue_name": {
+    "value": "Kawasan Kota Denpasar (Catur Muka)",
+    "evidence": "Kawasan Kota Denpasar",
+    "needs_review": false
+  },
+  "affected_road_names": [
+    {
+      "name": "Simpang Catur Muka",
+      "evidence": "Simpang Catur Muka",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Gajah Mada",
+      "evidence": "Jalan Gajah Mada",
+      "needs_review": false
+    },
+    {
+      "name": "Simpang Thamrin",
+      "evidence": "Simpang Thamrin",
+      "needs_review": false
+    },
+    {
+      "name": "Simpang Pemecutan",
+      "evidence": "Simpang Pemecutan",
+      "needs_review": false
+    },
+    {
+      "name": "Simpang Suci",
+      "evidence": "Simpang Suci",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Hasanudin",
+      "evidence": "Jalan Hasanudin",
+      "needs_review": false
+    }
+  ],
+  "traffic_impact_description": {
+    "value": "Antisipasi perlambatan arus lalu lintas, kendaraan besar dilarang melintas, gunakan jalur alternatif",
+    "evidence": "Antisipasi kemungkinan perlambatan arus lalu lintas",
+    "needs_review": false
+  },
+  "organizer_name": {
+    "value": "Pemerintah Kota Denpasar",
+    "evidence": "PEMERINTAH KOTA DENPASAR",
+    "needs_review": false
+  },
+  "permit_reference_text": null,
+  "expected_issues": [
+    "Tanggal mulai tidak disebutkan secara eksplisit (hanya tanggal selesai: hingga Rabu, 16 Desember 2026)",
+    "Jam operasional spesifik per hari tidak dicantumkan"
+  ],
+  "split": "train_dev"
+}

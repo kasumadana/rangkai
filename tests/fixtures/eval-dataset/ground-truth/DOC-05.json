@@ -1,0 +1,49 @@
+{
+  "doc_id": "DOC-05-TEGAL-HARUM-ASPAL",
+  "category": "missing_date",
+  "filename": "5.png",
+  "event_name": {
+    "value": "Kegiatan Pengaspalan Jalan Raya Buana Kubu",
+    "evidence": "PENGUMUMAN PENGASPALAN JALAN",
+    "needs_review": false
+  },
+  "event_category": "infrastructure_work",
+  "start_datetime": {
+    "value": "2026-11-01T19:00:00+08:00",
+    "evidence": "Tanggal: 01 & 02 November 2026 Waktu: 19.00 WITA",
+    "needs_review": false
+  },
+  "end_datetime": {
+    "value": null,
+    "evidence": "s/d Selesai",
+    "needs_review": true
+  },
+  "venue_name": {
+    "value": "Jalan Raya Buana Kubu",
+    "evidence": "Lokasi: Jalan Raya Buana Kubu",
+    "needs_review": false
+  },
+  "affected_road_names": [
+    {
+      "name": "Jalan Raya Buana Kubu",
+      "evidence": "Jalan Raya Buana Kubu",
+      "needs_review": false
+    }
+  ],
+  "traffic_impact_description": {
+    "value": "Akses jalan ditutup total / diberlakukan sistem buka-tutup sementara",
+    "evidence": "akses jalan tersebut akan ditutup total/diberlakukan sistem buka-tutup sementara",
+    "needs_review": false
+  },
+  "organizer_name": {
+    "value": "Pemerintah Desa Tegal Harum",
+    "evidence": "PEMERINTAH DESA TEGAL HARUM",
+    "needs_review": false
+  },
+  "permit_reference_text": null,
+  "expected_issues": [
+    "Waktu selesai tidak memiliki batas pasti ('s/d Selesai') -> end_datetime null",
+    "Pelaksanaan berlangsung 2 malam berturut-turut (01 & 02 November 2026)"
+  ],
+  "split": "train_dev"
+}

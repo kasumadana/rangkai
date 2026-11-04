@@ -1,0 +1,94 @@
+{
+  "doc_id": "DOC-02-KEROBOKAN-TRAFFIC",
+  "category": "multiple_roads",
+  "filename": "2.png",
+  "event_name": {
+    "value": "Rekayasa Lalu Lintas di Kerobokan Kelod Petitenget",
+    "evidence": "JALUR REKAYASA LALU LINTAS DI KEROBOKAN KELOD",
+    "needs_review": false
+  },
+  "event_category": "traffic_management",
+  "start_datetime": {
+    "value": "2025-12-14T00:00:00+08:00",
+    "evidence": "DIMULAI PADA HARI MINGGU TANGGAL 14 DESEMBER 2025",
+    "needs_review": false
+  },
+  "end_datetime": {
+    "value": null,
+    "evidence": null,
+    "needs_review": true
+  },
+  "venue_name": {
+    "value": "Kerobokan Kelod Petitenget",
+    "evidence": "WILAYAH KEROBOKAN KELOD PETITENGET",
+    "needs_review": false
+  },
+  "affected_road_names": [
+    {
+      "name": "Jalan Gunung Tangkuban Perahu",
+      "evidence": "Jl. Gn. Tangkuban Perahu",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Raya Kerobokan",
+      "evidence": "Jl. Raya Kerobokan",
+      "needs_review": false
+    },
+    {
+      "name": "Simpang Petitenget",
+      "evidence": "Sp. Petitenget",
+      "needs_review": false
+    },
+    {
+      "name": "Simpang Batu Belig",
+      "evidence": "Sp. Batu Belig",
+      "needs_review": false
+    },
+    {
+      "name": "Simpang Pura Petitenget",
+      "evidence": "Sp. Pura Petitenget",
+      "needs_review": false
+    },
+    {
+      "name": "Simpang Mertanadi",
+      "evidence": "Sp. Mertanadi",
+      "needs_review": false
+    },
+    {
+      "name": "Simpang Oberoi",
+      "evidence": "Sp. Oberoi",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Umalas 1",
+      "evidence": "Jl. Umalas 1 (Gang Nook)",
+      "needs_review": false
+    },
+    {
+      "name": "Simpang Serangan-Pengubengan Kauh",
+      "evidence": "Sp. Serangan-Pengubengan Kauh",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Intan Permai",
+      "evidence": "Jl. Intan Permai",
+      "needs_review": false
+    }
+  ],
+  "traffic_impact_description": {
+    "value": "Pemberlakuan satu arah dan penutupan ujung selatan Jl. Umalas 1",
+    "evidence": "Menjadi Satu Arah Dari Timur Ke Barat... Jl. Umalas 1 Akan Ditutup Di Ujung Selatan",
+    "needs_review": false
+  },
+  "organizer_name": {
+    "value": "Dinas Perhubungan Kabupaten Badung & Satlantas Polres Badung",
+    "evidence": "DINAS PERHUBUNGAN KABUPATEN BADUNG",
+    "needs_review": false
+  },
+  "permit_reference_text": null,
+  "expected_issues": [
+    "Rekayasa arus permanen/jangka panjang tanpa batas akhir waktu (end_datetime null)",
+    "Banyak singkatan nama jalan dan simpang ('Sp.', 'Jl. Gn.')"
+  ],
+  "split": "train_dev"
+}

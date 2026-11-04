@@ -1,0 +1,54 @@
+{
+  "doc_id": "DOC-06-UNGASAN-PENUTUPAN",
+  "category": "missing_date",
+  "filename": "6.png",
+  "event_name": {
+    "value": "Pembangunan Jalan Trase Pecatu-Jalan Melasti (Pemasangan Gorong-gorong)",
+    "evidence": "pekerjaan pembangunan Jalan Trase Pecatu-Jalan Melasti... pemasangan saluran gorong-gorong",
+    "needs_review": false
+  },
+  "event_category": "infrastructure_work",
+  "start_datetime": {
+    "value": "2026-11-03T00:00:00+08:00",
+    "evidence": "3 November 2026 sampai dengan 17 November 2026",
+    "needs_review": false
+  },
+  "end_datetime": {
+    "value": "2026-11-17T23:59:59+08:00",
+    "evidence": "sampai dengan 17 November 2026",
+    "needs_review": false
+  },
+  "venue_name": {
+    "value": "Ruas Jalan Belimbing Sari (Ungasan - Pecatu)",
+    "evidence": "Ruas Jalan Belimbing Sari, dari arah Desa Ungasan menuju Desa Pecatu",
+    "needs_review": false
+  },
+  "affected_road_names": [
+    {
+      "name": "Jalan Belimbing Sari",
+      "evidence": "Ruas Jalan Belimbing Sari",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Trase Pecatu-Jalan Melasti",
+      "evidence": "Jalan Trase Pecatu-Jalan Melasti",
+      "needs_review": true
+    }
+  ],
+  "traffic_impact_description": {
+    "value": "Penutupan jalan sementara untuk pekerjaan pemasangan gorong-gorong, diimbau menggunakan jalur alternatif",
+    "evidence": "penutupan jalan sementara... diimbau untuk menggunakan jalur alternatif",
+    "needs_review": false
+  },
+  "organizer_name": {
+    "value": "Pemerintah Desa Ungasan",
+    "evidence": "PEMERINTAH DESA UNGASAN Kec. Kuta Selatan, Kab. Badung",
+    "needs_review": false
+  },
+  "permit_reference_text": null,
+  "expected_issues": [
+    "Jam operasional penutupan tidak spesifik (rentang tanggal multi-hari 3-17 November)",
+    "Terdapat dua nama proyek jalan dalam teks narasi ('Jalan Trase Pecatu-Jalan Melasti' vs 'Jalan Belimbing Sari')"
+  ],
+  "split": "unseen_test"
+}
