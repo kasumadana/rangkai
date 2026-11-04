@@ -8,6 +8,8 @@ export interface Env {
 	DATABASE_URL_UNPOOLED?: string;
 	BETTER_AUTH_SECRET?: string;
 	BETTER_AUTH_URL?: string;
+	rangkai_documents_dev?: R2Bucket;
+	GEMINI_API_KEY?: string;
 }
 
 export interface AppVariables {

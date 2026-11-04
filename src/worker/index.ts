@@ -4,7 +4,18 @@ import { AuthConfigError, createAuth } from "./auth";
 import { formatErrorEnvelope } from "./lib/errors";
 import { csrfAndOriginProtection } from "./middleware/csrf";
 import { assignmentsRouter } from "./routes/assignments";
+import { documentsRouter } from "./routes/documents";
 import { eventsRouter } from "./routes/events";
+import {
+	eventsExtractionsRouter,
+	extractionsRouter,
+} from "./routes/extractions";
+import { publicRouter } from "./routes/public";
+import {
+	roadImpactsRouter,
+	roadSegmentsRouter,
+	roadStatusRouter,
+} from "./routes/roads";
 import type { AppVariables, Env } from "./types";
 
 declare global {
@@ -13,6 +24,8 @@ declare global {
 		DATABASE_URL_UNPOOLED?: string;
 		BETTER_AUTH_SECRET?: string;
 		BETTER_AUTH_URL?: string;
+		rangkai_documents_dev?: R2Bucket;
+		GEMINI_API_KEY?: string;
 	}
 }
 
@@ -95,7 +108,22 @@ app.all("/api/auth/*", async (c) => {
 	return auth.handler(c.req.raw);
 });
 
-// Mount Events and Assignments routes
+// Mount Public API routes (anonymous read-only access)
+app.route("/api/public", publicRouter);
+
+// Mount Road Segments catalog router
+app.route("/api/road-segments", roadSegmentsRouter);
+
+// Mount Live Road Status updates router
+app.route("/api/road-impacts", roadStatusRouter);
+
+// Mount Extractions detail router
+app.route("/api/extractions", extractionsRouter);
+
+// Mount Events-scoped routers (Documents, Extractions, Road Impacts, Assignments, Events)
+app.route("/api/events", documentsRouter);
+app.route("/api/events", eventsExtractionsRouter);
+app.route("/api/events", roadImpactsRouter);
 app.route("/api/events", assignmentsRouter);
 app.route("/api/events", eventsRouter);
 

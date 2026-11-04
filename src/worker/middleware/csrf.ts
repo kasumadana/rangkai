@@ -63,8 +63,36 @@ export const csrfAndOriginProtection: MiddlewareHandler<{
 		);
 	}
 
-	// 3. Content-Type enforcement for application APIs: reject form-compatible / simple request types
-	// that browsers permit without CORS preflights (e.g. text/plain, urlencoded, multipart)
+	// 3. Content-Type enforcement:
+	// Narrow exception for multipart document upload: POST /api/events/:eventId/documents
+	const isDocumentUpload =
+		c.req.method.toUpperCase() === "POST" &&
+		/^\/api\/events\/[^/]+\/documents$/.test(requestUrl.pathname);
+
+	if (isDocumentUpload) {
+		if (
+			contentType.startsWith("application/x-www-form-urlencoded") ||
+			contentType.startsWith("text/plain")
+		) {
+			return sendError(
+				c,
+				"BAD_REQUEST",
+				"Unsupported Content-Type for document upload. Multipart/form-data is required.",
+				400,
+			);
+		}
+		if (!contentType.startsWith("multipart/form-data")) {
+			return sendError(
+				c,
+				"BAD_REQUEST",
+				"Unsupported Content-Type. Document upload requires multipart/form-data.",
+				400,
+			);
+		}
+		return next();
+	}
+
+	// Default application APIs: reject form-compatible / simple request types
 	for (const unsafeType of UNSAFE_CONTENT_TYPES) {
 		if (contentType.startsWith(unsafeType)) {
 			return sendError(

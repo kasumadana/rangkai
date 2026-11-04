@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import * as dotenv from "dotenv";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createBuilder, preview, type PreviewServer } from "vite";
 import { hashPassword } from "better-auth/crypto";
@@ -20,6 +20,7 @@ import {
 	organizations,
 	roadImpacts,
 	roadSegments,
+	roadStatusUpdates,
 } from "../../src/db/schema";
 import app from "../../src/worker/index";
 
@@ -208,6 +209,7 @@ describe("GET /api/health", () => {
 			let fixtureUserId: string;
 			let sessionCookie = "";
 			let verifiedSegmentId: string;
+			let publishedSlug = "";
 
 			beforeAll(async () => {
 				dotenv.config({ path: ".dev.vars" });
@@ -264,7 +266,11 @@ describe("GET /api/health", () => {
 			afterAll(async () => {
 				if (!db) return;
 				// Clean up fixtures
-				await db.delete(roadImpacts).where(eq(roadImpacts.roadSegmentId, verifiedSegmentId));
+				const impRows = await db.select({ id: roadImpacts.id }).from(roadImpacts).where(eq(roadImpacts.roadSegmentId, verifiedSegmentId));
+				if (impRows.length > 0) {
+					await db.delete(roadStatusUpdates).where(inArray(roadStatusUpdates.roadImpactId, impRows.map((i) => i.id)));
+					await db.delete(roadImpacts).where(eq(roadImpacts.roadSegmentId, verifiedSegmentId));
+				}
 				await db.delete(roadSegments).where(eq(roadSegments.id, verifiedSegmentId));
 				await db.delete(auditLogs).where(eq(auditLogs.organizationId, fixtureOrgId));
 				await db.delete(events).where(eq(events.organizationId, fixtureOrgId));
@@ -362,6 +368,7 @@ describe("GET /api/health", () => {
 				expect(body1.event.status).toBe("published");
 				expect(body2.event.status).toBe("published");
 				expect(body1.event.publicSlug).toBe(body2.event.publicSlug);
+				publishedSlug = body1.event.publicSlug;
 
 				// Assert exactly 1 publication audit log row was committed to Neon!
 				const audits = await db
@@ -375,6 +382,62 @@ describe("GET /api/health", () => {
 					);
 				expect(audits.length).toBe(1);
 				expect((audits[0].afterJson as { publicSlug: string }).publicSlug).toBe(body1.event.publicSlug);
+			});
+
+			it("executes workerd runtime road status updates and anonymous public queries", async () => {
+				const origin = baseUrl.replace(/\/$/, "");
+
+				// 1. Query road segments catalog via workerd
+				const catRes = await httpRequest(
+					`${baseUrl}api/road-segments?bbox=115.2,-8.7,115.3,-8.6`,
+					{ headers: { Cookie: sessionCookie } },
+				);
+				expect(catRes.statusCode).toBe(200);
+				const catBody = catRes.json<{ segments: Array<{ id: string }> }>();
+				expect(catBody.segments.length).toBeGreaterThanOrEqual(1);
+
+				// 2. Query published event road impacts
+				const impacts = await db
+					.select({ id: roadImpacts.id })
+					.from(roadImpacts)
+					.where(eq(roadImpacts.roadSegmentId, verifiedSegmentId));
+				expect(impacts.length).toBeGreaterThanOrEqual(1);
+				const impactId = impacts[0].id;
+
+				// 3. Update road status via workerd
+				const statusRes = await httpRequest(
+					`${baseUrl}api/road-impacts/${impactId}/status`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: sessionCookie,
+							Origin: origin,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							status: "closed",
+							observedAt: new Date().toISOString(),
+							mutationId: crypto.randomUUID(),
+						}),
+					},
+				);
+				expect(statusRes.statusCode).toBe(200);
+
+				// 4. Anonymous public list & roads query via workerd
+				const pubRes = await httpRequest(`${baseUrl}api/public/events`);
+				expect(pubRes.statusCode).toBe(200);
+				const pubBody = pubRes.json<{ events: Array<{ publicSlug: string }> }>();
+				expect(pubBody.events.length).toBeGreaterThanOrEqual(1);
+
+				const roadsRes = await httpRequest(
+					`${baseUrl}api/public/events/${publishedSlug}/roads`,
+				);
+				expect(roadsRes.statusCode).toBe(200);
+				const roadsBody = roadsRes.json<{
+					roads: Array<{ effectiveStatus: string; isExpired: boolean }>;
+				}>();
+				expect(roadsBody.roads.length).toBeGreaterThanOrEqual(1);
+				expect(roadsBody.roads[0].effectiveStatus).toBe("closed");
 			});
 
 			it("revokes session via workerd sign-out, denying subsequent protected requests (401)", async () => {
