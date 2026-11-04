@@ -332,7 +332,14 @@ eventsRouter.get("/", async (c) => {
 
 	return c.json(
 		{
-			events: eventList,
+			events: eventList.map((ev) => {
+				if (organizerOrgIds.includes(ev.organizationId)) {
+					return ev;
+				}
+				const officerSafe = { ...ev };
+				delete (officerSafe as { contactInformation?: unknown }).contactInformation;
+				return officerSafe;
+			}),
 			pagination: {
 				page,
 				limit,
@@ -379,6 +386,11 @@ eventsRouter.get("/:eventId", async (c) => {
 		);
 	}
 
+	if (!accessResult.isOrganizer) {
+		const officerSafe = { ...accessResult.event };
+		delete (officerSafe as { contactInformation?: unknown }).contactInformation;
+		return c.json({ event: officerSafe }, 200);
+	}
 	return c.json({ event: accessResult.event }, 200);
 });
 

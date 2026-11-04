@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import * as dotenv from "dotenv";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createBuilder, preview, type PreviewServer } from "vite";
 import { hashPassword } from "better-auth/crypto";
@@ -14,14 +14,22 @@ import { assertDevBranch } from "../../src/db/guard";
 import { getDb, type DbClient } from "../../src/db/index";
 import { account, session, user } from "../../src/db/auth-schema";
 import {
+	aiExtractions,
 	auditLogs,
+	cleanupEvidence,
+	cleanupTasks,
+	documents,
+	eventAssignments,
 	events,
 	memberships,
 	organizations,
 	roadImpacts,
 	roadSegments,
+	roadStatusUpdates,
+	wasteRecords,
 } from "../../src/db/schema";
 import app from "../../src/worker/index";
+import { loadSyntheticAiFixtures } from "../fixtures/ai/dev/loader";
 
 // ponytail: minimal stdlib http helper preserving raw browser headers that global fetch overwrites
 function httpRequest(
@@ -200,14 +208,16 @@ describe("GET /api/health", () => {
 			expect(res.json()).toEqual({ name: "Cloudflare" });
 		});
 
-		describe("workerd runtime auth, session cookies, CSRF, and concurrent publication", () => {
+		describe("workerd runtime auth, session cookies, CSRF, real R2 storage, and unverified road exclusion", () => {
 			const runKey = crypto.randomUUID().slice(0, 8);
 			const testPassword = "WorkerdPassword123!";
 			let db: DbClient;
 			let fixtureOrgId: string;
 			let fixtureUserId: string;
 			let sessionCookie = "";
-			let verifiedSegmentId: string;
+			let unverifiedSegmentId: string;
+			let workerdEventId = "";
+			let publishedSlug = "";
 
 			beforeAll(async () => {
 				dotenv.config({ path: ".dev.vars" });
@@ -247,32 +257,98 @@ describe("GET /api/health", () => {
 					role: "organizer",
 				});
 
+				// Synthetic segment is strictly UNVERIFIED (verifiedBy: null, verifiedAt: null)
 				const segRows = await db
 					.insert(roadSegments)
 					.values({
 						id: crypto.randomUUID(),
-						displayName: `Workerd Segment ${runKey}`,
+						displayName: `[TEST] Workerd Unverified Segment ${runKey}`,
 						geom: sql`ST_GeomFromEWKT('SRID=4326;LINESTRING(115.2166 -8.6500, 115.2170 -8.6510)')`,
 						coverageArea: "Area Workerd",
-						verifiedBy: fixtureUserId,
-						verifiedAt: new Date(),
+						verifiedBy: null,
+						verifiedAt: null,
 					})
 					.returning();
-				verifiedSegmentId = segRows[0].id;
+				unverifiedSegmentId = segRows[0].id;
 			});
 
 			afterAll(async () => {
 				if (!db) return;
-				// Clean up fixtures
-				await db.delete(roadImpacts).where(eq(roadImpacts.roadSegmentId, verifiedSegmentId));
-				await db.delete(roadSegments).where(eq(roadSegments.id, verifiedSegmentId));
-				await db.delete(auditLogs).where(eq(auditLogs.organizationId, fixtureOrgId));
-				await db.delete(events).where(eq(events.organizationId, fixtureOrgId));
-				await db.delete(memberships).where(eq(memberships.organizationId, fixtureOrgId));
+				const orgEvents = await db
+					.select({ id: events.id })
+					.from(events)
+					.where(eq(events.organizationId, fixtureOrgId));
+				const eventIds = orgEvents.map((e) => e.id);
+				if (eventIds.length > 0) {
+					const tasks = await db
+						.select({ id: cleanupTasks.id })
+						.from(cleanupTasks)
+						.where(inArray(cleanupTasks.eventId, eventIds));
+					const taskIds = tasks.map((t) => t.id);
+					if (taskIds.length > 0) {
+						await db
+							.delete(cleanupEvidence)
+							.where(inArray(cleanupEvidence.taskId, taskIds));
+						await db
+							.delete(cleanupTasks)
+							.where(inArray(cleanupTasks.eventId, eventIds));
+					}
+					const docs = await db
+						.select({ id: documents.id })
+						.from(documents)
+						.where(inArray(documents.eventId, eventIds));
+					const docIds = docs.map((d) => d.id);
+					if (docIds.length > 0) {
+						await db
+							.delete(aiExtractions)
+							.where(inArray(aiExtractions.documentId, docIds));
+						await db
+							.delete(documents)
+							.where(inArray(documents.eventId, eventIds));
+					}
+					await db
+						.delete(wasteRecords)
+						.where(inArray(wasteRecords.eventId, eventIds));
+					await db
+						.delete(eventAssignments)
+						.where(inArray(eventAssignments.eventId, eventIds));
+				}
+
+				const impRows = await db
+					.select({ id: roadImpacts.id })
+					.from(roadImpacts)
+					.where(eq(roadImpacts.roadSegmentId, unverifiedSegmentId));
+				if (impRows.length > 0) {
+					await db
+						.delete(roadStatusUpdates)
+						.where(
+							inArray(
+								roadStatusUpdates.roadImpactId,
+								impRows.map((i) => i.id),
+							),
+						);
+					await db
+						.delete(roadImpacts)
+						.where(eq(roadImpacts.roadSegmentId, unverifiedSegmentId));
+				}
+				await db
+					.delete(roadSegments)
+					.where(eq(roadSegments.id, unverifiedSegmentId));
+				await db
+					.delete(auditLogs)
+					.where(eq(auditLogs.organizationId, fixtureOrgId));
+				await db
+					.delete(events)
+					.where(eq(events.organizationId, fixtureOrgId));
+				await db
+					.delete(memberships)
+					.where(eq(memberships.organizationId, fixtureOrgId));
 				await db.delete(session).where(eq(session.userId, fixtureUserId));
 				await db.delete(account).where(eq(account.userId, fixtureUserId));
 				await db.delete(user).where(eq(user.id, fixtureUserId));
-				await db.delete(organizations).where(eq(organizations.id, fixtureOrgId));
+				await db
+					.delete(organizations)
+					.where(eq(organizations.id, fixtureOrgId));
 			});
 
 			it("authenticates via workerd, delivering rangkai.session_token with HttpOnly attribute", async () => {
@@ -315,66 +391,335 @@ describe("GET /api/health", () => {
 				expect(body.error.code).toBe("FORBIDDEN");
 			});
 
-			it("executes real concurrent publication in workerd converging to 1 slug and exactly 1 audit row", async () => {
+			it("executes real workerd R2 document upload and private download on rangkai_documents_dev binding", async () => {
 				const origin = baseUrl.replace(/\/$/, "");
-				const eventRows = await db
-					.insert(events)
-					.values({
+				const aiFixtures = loadSyntheticAiFixtures();
+				const sample01 = aiFixtures[0];
+
+				// Create draft event via workerd
+				const createRes = await httpRequest(`${baseUrl}api/events`, {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+						Cookie: sessionCookie,
+						Origin: origin,
+					},
+					body: JSON.stringify({
 						organizationId: fixtureOrgId,
-						createdBy: fixtureUserId,
-						title: `Workerd Concurrent Event ${runKey}`,
+						title: `Workerd R2 & Road Exclusion Test ${runKey}`,
+						category: "upacara",
 						venueName: "Balai Banjar Workerd",
-						startsAt: new Date("2026-11-28T08:00:00Z"),
-						endsAt: new Date("2026-11-28T14:00:00Z"),
-						status: "review",
-						verifiedBy: fixtureUserId,
-						verifiedAt: new Date(),
+						startsAt: "2026-11-28T08:00:00+08:00",
+						endsAt: "2026-11-28T14:00:00+08:00",
+					}),
+				});
+				expect(createRes.statusCode).toBe(201);
+				workerdEventId = createRes.json<{ event: { id: string } }>().event.id;
+
+				// Upload private synthetic PNG document to real workerd R2 binding
+				const docForm = new FormData();
+				docForm.append(
+					"file",
+					new File([sample01.sourceBytes], "sample-01-complete.png", {
+						type: "image/png",
+					}),
+				);
+				docForm.append("processingConsent", "true");
+
+				const uploadRes = await fetch(
+					`${baseUrl}api/events/${workerdEventId}/documents`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: sessionCookie,
+							Origin: origin,
+						},
+						body: docForm,
+					},
+				);
+				expect(uploadRes.status).toBe(201);
+				const uploadBody = (await uploadRes.json()) as {
+					document: {
+						id: string;
+						mimeType: string;
+						sizeBytes: number;
+						aiConsentGranted: boolean;
+						r2Key?: string;
+					};
+				};
+				expect(uploadBody.document.mimeType).toBe("image/png");
+				expect(uploadBody.document.sizeBytes).toBe(
+					sample01.sourceBytes.byteLength,
+				);
+				expect(uploadBody.document.aiConsentGranted).toBe(true);
+				expect(uploadBody.document.r2Key).toBeUndefined();
+
+				// Stream private document back from real workerd R2 binding and verify byte-for-byte match
+				const getDocRes = await fetch(
+					`${baseUrl}api/events/${workerdEventId}/documents/${uploadBody.document.id}`,
+					{
+						headers: { Cookie: sessionCookie },
+					},
+				);
+				expect(getDocRes.status).toBe(200);
+				expect(getDocRes.headers.get("content-type")).toBe("image/png");
+				const downloadedBytes = new Uint8Array(await getDocRes.arrayBuffer());
+				expect(
+					Buffer.from(downloadedBytes).equals(
+						Buffer.from(sample01.sourceBytes),
+					),
+				).toBe(true);
+
+				// Anonymous access to private document is rejected with 401
+				const anonDocRes = await fetch(
+					`${baseUrl}api/events/${workerdEventId}/documents/${uploadBody.document.id}`,
+				);
+				expect(anonDocRes.status).toBe(401);
+			});
+
+			it("enforces unverified synthetic road segment exclusion in workerd (rejects attachment and publication, and filters inconsistent unverified rows from public roads API)", async () => {
+				const origin = baseUrl.replace(/\/$/, "");
+
+				// 1. Road segment catalog shows verified: false for synthetic segment
+				const catRes = await httpRequest(
+					`${baseUrl}api/road-segments?bbox=115.2,-8.7,115.3,-8.6`,
+					{ headers: { Cookie: sessionCookie } },
+				);
+				expect(catRes.statusCode).toBe(200);
+				const catBody = catRes.json<{
+					segments: Array<{ id: string; verified: boolean }>;
+				}>();
+				const foundSeg = catBody.segments.find(
+					(s) => s.id === unverifiedSegmentId,
+				);
+				expect(foundSeg).toBeUndefined();
+
+				// 2. Attaching unverified road segment via POST /road-impacts is rejected with 422
+				const attachRes = await httpRequest(
+					`${baseUrl}api/events/${workerdEventId}/road-impacts`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: sessionCookie,
+							Origin: origin,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							roadSegmentId: unverifiedSegmentId,
+							plannedFrom: "2026-11-28T08:00:00+08:00",
+							plannedTo: "2026-11-28T14:00:00+08:00",
+							impactType: "closure",
+						}),
+					},
+				);
+				expect(attachRes.statusCode).toBe(422);
+
+				// 3. Review event and verify publication is rejected (422) without verified road impacts
+				const reviewRes = await httpRequest(
+					`${baseUrl}api/events/${workerdEventId}/review`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: sessionCookie,
+							Origin: origin,
+							"Content-Type": "application/json",
+						},
+						body: "{}",
+					},
+				);
+				expect(reviewRes.statusCode).toBe(200);
+
+				const publishRes = await httpRequest(
+					`${baseUrl}api/events/${workerdEventId}/publish`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: sessionCookie,
+							Origin: origin,
+						},
+					},
+				);
+				expect(publishRes.statusCode).toBe(422);
+
+				// 4. Even if inconsistent legacy/dev DB rows exist on a published event pointing to an unverified segment,
+				// GET /api/public/events/:slug/roads strictly filters them out (returns empty array)
+				publishedSlug = `workerd-event-${runKey}`;
+				await db
+					.update(events)
+					.set({
+						status: "published",
+						publicSlug: publishedSlug,
+						publishedAt: new Date(),
+					})
+					.where(eq(events.id, workerdEventId));
+
+				const [inconsistentImpact] = await db
+					.insert(roadImpacts)
+					.values({
+						eventId: workerdEventId,
+						roadSegmentId: unverifiedSegmentId,
+						plannedFrom: new Date("2026-11-28T08:00:00Z"),
+						plannedTo: new Date("2026-11-28T14:00:00Z"),
+						impactType: "closure",
+						diversionNote: "Should never appear publicly",
 					})
 					.returning();
-				const workerdEventId = eventRows[0].id;
 
-				await db.insert(roadImpacts).values({
+				const roadsRes = await httpRequest(
+					`${baseUrl}api/public/events/${publishedSlug}/roads`,
+				);
+				expect(roadsRes.statusCode).toBe(200);
+				const roadsBody = roadsRes.json<{ roads: unknown[] }>();
+				expect(roadsBody.roads).toEqual([]);
+
+				// Remove inconsistent road impact immediately
+				await db
+					.delete(roadImpacts)
+					.where(eq(roadImpacts.id, inconsistentImpact.id));
+			});
+
+			it("executes real workerd R2 cleanup photo upload/download, task verification, waste recording, and public cleanup summary", async () => {
+				const origin = baseUrl.replace(/\/$/, "");
+				const aiFixtures = loadSyntheticAiFixtures();
+				const sample01 = aiFixtures[0];
+
+				await db.insert(eventAssignments).values({
 					eventId: workerdEventId,
-					roadSegmentId: verifiedSegmentId,
-					plannedFrom: new Date("2026-11-28T08:00:00Z"),
-					plannedTo: new Date("2026-11-28T14:00:00Z"),
-					impactType: "closure",
-					diversionNote: "Pengalihan workerd concurrent",
+					userId: fixtureUserId,
+					canUpdateTraffic: false,
+					canUpdateCleanup: true,
 				});
 
-				const [res1, res2] = await Promise.all([
-					httpRequest(`${baseUrl}api/events/${workerdEventId}/publish`, {
+				// 1. Create cleanup task in workerd
+				const createTaskRes = await httpRequest(
+					`${baseUrl}api/events/${workerdEventId}/cleanup-tasks`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: sessionCookie,
+							Origin: origin,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							title: "Pembersihan Workerd R2",
+							assignedUserId: fixtureUserId,
+						}),
+					},
+				);
+				expect(createTaskRes.statusCode).toBe(201);
+				const taskId = createTaskRes.json<{ cleanupTask: { id: string } }>()
+					.cleanupTask.id;
+
+				// 2. Transition task to in_progress
+				const inProgRes = await httpRequest(
+					`${baseUrl}api/cleanup-tasks/${taskId}`,
+					{
+						method: "PATCH",
+						headers: {
+							Cookie: sessionCookie,
+							Origin: origin,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ status: "in_progress" }),
+					},
+				);
+				expect(inProgRes.statusCode).toBe(200);
+
+				// 3. Upload 'after' photo evidence to real workerd R2 binding
+				const evForm = new FormData();
+				evForm.append("stage", "after");
+				evForm.append(
+					"file",
+					new File([sample01.sourceBytes], "after-clean.png", {
+						type: "image/png",
+					}),
+				);
+
+				const uploadEvRes = await fetch(
+					`${baseUrl}api/cleanup-tasks/${taskId}/evidence`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: sessionCookie,
+							Origin: origin,
+						},
+						body: evForm,
+					},
+				);
+				expect(uploadEvRes.status).toBe(201);
+				const uploadEvBody = (await uploadEvRes.json()) as {
+					evidence: { id: string; stage: string; r2Key?: string };
+				};
+				expect(uploadEvBody.evidence.stage).toBe("after");
+				expect(uploadEvBody.evidence.r2Key).toBeUndefined();
+
+				// 4. Download private cleanup evidence from real workerd R2 binding
+				const getEvRes = await fetch(
+					`${baseUrl}api/cleanup-tasks/${taskId}/evidence/${uploadEvBody.evidence.id}`,
+					{
+						headers: { Cookie: sessionCookie },
+					},
+				);
+				expect(getEvRes.status).toBe(200);
+				const downloadedEvBytes = new Uint8Array(await getEvRes.arrayBuffer());
+				expect(
+					Buffer.from(downloadedEvBytes).equals(
+						Buffer.from(sample01.sourceBytes),
+					),
+				).toBe(true);
+
+				// 5. Submit and verify task in workerd
+				const submitRes = await httpRequest(
+					`${baseUrl}api/cleanup-tasks/${taskId}/submit`,
+					{
 						method: "POST",
 						headers: { Cookie: sessionCookie, Origin: origin },
-					}),
-					httpRequest(`${baseUrl}api/events/${workerdEventId}/publish`, {
+					},
+				);
+				expect(submitRes.statusCode).toBe(200);
+
+				const verifyRes = await httpRequest(
+					`${baseUrl}api/cleanup-tasks/${taskId}/verify`,
+					{
 						method: "POST",
 						headers: { Cookie: sessionCookie, Origin: origin },
-					}),
-				]);
+					},
+				);
+				expect(verifyRes.statusCode).toBe(200);
 
-				expect(res1.statusCode).toBe(200);
-				expect(res2.statusCode).toBe(200);
+				// 6. Record waste and verify public cleanup summary in workerd
+				const wasteRes = await httpRequest(
+					`${baseUrl}api/events/${workerdEventId}/waste-records`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: sessionCookie,
+							Origin: origin,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							category: "organic",
+							quantityKg: 14.5,
+							sackCount: 3,
+							measurementMethod: "weighed",
+						}),
+					},
+				);
+				expect(wasteRes.statusCode).toBe(201);
 
-				const body1 = res1.json<{ event: { status: string; publicSlug: string } }>();
-				const body2 = res2.json<{ event: { status: string; publicSlug: string } }>();
-
-				expect(body1.event.status).toBe("published");
-				expect(body2.event.status).toBe("published");
-				expect(body1.event.publicSlug).toBe(body2.event.publicSlug);
-
-				// Assert exactly 1 publication audit log row was committed to Neon!
-				const audits = await db
-					.select()
-					.from(auditLogs)
-					.where(
-						and(
-							eq(auditLogs.eventId, workerdEventId),
-							eq(auditLogs.action, "event.published"),
-						),
-					);
-				expect(audits.length).toBe(1);
-				expect((audits[0].afterJson as { publicSlug: string }).publicSlug).toBe(body1.event.publicSlug);
+				const summaryRes = await httpRequest(
+					`${baseUrl}api/public/events/${publishedSlug}/cleanup-summary`,
+				);
+				expect(summaryRes.statusCode).toBe(200);
+				const summaryBody = summaryRes.json<{
+					summary: { totalTasks: number; verifiedTasks: number };
+					wasteTotals: { weighedKg: number; estimatedKg: number; totalSacks: number };
+				}>();
+				expect(summaryBody.summary.totalTasks).toBe(1);
+				expect(summaryBody.summary.verifiedTasks).toBe(1);
+				expect(summaryBody.wasteTotals.weighedKg).toBe(14.5);
+				expect(summaryBody.wasteTotals.estimatedKg).toBe(0);
+				expect(summaryBody.wasteTotals.totalSacks).toBe(3);
 			});
 
 			it("revokes session via workerd sign-out, denying subsequent protected requests (401)", async () => {

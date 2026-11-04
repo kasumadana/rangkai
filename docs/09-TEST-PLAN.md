@@ -41,7 +41,8 @@ Integration:
 - Terminal state modification prevention (completed/cancelled).
 - Idempotent publication retries without duplicate slug creation or audit duplication.
 - Atomic database mutation + audit log batching with rollback verification.
-- R2 upload lifecycle.
+- R2 upload lifecycle, stream-bounded size limits (8 MB documents, 5 MB photos), and rollback compensation.
+- A05-A08 operational implementation integration suite (tests/integration/operations-a05-a08.test.ts) covering preflight Neon dev branch guard (`br-wandering-paper-aogdxs48`), synthetic fixture loaders (strictly unverified synthetic test data), document uploads, Gemini AI extraction with schema validation and rate limits, human field corrections, live road status idempotency and future timestamp rejection, cleanup lifecycle with officer task ownership and evidence prerequisites, and public API waste separation (`weighedKg` vs `estimatedKg`).
 
 E2E:
 

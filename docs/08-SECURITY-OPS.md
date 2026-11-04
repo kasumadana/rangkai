@@ -69,11 +69,11 @@ Documents and cleanup photos are private R2 objects.
 
 Upload controls:
 
-- MIME/type validation.
-- File-size limit.
-- Safe object naming.
-- Access checks.
-- Rate limits.
+- MIME/type and magic-byte validation (PDF, PNG, JPEG).
+- Bounded stream parsing: file-size limits (8 MB for announcements, 5 MB for cleanup photos) checked incrementally via chunk streaming before buffering to prevent memory exhaustion DoS.
+- Safe object naming and R2 rollback compensation on DB insert failures.
+- Access checks with strict officer task ownership and verified state locking.
+- Rate limits (5 AI extraction requests per 10 minutes sliding window per organization) and atomic concurrency reservation locks.
 - No public bucket listing.
 
 Do not expose:

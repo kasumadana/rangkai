@@ -169,8 +169,21 @@ Response: 200 OK with status "completed". Atomic audit log recorded. Zero-row co
 
 POST /api/events/:eventId/documents
 Permission: organizer
-Content-Type: multipart/form-data
-Returns documentId.
+Content-Type: multipart/form-data (`file` or `document`, optional `processingConsent`: `"true"` | `"false"`, JPEG, PNG, PDF up to 8 MB)
+Returns `document` (`id`, `eventId`, `originalName`, `mimeType`, `sizeBytes`, `visibility`, `uploadedBy`, `aiConsentGranted`, `aiConsentAt`, `createdAt`). Private R2 storage (`r2Key` is never exposed). Enforces:
+- Narrow multipart CSRF validation (`Sec-Fetch-Site: cross-site` rejected with 403; `Origin` verified when present).
+- Bounded stream reading before multipart parsing (`MAX_DOCUMENT_SIZE_BYTES`: 8 MB + 64 KB multipart envelope overhead; 413 Payload Too Large on overflow).
+- Exactly one file part (`file` or `document`), non-empty bytes, and strict agreement between filename extension, claimed `Content-Type`, magic bytes, and binary format structure (`IHDR`+`IEND` with dimensions >= 2x2 for PNG, `SOI`+`SOF`+`EOI` with dimensions >= 2x2 for JPEG, `%PDF-`+`%%EOF` for PDF).
+- Atomic database insert + audit log with row-level lock on the event (`draft` or `review`; uploading to a `review` event resets status to `draft` and clears verification).
+- R2 rollback compensation on database failure, logging only sanitized identifiers (`eventId`, `documentId`) without exposing `r2Key` if R2 delete also fails.
+
+GET /api/events/:eventId/documents
+Permission: organizer
+Returns list of private documents for the event (`id`, `eventId`, `originalName`, `mimeType`, `sizeBytes`, `visibility`, `uploadedBy`, `aiConsentGranted`, `aiConsentAt`, `createdAt`).
+
+GET /api/events/:eventId/documents/:documentId
+Permission: organizer
+Returns private document binary stream with `Cache-Control: private, no-store, no-cache, must-revalidate` and `X-Content-Type-Options: nosniff`.
 
 POST /api/events/:eventId/extractions
 Permission: organizer
@@ -179,21 +192,45 @@ Request:
 
 ```json
 {
-  "documentId": "uuid"
+  "documentId": "uuid",
+  "processingConsent": true
 }
 ```
 
-Response:
+Validation & Safeguards:
+- Explicit organizer processing authorization/consent (`processingConsent: true` in request or granted at document upload) is required before sending private documents to external AI processing (422 Unprocessable Entity if missing or false).
+- Event-level concurrency lock: atomically locks the event and document rows (`FOR UPDATE OF e, d`) and reserves an extraction slot in `ai_extractions` (`status = 'processing'`). Returns 409 Conflict if any extraction is already `pending` or `processing` across any document of the event.
+- Rate limit: maximum 5 extraction requests per 10-minute sliding window per organization (429 Too Many Requests).
+- Completion lifecycle guard: re-locks the event row on completion; if the event transitioned out of `draft`/`review` while Gemini was in flight, rejects completion with 409 Conflict (`EVENT_STATE_CONFLICT`) and does not persist output JSON.
 
-- 200 with completed extraction, or
-- 202 with processing job ID.
+Response (200 OK):
+- Returns `{ extraction, manualFallbackAvailable: true }`.
+- When `extraction.status === "completed"`, `outputJson` (and alias `extractedJson`) conforms strictly to `docs/05-AI-SPEC.md` §3 (`schema_version`, `event_name`, `event_category`, `start_datetime`, `end_datetime`, `venue_name`, `procession_description`, `affected_road_names`, `traffic_impact_description`, `organizer_name`, `cleanup_location_notes`, `contact_information`, `issues`), with all present datetime strings validated for calendar accuracy and normalized to UTC ISO 8601.
+- When Gemini fails, times out, or returns schema-invalid JSON (such as `{}` or impossible calendar dates), records `status: "failed"` with sanitized `errorCode` (`PROVIDER_ERROR`, `PROVIDER_TIMEOUT`, `SCHEMA_VALIDATION_FAILED`, etc.) and returns 200 OK with `manualFallbackAvailable: true` so the organizer can proceed with manual entry.
 
 GET /api/extractions/:extractionId
 Permission: organizer of owning event
 
 PATCH /api/events/:eventId/extracted-fields
 Permission: organizer
-Stores corrected fields for review.
+Request (accepts flat fields or `{ "corrections": { ... } }` wrapper):
+```json
+{
+  "title": "Karya Melasti Sanur",
+  "category": "upacara_adat",
+  "description": "Prosesi adat melasti menuju segara",
+  "venueName": "Pantai Matahari Terbit Sanur",
+  "startsAt": "2026-11-20T08:00:00+08:00",
+  "endsAt": "2026-11-20T16:00:00+08:00",
+  "permitReference": "SURAT/2026/099",
+  "processionDescription": "Berjalan kaki menuju Pantai Matahari Terbit",
+  "trafficImpactDescription": "Penutupan satu lajur selama iring-iringan",
+  "organizerName": "Prajuru Desa Adat Intaran",
+  "cleanupLocationNotes": "Titik kumpul karung sampah di parkir utara pantai",
+  "contactInformation": "I Made Surya (0812-0000-0101)"
+}
+```
+Persists all 12 reviewed/corrected fields on `events` atomically under `FOR UPDATE OF e`, resets `review` status to `draft` (clearing `verifiedBy`/`verifiedAt`) when any field changes, and records `before_json` and `after_json` from the locked row (`hasContactInformation` boolean is logged in audit JSON rather than raw private contact strings; `contactInformation` is returned only to organizers and stripped from officer and public responses).
 
 ## 6. Road Segments
 
@@ -236,22 +273,37 @@ Request:
 }
 ```
 
-Response:
+Validation:
+- `status`: "open" | "intermittent" | "closed"
+- `observedAt`: ISO 8601 UTC timestamp. Must not be more than 5 minutes in the future relative to server time (422 Unprocessable Entity).
+
+Response (200 OK):
 
 ```json
 {
-  "status": "closed",
-  "observedAt": "2026-11-10T00:05:00Z",
-  "expiresAt": "2026-11-10T00:35:00Z",
-  "updatedBy": "authorized-officer-id"
+  "impact": {
+    "status": "closed",
+    "observedAt": "2026-11-10T00:05:00.000Z",
+    "expiresAt": "2026-11-10T00:35:00.000Z",
+    "updatedBy": "authorized-officer-id"
+  },
+  "roadImpact": {
+    "status": "closed",
+    "observedAt": "2026-11-10T00:05:00.000Z",
+    "expiresAt": "2026-11-10T00:35:00.000Z",
+    "updatedBy": "authorized-officer-id"
+  }
 }
 ```
 
-The server determines expiry policy.
+The server determines expiry policy (30 minutes default).
 The client cannot extend validity arbitrarily.
 
-Use mutationId for idempotent retries.
-A repeated mutationId must not create duplicate updates.
+Idempotency and Concurrency:
+- Use `mutationId` for idempotent retries.
+- If `mutationId` was already processed, the server performs a 5-field normalized comparison (`roadImpactId`, `updatedBy`, `status`, `observedAt` within 1 second, `note`).
+- If all 5 fields match, returns 200 OK (`{ impact, roadImpact, duplicate: true }`) without appending duplicate history.
+- If any field conflicts (e.g. status or timestamp mismatch with an existing mutationId), returns 409 Conflict.
 
 ## 8. Cleanup
 
@@ -263,20 +315,40 @@ Permission: organizer
 
 PATCH /api/cleanup-tasks/:taskId
 Permission: organizer or assigned cleanup officer
-Allowed fields depend on permission.
+- Officer Task Ownership: If an assigned officer attempts to update a task assigned to a different officer, returns 403 Forbidden.
+- State Lock: Once a task is `verified`, direct PATCH modifications return 409 Conflict (must be reopened first).
 
 POST /api/cleanup-tasks/:taskId/evidence
 Permission: assigned cleanup officer or organizer
-Content-Type: multipart/form-data
+Content-Type: multipart/form-data (`photo`, `evidenceType`: "before" | "after")
+- Single-file validation with stream-bounded size check (`MAX_PHOTO_SIZE_BYTES`: 5 MB) and JPEG/PNG magic byte verification.
+- Officer Task Ownership: Officers can only upload evidence to their own assigned task (403 Forbidden).
 
 POST /api/cleanup-tasks/:taskId/submit
 Permission: assigned cleanup officer or organizer
+- Officer Task Ownership: Officers can only submit their own assigned task (403 Forbidden).
+- Prerequisite: Requires at least one "after" evidence photo uploaded prior to submission (409 Conflict if missing).
+- Transitions status from `in_progress` to `submitted`.
 
 POST /api/cleanup-tasks/:taskId/verify
 Permission: organizer
+Verifies submitted cleanup task. Invariant: Does not alter road status. Sets `verifiedBy`, `verifiedAt`, and status `verified`.
+
+POST /api/cleanup-tasks/:taskId/reopen
+Permission: organizer
+Reopens submitted or verified task to `reopened`, clearing verification fields (`verifiedBy = null`, `verifiedAt = null`).
+
+GET /api/cleanup-tasks/:taskId/evidence/:evidenceId
+Permission: organizer or assigned cleanup officer
+Controlled retrieval of private photo evidence with Cache-Control: private, no-cache.
+
+GET /api/events/:eventId/waste-records
+Permission: organizer or assigned cleanup officer
+Returns list of waste records for the event.
 
 POST /api/events/:eventId/waste-records
 Permission: organizer or assigned cleanup officer
+Records waste quantity by category (`organic`, `recyclable`, `residual`). Distinguishes measured `weighedKg` from `estimatedKg` and `sackCount`. Never silently converts estimated quantities into measured facts.
 
 ## 9. Assignments
 
@@ -314,7 +386,44 @@ GET /api/public/events/:slug/roads
 Returns planned road impacts and effective status.
 
 GET /api/public/events/:slug/cleanup-summary
-Returns only explicitly public, aggregated information.
+Returns explicitly public, aggregated cleanup information.
+Response (200 OK):
+```json
+{
+  "event": {
+    "title": "Piodalan Pura Jagatnatha",
+    "status": "published"
+  },
+  "summary": {
+    "totalTasks": 2,
+    "completedTasks": 1,
+    "verifiedTasks": 1
+  },
+  "wasteTotals": {
+    "weighedKg": 45.5,
+    "estimatedKg": 10.0,
+    "totalSacks": 8
+  },
+  "byCategory": {
+    "organic": {
+      "weighedKg": 25.5,
+      "estimatedKg": 0,
+      "sackCount": 4
+    },
+    "recyclable": {
+      "weighedKg": 20.0,
+      "estimatedKg": 10.0,
+      "sackCount": 3
+    },
+    "residual": {
+      "weighedKg": 0,
+      "estimatedKg": 0,
+      "sackCount": 1
+    }
+  }
+}
+```
+Strictly separates measured `weighedKg` and unverified `estimatedKg` per FR-055.
 
 Public responses must exclude:
 

@@ -1,0 +1,64 @@
+{
+  "id": "SYNTH_AI_001",
+  "name": "Upacara Melasti Sanur 2026",
+  "scenario": "complete_announcement",
+  "provenance": "SYNTHETIC_TEST_DATA",
+  "isRealEvaluation": false,
+  "sourceFile": "sample-01-complete.png",
+  "groundTruth": {
+    "schema_version": "1.0",
+    "event_name": {
+      "value": "Upacara Melasti Segara Sanur",
+      "evidence": "Surat Pengumuman Upacara Melasti Segara Sanur",
+      "needs_review": false
+    },
+    "event_category": {
+      "value": "upacara",
+      "evidence": "upacara keagamaan tahunan",
+      "needs_review": false
+    },
+    "start_datetime": {
+      "value": "2026-03-25T06:00:00+08:00",
+      "evidence": "Rabu, 25 Maret 2026 mulai pukul 06.00 WITA",
+      "needs_review": false
+    },
+    "end_datetime": {
+      "value": "2026-03-25T13:00:00+08:00",
+      "evidence": "sampai dengan pukul 13.00 WITA",
+      "needs_review": false
+    },
+    "venue_name": {
+      "value": "Pantai Matahari Terbit Sanur",
+      "evidence": "bertempat di Pantai Matahari Terbit Sanur",
+      "needs_review": false
+    },
+    "affected_road_names": [
+      {
+        "name": "Jalan Hang Tuah",
+        "evidence": "jalur iring-iringan melalui Jl. Hang Tuah",
+        "needs_review": true
+      },
+      {
+        "name": "Jalan Danau Tamblingan",
+        "evidence": "menuju Jl. Danau Tamblingan",
+        "needs_review": true
+      }
+    ],
+    "procession_description": {
+      "value": "Iring-iringan jumenengan menuju segara",
+      "evidence": "iring-iringan prosesi adat menuju segara",
+      "needs_review": false
+    },
+    "traffic_impact_description": {
+      "value": "Penutupan bertahap sepanjang rute prosesi",
+      "evidence": "penutupan berkala dan buka-tutup jalur",
+      "needs_review": true
+    },
+    "organizer_name": {
+      "value": "Desa Adat Sanur",
+      "evidence": "Panitia Karya Desa Adat Sanur",
+      "needs_review": false
+    },
+    "issues": []
+  }
+}

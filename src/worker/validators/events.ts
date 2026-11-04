@@ -1,20 +1,13 @@
 import { z } from "zod";
 import { EVENT_STATUSES } from "../../db/schema";
-
-// Explicit ISO 8601 regex requiring full date, time, and explicit timezone indicator (Z or +/-HH:MM)
-const ISO_8601_WITH_TIMEZONE_REGEX =
-	/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/i;
+import { isValidIsoDatetimeWithTimezone } from "./extractions";
 
 export const isoDateSchema = z
 	.string()
-	.refine(
-		(val) =>
-			ISO_8601_WITH_TIMEZONE_REGEX.test(val) && !isNaN(Date.parse(val)),
-		{
-			message:
-				"Invalid ISO 8601 timestamp format. Explicit timezone information is required (e.g. '2026-11-10T08:00:00Z' or '+08:00').",
-		},
-	);
+	.refine(isValidIsoDatetimeWithTimezone, {
+		message:
+			"Invalid ISO 8601 timestamp format. Explicit timezone information is required (and calendar date must be valid, e.g. '2026-11-10T08:00:00Z' or '+08:00').",
+	});
 
 export const uuidParamSchema = z.string().uuid("Invalid UUID format");
 
