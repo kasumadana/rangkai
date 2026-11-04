@@ -336,7 +336,7 @@ Verifies submitted cleanup task. Invariant: Does not alter road status. Sets `ve
 
 POST /api/cleanup-tasks/:taskId/reopen
 Permission: organizer
-Reopens submitted or verified task to `in_progress`, clearing verification fields (`verifiedBy = null`, `verifiedAt = null`).
+Reopens submitted or verified task to `reopened`, clearing verification fields (`verifiedBy = null`, `verifiedAt = null`).
 
 GET /api/cleanup-tasks/:taskId/evidence/:evidenceId
 Permission: organizer or assigned cleanup officer

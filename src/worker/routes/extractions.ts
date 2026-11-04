@@ -324,11 +324,18 @@ extractionsRouter.post("/events/:eventId/extractions", async (c) => {
 				errorMessage =
 					"Source document failed integrity verification prior to extraction.";
 			} else {
+				const configuredTimeout = c.env.AI_REQUEST_TIMEOUT_MS
+					? Number.parseInt(c.env.AI_REQUEST_TIMEOUT_MS, 10)
+					: undefined;
 				const outcome = await extractDocumentWithGemini({
 					apiKey: c.env.GEMINI_API_KEY || "",
 					modelName: configuredModelName,
 					mimeType: detectedMime,
 					fileBytes,
+					timeoutMs:
+						Number.isFinite(configuredTimeout) && configuredTimeout! > 0
+							? configuredTimeout
+							: undefined,
 				});
 
 				latencyMs = outcome.latencyMs;

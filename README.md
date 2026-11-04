@@ -382,7 +382,7 @@ Create an API key:
 
 https://aistudio.google.com/apikey
 
-Save it as `GEMINI_API_KEY` in `.dev.vars`. Optionally set `GEMINI_MODEL` (defaults to `gemini-2.5-flash`).
+Save it as `GEMINI_API_KEY` in `.dev.vars`. Optionally set `GEMINI_MODEL` (defaults to `gemini-3.5-flash-lite`).
 
 Gemini must only be called from the backend.
 

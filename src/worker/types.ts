@@ -11,6 +11,7 @@ export interface Env {
 	rangkai_documents_dev?: R2Bucket;
 	GEMINI_API_KEY?: string;
 	GEMINI_MODEL?: string;
+	AI_REQUEST_TIMEOUT_MS?: string;
 }
 
 export interface AppVariables {

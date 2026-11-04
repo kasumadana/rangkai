@@ -36,6 +36,7 @@ import {
 	resetExtractionRateLimits,
 	resetUploadRateLimits,
 } from "../../src/worker/validators/documents";
+import { GEMINI_MODEL_NAME } from "../../src/worker/validators/extractions";
 
 dotenv.config({ path: ".dev.vars" });
 neonConfig.webSocketConstructor = WebSocket;
@@ -542,7 +543,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			rangkai_documents_dev: mockR2,
 			GEMINI_API_KEY:
 				process.env.GEMINI_API_KEY || "dummy_gemini_api_key_for_tests",
-			GEMINI_MODEL: "gemini-2.5-flash",
+			GEMINI_MODEL: process.env.GEMINI_MODEL,
 		};
 
 		resetUploadRateLimits();
@@ -1654,7 +1655,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 				};
 
 				expect(body.extraction.status).toBe("completed");
-				expect(body.extraction.modelName).toBe("gemini-2.5-flash");
+				expect(body.extraction.modelName).toBe(GEMINI_MODEL_NAME);
 				expect(body.extraction.outputJson.event_name.value).toBe(
 					"Karya Melasti Sanur",
 				);
@@ -1700,6 +1701,71 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 				expect(audits.length).toBeGreaterThanOrEqual(1);
 			} finally {
 				globalThis.fetch = realFetch;
+			}
+		});
+
+		it("RESPECTS GEMINI_MODEL environment variable override when provided", async () => {
+			resetExtractionRateLimits();
+			const realFetch = globalThis.fetch;
+			let calledModel = "";
+			globalThis.fetch = async (
+				url: string | URL | Request,
+				init?: RequestInit,
+			) => {
+				const urlStr = String(url);
+				if (urlStr.includes("generativelanguage.googleapis.com")) {
+					const match = urlStr.match(/models\/([^:]+):generateContent/);
+					if (match) calledModel = decodeURIComponent(match[1]);
+					const mockAiResponse = {
+						candidates: [
+							{
+								content: {
+									parts: [
+										{
+											text: JSON.stringify(buildCompleteAiExtractionPayload()),
+										},
+									],
+								},
+							},
+						],
+					};
+					return new Response(JSON.stringify(mockAiResponse), {
+						status: 200,
+						headers: { "Content-Type": "application/json" },
+					});
+				}
+				return realFetch(url, init);
+			};
+
+			try {
+				const res = await app.request(
+					`http://localhost:5173/api/events/${draftEventId}/extractions`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: organizerACookie,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({
+							documentId: uploadedDocId,
+							processingConsent: true,
+						}),
+					},
+					{
+						...testEnv,
+						GEMINI_MODEL: "gemini-custom-override",
+					},
+				);
+				expect(res.status).toBe(200);
+				const body = (await res.json()) as {
+					extraction: { modelName: string; status: string };
+				};
+				expect(body.extraction.status).toBe("completed");
+				expect(body.extraction.modelName).toBe("gemini-custom-override");
+				expect(calledModel).toBe("gemini-custom-override");
+			} finally {
+				globalThis.fetch = realFetch;
+				resetExtractionRateLimits();
 			}
 		});
 
@@ -1821,7 +1887,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			await db.insert(aiExtractions).values({
 				id: tempActiveExtractionId,
 				documentId: uploadedDocId,
-				modelName: "gemini-2.5-flash",
+				modelName: GEMINI_MODEL_NAME,
 				promptVersion: "v1.1",
 				schemaVersion: "1.0",
 				status: "processing",
@@ -2270,7 +2336,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 		});
 
 		it(
-			"LIVE SYNTHETIC GEMINI SMOKE: Calls real Gemini model (gemini-2.5-flash) on synthetic announcement fixture SYNTH_AI_001 without fetch mocking",
+			"LIVE SYNTHETIC GEMINI SMOKE: Calls real Gemini model (gemini-3.5-flash-lite) on synthetic announcement fixture SYNTH_AI_001 without fetch mocking",
 			async () => {
 				resetUploadRateLimits();
 				resetExtractionRateLimits();
@@ -2333,22 +2399,36 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 					manualFallbackAvailable: boolean;
 				};
 
-				expect(extBody.extraction.modelName).toBe("gemini-2.5-flash");
+				expect(extBody.extraction.status).toBe("completed");
+				expect(extBody.extraction.errorCode).toBeNull();
+				expect(extBody.extraction.modelName).toBe(GEMINI_MODEL_NAME);
 				expect(extBody.extraction.latencyMs).toBeGreaterThan(0);
 				expect(extBody.manualFallbackAvailable).toBe(true);
+				expect(extBody.extraction.outputJson).not.toBeNull();
 
-				if (extBody.extraction.status === "completed") {
-					expect(extBody.extraction.outputJson).not.toBeNull();
-					const out = extBody.extraction.outputJson as {
-						event_name: { value: string | null };
-						venue_name: { value: string | null };
-						organizer_name: { value: string | null };
-					};
-					expect(out.event_name.value).toBeTruthy();
-					expect(out.venue_name.value).toBeTruthy();
-				} else {
-					expect(extBody.extraction.errorCode).toBeTruthy();
-				}
+				const out = extBody.extraction.outputJson as {
+					event_name: { value: string | null };
+					venue_name: { value: string | null };
+					organizer_name: { value: string | null };
+					start_datetime: { value: string | null };
+					affected_road_names: Array<{ name: string }>;
+				};
+				expect(out.event_name.value).toBeTruthy();
+				expect(out.venue_name.value).toBeTruthy();
+				expect(out.start_datetime.value).toBeTruthy();
+				expect(out.affected_road_names.length).toBeGreaterThan(0);
+
+				const [persistedExtraction] = await db
+					.select()
+					.from(aiExtractions)
+					.where(eq(aiExtractions.id, extBody.extraction.id));
+				expect(persistedExtraction).toBeDefined();
+				expect(persistedExtraction.status).toBe("completed");
+				expect(persistedExtraction.errorCode).toBeNull();
+				expect(persistedExtraction.outputJson).not.toBeNull();
+				const persistedOut = persistedExtraction.outputJson as typeof out;
+				expect(persistedOut.event_name.value).toBeTruthy();
+				expect(persistedOut.venue_name.value).toBeTruthy();
 			},
 			60000,
 		);

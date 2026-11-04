@@ -183,7 +183,7 @@ export async function extractDocumentWithGemini(
 		};
 	}
 
-	const timeoutMs = params.timeoutMs ?? 25_000;
+	const timeoutMs = params.timeoutMs ?? 45_000;
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), timeoutMs);
 
