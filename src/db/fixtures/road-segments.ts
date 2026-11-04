@@ -1,0 +1,298 @@
+/**
+ * Pilot road segments dataset for Kawasan Catur Muka, Denpasar Kota.
+ * Task C03 — Verified road segments for cultural event coordination simulation.
+ * Source: OpenStreetMap via geojson.io
+ */
+
+export interface RoadSegmentSeed {
+	id: string;
+	displayName: string;
+	geom: string;
+	coverageArea: string;
+	verifiedBy: string;
+	verifiedAt: Date;
+}
+
+export interface GeoJsonLineStringFeature {
+	type: "Feature";
+	id: string;
+	properties: {
+		id: string;
+		name: string;
+		displayName: string;
+		coverageArea: string;
+		verifiedBy: string;
+		source: string;
+	};
+	geometry: {
+		type: "LineString";
+		coordinates: [number, number][];
+	};
+}
+
+export interface RoadSegmentsFeatureCollection {
+	type: "FeatureCollection";
+	name: string;
+	metadata: {
+		source: string;
+		pilot_area: string;
+		verified_by: string;
+		verified_at: string;
+		is_simulated: boolean;
+		description: string;
+	};
+	features: GeoJsonLineStringFeature[];
+}
+
+export function coordinatesToLineStringEWKT(
+	coordinates: [number, number][],
+	srid = 4326,
+): string {
+	const points = coordinates.map(([lng, lat]) => `${lng} ${lat}`).join(", ");
+	return `SRID=${srid};LINESTRING(${points})`;
+}
+
+export const PILOT_ROAD_SEGMENTS_GEOJSON: RoadSegmentsFeatureCollection = {
+	type: "FeatureCollection",
+	name: "pilot_catur_muka_denpasar",
+	metadata: {
+		source: "geojson.io / OpenStreetMap",
+		pilot_area: "Denpasar Kota - Kawasan Catur Muka",
+		verified_by: "Okta",
+		verified_at: "2026-11-04T20:34:00+08:00",
+		is_simulated: true,
+		description:
+			"Dataset 11 ruas jalan terverifikasi di sekeliling Patung Catur Muka Denpasar untuk simulasi dampak penutupan lalu lintas acara budaya.",
+	},
+	features: [
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000001",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000001",
+				name: "Jl. Gajah Mada",
+				displayName: "[SIMULATED] Jl. Gajah Mada (Catur Muka - Pasar Badung)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.2167834, -8.6559512],
+					[115.2107577, -8.6550978],
+				],
+			},
+		},
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000002",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000002",
+				name: "Jl. Surapati",
+				displayName:
+					"[SIMULATED] Jl. Surapati (Catur Muka - Lapangan Puputan Timur)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.2171149, -8.6559809],
+					[115.2220569, -8.6567106],
+				],
+			},
+		},
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000003",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000003",
+				name: "Jl. Veteran",
+				displayName: "[SIMULATED] Jl. Veteran (Catur Muka - RSUD Wangaya)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.2169524, -8.6557958],
+					[115.2175116, -8.6491073],
+				],
+			},
+		},
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000004",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000004",
+				name: "Jl. Udayana",
+				displayName:
+					"[SIMULATED] Jl. Udayana (Catur Muka - Lapangan Puputan Selatan)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.2169247, -8.6561333],
+					[115.2167244, -8.6590214],
+				],
+			},
+		},
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000005",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000005",
+				name: "Jl. Hasanudin",
+				displayName:
+					"[SIMULATED] Jl. Hasanudin (Simpang Sulawesi - Simpang Udayana)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.2100484, -8.6583887],
+					[115.2141326, -8.6586939],
+					[115.2145787, -8.6587531],
+					[115.2146873, -8.6585138],
+					[115.2148428, -8.6587689],
+					[115.2156065, -8.6589117],
+					[115.2166904, -8.6590185],
+				],
+			},
+		},
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000006",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000006",
+				name: "Jl. Pulau Sulawesi",
+				displayName: "[SIMULATED] Jl. Pulau Sulawesi (Gajah Mada - Hasanudin)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.2131037, -8.6554902],
+					[115.2130287, -8.6563553],
+					[115.2133182, -8.6585869],
+				],
+			},
+		},
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000007",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000007",
+				name: "Jl. Kartini",
+				displayName: "[SIMULATED] Jl. Kartini (Gajah Mada - Wangaya)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.2131184, -8.6553752],
+					[115.2135509, -8.6474272],
+				],
+			},
+		},
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000008",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000008",
+				name: "Jl. Sumatra",
+				displayName: "[SIMULATED] Jl. Sumatra (Gajah Mada - Hasanudin)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.2149624, -8.6557625],
+					[115.214538, -8.6580615],
+					[115.2146701, -8.6584801],
+				],
+			},
+		},
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000009",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000009",
+				name: "Jl. Arjuna",
+				displayName: "[SIMULATED] Jl. Arjuna (Veteran - Gajah Mada)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.215445, -8.6528731],
+					[115.2149846, -8.6556377],
+				],
+			},
+		},
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000010",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000010",
+				name: "Jl. Letda Regug",
+				displayName: "[SIMULATED] Jl. Letda Regug (Puputan Timur - Sugianyar)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.2197653, -8.6583399],
+					[115.2183401, -8.6581893],
+				],
+			},
+		},
+		{
+			type: "Feature",
+			id: "22222222-2222-4222-8222-000000000011",
+			properties: {
+				id: "22222222-2222-4222-8222-000000000011",
+				name: "Jl. Sugianyar",
+				displayName: "[SIMULATED] Jl. Sugianyar (Letda Regug - Udayana)",
+				coverageArea: "Denpasar Kota - Kawasan Catur Muka",
+				verifiedBy: "Okta",
+				source: "geojson.io / OpenStreetMap",
+			},
+			geometry: {
+				type: "LineString",
+				coordinates: [
+					[115.2182949, -8.6581834],
+					[115.2168523, -8.6581392],
+				],
+			},
+		},
+	],
+};
+
+export const PILOT_ROAD_SEGMENTS: RoadSegmentSeed[] =
+	PILOT_ROAD_SEGMENTS_GEOJSON.features.map((feature) => ({
+		id: feature.id,
+		displayName: feature.properties.displayName,
+		geom: coordinatesToLineStringEWKT(feature.geometry.coordinates),
+		coverageArea: feature.properties.coverageArea,
+		verifiedBy: feature.properties.verifiedBy,
+		verifiedAt: new Date(PILOT_ROAD_SEGMENTS_GEOJSON.metadata.verified_at),
+	}));

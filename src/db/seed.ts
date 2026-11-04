@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
 import { assertDevBranch, sanitizeDatabaseError } from "./guard";
 import { getDb } from "./index";
+import { PILOT_ROAD_SEGMENTS } from "./fixtures/road-segments";
 import {
 	cleanupTasks,
 	eventAssignments,
@@ -162,21 +163,34 @@ export async function seedDatabase(databaseUrl?: string) {
 		])
 		.onConflictDoNothing();
 
-	// 4. Seed simulated road segment with typed PostGIS geometry
-	await db
-		.insert(roadSegments)
-		.values({
-			id: SIMULATED_DATA.roadSegment.id,
-			displayName: SIMULATED_DATA.roadSegment.displayName,
-			geom: sql`ST_GeomFromEWKT(${SIMULATED_DATA.roadSegment.geom})`,
-			coverageArea: SIMULATED_DATA.roadSegment.coverageArea,
-			verifiedBy: SIMULATED_DATA.roadSegment.verifiedBy,
-			verifiedAt: new Date(),
-		})
-		.onConflictDoUpdate({
-			target: roadSegments.id,
-			set: { displayName: sql`EXCLUDED.display_name` },
-		});
+	// 4. Seed simulated and pilot road segments with typed PostGIS geometry
+	const allSegmentsToSeed = [
+		SIMULATED_DATA.roadSegment,
+		...PILOT_ROAD_SEGMENTS.filter((s) => s.id !== SIMULATED_DATA.roadSegment.id),
+	];
+
+	for (const segment of allSegmentsToSeed) {
+		await db
+			.insert(roadSegments)
+			.values({
+				id: segment.id,
+				displayName: segment.displayName,
+				geom: sql`ST_GeomFromEWKT(${segment.geom})`,
+				coverageArea: segment.coverageArea,
+				verifiedBy: segment.verifiedBy,
+				verifiedAt: segment.verifiedAt || new Date(),
+			})
+			.onConflictDoUpdate({
+				target: roadSegments.id,
+				set: {
+					displayName: sql`EXCLUDED.display_name`,
+					geom: sql`EXCLUDED.geom`,
+					coverageArea: sql`EXCLUDED.coverage_area`,
+					verifiedBy: sql`EXCLUDED.verified_by`,
+					verifiedAt: sql`EXCLUDED.verified_at`,
+				},
+			});
+	}
 
 	// 5. Seed simulated event
 	await db
