@@ -924,3 +924,22 @@ speculative AI capabilities.
 
 When uncertain, preserve human control and make
 the uncertainty visible.
+
+## Agent skills
+
+### Issue tracker
+
+Local Markdown tickets, one file per ticket with explicit blockers. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five default triage roles. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: root `CONTEXT.md` and `docs/adr/`, created when needed. See `docs/agents/domain.md`.
+
+### Execution workflow
+
+Codex GPT 6.1 Sol High coordinates; Antigravity Gemini 3.8 Flash High implements; independent Antigravity Gemini 4 Argon High audits. Use explicit native Orca model selection. See `docs/agents/workflow.md`.
+
