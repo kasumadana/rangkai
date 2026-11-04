@@ -277,29 +277,45 @@ publicRouter.get("/events/:slug/cleanup-summary", async (c) => {
 		.from(cleanupTasks)
 		.where(eq(cleanupTasks.eventId, eventId));
 
-	// Aggregate waste records
+	// Aggregate waste records: keep weighed and estimated strictly distinct (SRS FR-055, AGENTS §13)
 	const wasteRows = await db
 		.select({
 			category: wasteRecords.category,
 			quantityKg: wasteRecords.quantityKg,
 			sackCount: wasteRecords.sackCount,
+			measurementMethod: wasteRecords.measurementMethod,
 		})
 		.from(wasteRecords)
 		.where(eq(wasteRecords.eventId, eventId));
 
-	let totalKg = 0;
-	const byCategory: Record<string, { totalKg: number; totalSacks: number }> = {
-		organic: { totalKg: 0, totalSacks: 0 },
-		recyclable: { totalKg: 0, totalSacks: 0 },
-		residual: { totalKg: 0, totalSacks: 0 },
+	let weighedKg = 0;
+	let estimatedKg = 0;
+	let totalSacks = 0;
+	const byCategory: Record<
+		string,
+		{ weighedKg: number; estimatedKg: number; totalSacks: number }
+	> = {
+		organic: { weighedKg: 0, estimatedKg: 0, totalSacks: 0 },
+		recyclable: { weighedKg: 0, estimatedKg: 0, totalSacks: 0 },
+		residual: { weighedKg: 0, estimatedKg: 0, totalSacks: 0 },
 	};
 
 	for (const row of wasteRows) {
 		const kg = row.quantityKg ? Number(row.quantityKg) : 0;
 		const sacks = row.sackCount ? Number(row.sackCount) : 0;
-		totalKg += kg;
+		totalSacks += sacks;
+		if (row.measurementMethod === "weighed") {
+			weighedKg += kg;
+			if (byCategory[row.category]) {
+				byCategory[row.category].weighedKg += kg;
+			}
+		} else {
+			estimatedKg += kg;
+			if (byCategory[row.category]) {
+				byCategory[row.category].estimatedKg += kg;
+			}
+		}
 		if (byCategory[row.category]) {
-			byCategory[row.category].totalKg += kg;
 			byCategory[row.category].totalSacks += sacks;
 		}
 	}
@@ -310,8 +326,26 @@ publicRouter.get("/events/:slug/cleanup-summary", async (c) => {
 				totalTasks: taskStats[0]?.totalTasks ?? 0,
 				verifiedTasks: taskStats[0]?.verifiedTasks ?? 0,
 				wasteTotals: {
-					totalKg,
-					byCategory,
+					weighedKg: Math.round(weighedKg * 100) / 100,
+					estimatedKg: Math.round(estimatedKg * 100) / 100,
+					totalSacks,
+					byCategory: {
+						organic: {
+							weighedKg: Math.round(byCategory.organic.weighedKg * 100) / 100,
+							estimatedKg: Math.round(byCategory.organic.estimatedKg * 100) / 100,
+							totalSacks: byCategory.organic.totalSacks,
+						},
+						recyclable: {
+							weighedKg: Math.round(byCategory.recyclable.weighedKg * 100) / 100,
+							estimatedKg: Math.round(byCategory.recyclable.estimatedKg * 100) / 100,
+							totalSacks: byCategory.recyclable.totalSacks,
+						},
+						residual: {
+							weighedKg: Math.round(byCategory.residual.weighedKg * 100) / 100,
+							estimatedKg: Math.round(byCategory.residual.estimatedKg * 100) / 100,
+							totalSacks: byCategory.residual.totalSacks,
+						},
+					},
 				},
 			},
 		},

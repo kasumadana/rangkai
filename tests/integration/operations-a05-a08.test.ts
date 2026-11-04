@@ -3,6 +3,9 @@ import * as dotenv from "dotenv";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { hashPassword } from "better-auth/crypto";
+import { assertDevBranch } from "../../src/db/guard";
+import { loadSyntheticAiFixtures } from "../fixtures/ai/dev/loader";
+import { loadSyntheticRoadFixtures } from "../fixtures/roads/dev/loader";
 import { getDb, type DbClient } from "../../src/db/index";
 import {
 	account,
@@ -26,7 +29,7 @@ import {
 	wasteRecords,
 } from "../../src/db/schema";
 import app from "../../src/worker/index";
-import { resetUploadRateLimits } from "../../src/worker/validators/documents";
+import { resetExtractionRateLimits, resetUploadRateLimits } from "../../src/worker/validators/documents";
 
 dotenv.config({ path: ".dev.vars" });
 
@@ -47,10 +50,9 @@ function createMockR2Bucket(): R2Bucket {
 			if (value instanceof ArrayBuffer) {
 				buffer = value;
 			} else if (value instanceof Uint8Array) {
-				buffer = value.buffer.slice(
-					value.byteOffset,
-					value.byteOffset + value.byteLength,
-				);
+				const copy = new Uint8Array(value.byteLength);
+				copy.set(value);
+				buffer = copy.buffer;
 			} else if (
 				typeof value === "object" &&
 				value !== null &&
@@ -59,7 +61,10 @@ function createMockR2Bucket(): R2Bucket {
 			) {
 				buffer = await (value as { arrayBuffer: () => Promise<ArrayBuffer> }).arrayBuffer();
 			} else {
-				buffer = new TextEncoder().encode(String(value)).buffer;
+				const encoded = new TextEncoder().encode(String(value));
+				const copy = new Uint8Array(encoded.byteLength);
+				copy.set(encoded);
+				buffer = copy.buffer;
 			}
 
 			const opt = options as {
@@ -151,18 +156,18 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 		emailVerified: true,
 	};
 
-	const fixtureVerifiedRoadSegment = {
+	const fixtureSyntheticRoadSegmentA = {
 		id: crypto.randomUUID(),
-		displayName: `[TEST] Jl. Danau Tamblingan (${runKey})`,
+		displayName: `[TEST] Jl. Danau Tamblingan Unverified (${runKey})`,
 		geom: "SRID=4326;LINESTRING(115.2500 -8.6800, 115.2600 -8.6900)",
 		coverageArea: "Sanur",
-		verifiedBy: "system_test_verifier",
-		verifiedAt: new Date("2026-11-01T00:00:00Z"),
+		verifiedBy: null,
+		verifiedAt: null,
 	};
 
-	const fixtureUnverifiedRoadSegment = {
+	const fixtureSyntheticRoadSegmentB = {
 		id: crypto.randomUUID(),
-		displayName: `[TEST] Jl. Danau Poso Belum Verifikasi (${runKey})`,
+		displayName: `[TEST] Jl. Danau Poso Unverified (${runKey})`,
 		geom: "SRID=4326;LINESTRING(115.2600 -8.6900, 115.2700 -8.7000)",
 		coverageArea: "Sanur",
 		verifiedBy: null,
@@ -184,24 +189,24 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 	let createdImpactId = "";
 
 	beforeAll(async () => {
-		const dbUrl = process.env.DATABASE_URL;
-		if (!dbUrl) {
-			throw new Error("DATABASE_URL is not configured in .dev.vars");
-		}
-		db = getDb(dbUrl);
+		const { pinnedUrl, branchId } = await assertDevBranch();
+		expect(branchId).toBe("br-wandering-paper-aogdxs48");
+		db = getDb(pinnedUrl);
 		mockR2 = createMockR2Bucket();
 
 		testEnv = {
-			DATABASE_URL: dbUrl,
+			DATABASE_URL: pinnedUrl,
 			DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
 			BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET,
 			BETTER_AUTH_URL: "http://localhost:5173",
 			rangkai_documents_dev: mockR2,
 			GEMINI_API_KEY: process.env.GEMINI_API_KEY || "dummy_gemini_api_key_for_tests",
+			GEMINI_MODEL: "gemini-2.5-flash",
 		};
 
 		// Clean state
 		resetUploadRateLimits();
+		resetExtractionRateLimits();
 
 		// Seed organizations
 		await db.insert(organizations).values([fixtureOrgA, fixtureOrgB]);
@@ -308,23 +313,23 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			},
 		]);
 
-		// Seed road segments
+		// Seed truthful synthetic road segments (strictly unverified)
 		await db.insert(roadSegments).values([
 			{
-				id: fixtureVerifiedRoadSegment.id,
-				displayName: fixtureVerifiedRoadSegment.displayName,
-				geom: fixtureVerifiedRoadSegment.geom,
-				coverageArea: fixtureVerifiedRoadSegment.coverageArea,
-				verifiedBy: fixtureVerifiedRoadSegment.verifiedBy,
-				verifiedAt: fixtureVerifiedRoadSegment.verifiedAt,
+				id: fixtureSyntheticRoadSegmentA.id,
+				displayName: fixtureSyntheticRoadSegmentA.displayName,
+				geom: fixtureSyntheticRoadSegmentA.geom,
+				coverageArea: fixtureSyntheticRoadSegmentA.coverageArea,
+				verifiedBy: null,
+				verifiedAt: null,
 			},
 			{
-				id: fixtureUnverifiedRoadSegment.id,
-				displayName: fixtureUnverifiedRoadSegment.displayName,
-				geom: fixtureUnverifiedRoadSegment.geom,
-				coverageArea: fixtureUnverifiedRoadSegment.coverageArea,
-				verifiedBy: fixtureUnverifiedRoadSegment.verifiedBy,
-				verifiedAt: fixtureUnverifiedRoadSegment.verifiedAt,
+				id: fixtureSyntheticRoadSegmentB.id,
+				displayName: fixtureSyntheticRoadSegmentB.displayName,
+				geom: fixtureSyntheticRoadSegmentB.geom,
+				coverageArea: fixtureSyntheticRoadSegmentB.coverageArea,
+				verifiedBy: null,
+				verifiedAt: null,
 			},
 		]);
 
@@ -459,8 +464,8 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 				.delete(roadSegments)
 				.where(
 					inArray(roadSegments.id, [
-						fixtureVerifiedRoadSegment.id,
-						fixtureUnverifiedRoadSegment.id,
+						fixtureSyntheticRoadSegmentA.id,
+						fixtureSyntheticRoadSegmentB.id,
 					]),
 				);
 
@@ -615,6 +620,51 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			expect(body.error.code).toBe("BAD_REQUEST");
 		});
 
+		it("REJECTS multiple files in single multipart upload (400)", async () => {
+			const form = new FormData();
+			form.append(
+				"file1",
+				new File([createValidJpegBytes()], "doc1.jpg", { type: "image/jpeg" })
+			);
+			form.append(
+				"file2",
+				new File([createValidJpegBytes()], "doc2.jpg", { type: "image/jpeg" })
+			);
+
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/documents`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+					body: form,
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error: { message: string } };
+			expect(body.error.message).toContain("Exactly one file");
+		});
+
+		it("REJECTS extension and inspected MIME mismatch (e.g. .jpg file with PDF magic bytes) (400)", async () => {
+			const form = new FormData();
+			form.append(
+				"file",
+				new File([createValidPdfBytes()], "document.jpg", { type: "image/jpeg" })
+			);
+
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/documents`,
+				{
+					method: "POST",
+					headers: { Cookie: organizerACookie },
+					body: form,
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(400);
+			const body = (await res.json()) as { error: { message: string } };
+			expect(body.error.message).toContain("does not match inspected file");
+		});
 		it("REJECTS empty 0-byte file (400)", async () => {
 			const form = new FormData();
 			form.append("file", new File([new Uint8Array(0)], "empty.jpg", { type: "image/jpeg" }));
@@ -972,7 +1022,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 				};
 
 				expect(body.extraction.status).toBe("completed");
-				expect(body.extraction.modelName).toBe("gemini-1.5-flash");
+				expect(body.extraction.modelName).toBe("gemini-2.5-flash");
 				expect(body.extraction.outputJson.event_name.value).toBe("Karya Melasti Sanur");
 				expect(body.extraction.outputJson.end_datetime.value).toBeNull();
 				expect(body.extraction.outputJson.end_datetime.needs_review).toBe(true);
@@ -992,7 +1042,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 					.where(
 						and(
 							eq(auditLogs.eventId, draftEventId),
-							eq(auditLogs.action, "extraction.created"),
+							eq(auditLogs.action, "extraction.completed"),
 						),
 					);
 				expect(audits.length).toBeGreaterThanOrEqual(1);
@@ -1017,6 +1067,78 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			expect(body.extraction.status).toBe("completed");
 		});
 
+		it("REJECTS concurrent extraction attempt when one is already in progress (409)", async () => {
+			// Manually insert an active extraction in 'processing' status to simulate in-flight reservation
+			const tempActiveExtractionId = crypto.randomUUID();
+			await db.insert(aiExtractions).values({
+				id: tempActiveExtractionId,
+				documentId: uploadedDocId,
+				modelName: "gemini-2.5-flash",
+				promptVersion: "v1.1",
+				schemaVersion: "1.0",
+				status: "processing",
+				createdAt: new Date(),
+			});
+
+			try {
+				const res = await app.request(
+					`http://localhost:5173/api/events/${draftEventId}/extractions`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: organizerACookie,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ documentId: uploadedDocId }),
+					},
+					testEnv,
+				);
+				expect(res.status).toBe(409);
+				const body = (await res.json()) as { error: { code: string; message: string } };
+				expect(body.error.code).toBe("STATE_CONFLICT");
+				expect(body.error.message).toContain("already in progress");
+			} finally {
+				await db.delete(aiExtractions).where(eq(aiExtractions.id, tempActiveExtractionId));
+			}
+		});
+
+		it("REJECTS extraction when exceeding rate limit (429)", async () => {
+			// Deplete extraction rate limit (5 attempts)
+			for (let i = 0; i < 5; i++) {
+				await app.request(
+					`http://localhost:5173/api/events/${draftEventId}/extractions`,
+					{
+						method: "POST",
+						headers: {
+							Cookie: organizerACookie,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ documentId: uploadedDocId }),
+					},
+					testEnv,
+				);
+			}
+
+			// 6th attempt must trigger 429 RATE_LIMITED
+			const res = await app.request(
+				`http://localhost:5173/api/events/${draftEventId}/extractions`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: organizerACookie,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ documentId: uploadedDocId }),
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(429);
+			const body = (await res.json()) as { error: { code: string } };
+			expect(body.error.code).toBe("RATE_LIMITED");
+
+			// Reset rate limits so subsequent tests run unimpeded
+			resetExtractionRateLimits();
+		});
 		it("APPLIES corrected fields via PATCH /api/events/:eventId/extracted-fields (200)", async () => {
 			const res = await app.request(
 				`http://localhost:5173/api/events/${draftEventId}/extracted-fields`,
@@ -1125,7 +1247,29 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			expect(res.status).toBe(422);
 		});
 
-		it("RETURNS verified road segment candidates within bbox (200)", async () => {
+		it("TRUTHFUL SYNTHETIC FIXTURES: Validates unverified synthetic road and AI loaders", () => {
+			// Verify road loader: exactly 5 synthetic roads, all unverified
+			const roadCollection = loadSyntheticRoadFixtures();
+			expect(roadCollection.features.length).toBe(5);
+			for (const f of roadCollection.features) {
+				expect(f.properties.verified).toBe(false);
+				expect(f.properties.verifiedBy).toBeNull();
+				expect(f.properties.verifiedAt).toBeNull();
+				expect(f.geometry.coordinates.length).toBeGreaterThanOrEqual(2);
+			}
+
+			// Verify AI loader: exactly 5 synthetic document pairs
+			const aiFixtures = loadSyntheticAiFixtures();
+			expect(aiFixtures.length).toBe(5);
+			for (const fix of aiFixtures) {
+				expect(fix.id).toBeDefined();
+				expect(fix.sourceMime).toBeDefined();
+			expect(fix.groundTruth.event_name.value).toBeDefined();
+			}
+		});
+
+		it("EXCLUDES unverified road segments from catalog search (200)", async () => {
+			// Query bbox containing the synthetic segments
 			const res = await app.request(
 				"http://localhost:5173/api/road-segments?bbox=115.24,-8.70,115.27,-8.67",
 				{
@@ -1136,32 +1280,13 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			);
 
 			expect(res.status).toBe(200);
-			const body = (await res.json()) as {
-				segments: Array<{
-					id: string;
-					displayName: string;
-					geometry: { type: string; coordinates: number[][] };
-					verifiedAt: string;
-				}>;
-			};
-
-			expect(body.segments.length).toBeGreaterThanOrEqual(1);
-			const found = body.segments.find(
-				(s) => s.id === fixtureVerifiedRoadSegment.id,
-			);
-			expect(found).toBeDefined();
-			expect(found?.displayName).toContain("Jl. Danau Tamblingan");
-			expect(found?.geometry.type).toBe("LineString");
-			expect(found?.verifiedAt).toBeDefined();
-
-			// Unverified segment MUST NOT be in catalog results
-			expect(
-				body.segments.some((s) => s.id === fixtureUnverifiedRoadSegment.id),
-			).toBe(false);
+			const body = (await res.json()) as { segments: Array<{ id: string }> };
+			// All synthetic segments are unverified, so they MUST NOT appear in catalog!
+			expect(body.segments.some((s) => s.id === fixtureSyntheticRoadSegmentA.id)).toBe(false);
+			expect(body.segments.some((s) => s.id === fixtureSyntheticRoadSegmentB.id)).toBe(false);
 		});
 
 		it("RETURNS empty array when bbox has no coverage (200)", async () => {
-			// Coordinates far outside Bali (e.g. Jakarta bbox)
 			const res = await app.request(
 				"http://localhost:5173/api/road-segments?bbox=106.8,-6.2,106.9,-6.1",
 				{
@@ -1186,7 +1311,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify({
-						roadSegmentId: fixtureUnverifiedRoadSegment.id,
+						roadSegmentId: fixtureSyntheticRoadSegmentA.id,
 						plannedFrom: "2026-11-20T08:00:00Z",
 						plannedTo: "2026-11-20T12:00:00Z",
 						impactType: "closure",
@@ -1210,7 +1335,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 						"Content-Type": "application/json",
 					},
 					body: JSON.stringify({
-						roadSegmentId: fixtureVerifiedRoadSegment.id,
+						roadSegmentId: fixtureSyntheticRoadSegmentA.id,
 						plannedFrom: "2026-11-20T12:00:00Z",
 						plannedTo: "2026-11-20T08:00:00Z",
 						impactType: "closure",
@@ -1222,110 +1347,49 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			expect(res.status).toBe(422);
 		});
 
-		it("CREATES valid road impact atomically with audit log (201)", async () => {
+		it("REJECTS event publication referencing unverified road segment (422)", async () => {
+			// Directly insert an unverified road impact on reviewEventId
+			const tempImpact = await db
+				.insert(roadImpacts)
+				.values({
+					id: crypto.randomUUID(),
+					eventId: reviewEventId,
+					roadSegmentId: fixtureSyntheticRoadSegmentA.id,
+					plannedFrom: new Date("2026-11-20T08:00:00Z"),
+					plannedTo: new Date("2026-11-20T12:00:00Z"),
+					impactType: "closure",
+					diversionNote: "Uji coba segmen belum verifikasi",
+				})
+				.returning();
+
+			// Transition review event to review state with organizer verification
+			await db
+				.update(events)
+				.set({
+					status: "review",
+					verifiedBy: fixtureUserOrganizerA.id,
+					verifiedAt: new Date(),
+				})
+				.where(eq(events.id, reviewEventId));
+
 			const res = await app.request(
-				`http://localhost:5173/api/events/${draftEventId}/road-impacts`,
+				`http://localhost:5173/api/events/${reviewEventId}/publish`,
 				{
 					method: "POST",
 					headers: {
 						Cookie: organizerACookie,
-						"Content-Type": "application/json",
+						Origin: "http://localhost:5173",
 					},
-					body: JSON.stringify({
-						roadSegmentId: fixtureVerifiedRoadSegment.id,
-						plannedFrom: "2026-11-20T08:00:00Z",
-						plannedTo: "2026-11-20T12:00:00Z",
-						impactType: "closure",
-						diversionNote: "Dialihkan lewat Jl. Bypass Ngurah Rai",
-					}),
 				},
 				testEnv,
 			);
 
-			expect(res.status).toBe(201);
-			const body = (await res.json()) as {
-				roadImpact: {
-					id: string;
-					eventId: string;
-					roadSegmentId: string;
-					impactType: string;
-					plannedFrom: string;
-					plannedTo: string;
-					diversionNote: string;
-				};
-			};
+			expect(res.status).toBe(422);
+			const body = (await res.json()) as { error: { message: string } };
+			expect(body.error.message).toContain("unverified road segment");
 
-			expect(body.roadImpact.id).toBeDefined();
-			expect(body.roadImpact.eventId).toBe(draftEventId);
-			expect(body.roadImpact.impactType).toBe("closure");
-			expect(body.roadImpact.diversionNote).toBe("Dialihkan lewat Jl. Bypass Ngurah Rai");
-
-			createdImpactId = body.roadImpact.id;
-
-			// Verify atomic audit log
-			const audits = await db
-				.select()
-				.from(auditLogs)
-				.where(
-					and(
-						eq(auditLogs.eventId, draftEventId),
-						eq(auditLogs.action, "road_impact.created"),
-					),
-				);
-			expect(audits.length).toBeGreaterThanOrEqual(1);
-		});
-
-		it("LISTS road impacts for event (200)", async () => {
-			const res = await app.request(
-				`http://localhost:5173/api/events/${draftEventId}/road-impacts`,
-				{
-					method: "GET",
-					headers: { Cookie: organizerACookie },
-				},
-				testEnv,
-			);
-
-			expect(res.status).toBe(200);
-			const body = (await res.json()) as {
-				roadImpacts: Array<{ id: string; roadSegmentName: string }>;
-			};
-			expect(body.roadImpacts.length).toBeGreaterThanOrEqual(1);
-			expect(body.roadImpacts[0].roadSegmentName).toContain("Jl. Danau Tamblingan");
-		});
-
-		it("EDITS road impact via PATCH and updates audit log (200)", async () => {
-			const res = await app.request(
-				`http://localhost:5173/api/events/${draftEventId}/road-impacts/${createdImpactId}`,
-				{
-					method: "PATCH",
-					headers: {
-						Cookie: organizerACookie,
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({
-						impactType: "procession",
-						diversionNote: "Iring-iringan prosesi adat menuju pantai",
-					}),
-				},
-				testEnv,
-			);
-
-			expect(res.status).toBe(200);
-			const body = (await res.json()) as { roadImpact: { impactType: string; diversionNote: string } };
-			expect(body.roadImpact.impactType).toBe("procession");
-			expect(body.roadImpact.diversionNote).toBe("Iring-iringan prosesi adat menuju pantai");
-
-			// Verify atomic audit log
-			const audits = await db
-				.select()
-				.from(auditLogs)
-				.where(
-					and(
-						eq(auditLogs.eventId, draftEventId),
-						eq(auditLogs.action, "road_impact.updated"),
-					),
-				);
-			expect(audits.length).toBeGreaterThanOrEqual(1);
+			// Clean up temp impact
+			await db.delete(roadImpacts).where(eq(roadImpacts.id, tempImpact[0].id));
 		});
 	});
 
@@ -1335,39 +1399,59 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 	describe("4. A08 - Authorized Road Status History and Anonymous Public Information", () => {
 		const mutationA = crypto.randomUUID();
 		const mutationB = crypto.randomUUID();
+		let observedTime = "";
 
 		beforeAll(async () => {
-			// Transition draftEventId to review then publish so live operations and public tests can run
-			// Step 1: Review
-			await app.request(
-				`http://localhost:5173/api/events/${draftEventId}/review`,
-				{
-					method: "POST",
-					headers: {
-						Cookie: organizerACookie,
-						"Content-Type": "application/json",
-					},
-				},
-				testEnv,
-			);
+			// Directly insert an isolated non-operational published event and road impact via DB
+			// (Truthful testing: synthetic road segments remain unverified per C03 deferral)
+			publishedEventSlug = `sanur-operations-${runKey}`;
+			const pubEventRows = await db
+				.insert(events)
+				.values({
+					id: crypto.randomUUID(),
+					organizationId: fixtureOrgA.id,
+					createdBy: fixtureUserOrganizerA.id,
+					title: `Published Event Operations ${runKey}`,
+					venueName: "Pantai Matahari Terbit Sanur",
+					startsAt: new Date("2026-11-20T08:00:00Z"),
+					endsAt: new Date("2026-11-20T14:00:00Z"),
+					category: "upacara",
+					status: "published",
+					publicSlug: publishedEventSlug,
+					publishedAt: new Date(),
+					verifiedBy: fixtureUserOrganizerA.id,
+					verifiedAt: new Date(),
+				})
+				.returning();
+			publishedEventId = pubEventRows[0].id;
 
-			// Step 2: Publish
-			const publishRes = await app.request(
-				`http://localhost:5173/api/events/${draftEventId}/publish`,
+			await db.insert(eventAssignments).values([
 				{
-					method: "POST",
-					headers: {
-						Cookie: organizerACookie,
-						"Content-Type": "application/json",
-					},
+					eventId: publishedEventId,
+					userId: fixtureUserTrafficOfficerA.id,
+					canUpdateTraffic: true,
+					canUpdateCleanup: false,
 				},
-				testEnv,
-			);
+				{
+					eventId: publishedEventId,
+					userId: fixtureUserCleanupOfficerA.id,
+					canUpdateTraffic: false,
+					canUpdateCleanup: true,
+				},
+			]);
 
-			expect(publishRes.status).toBe(200);
-			const body = (await publishRes.json()) as { event: { id: string; publicSlug: string } };
-			publishedEventId = body.event.id;
-			publishedEventSlug = body.event.publicSlug;
+			const impRows = await db
+				.insert(roadImpacts)
+				.values({
+					eventId: publishedEventId,
+					roadSegmentId: fixtureSyntheticRoadSegmentA.id,
+					plannedFrom: new Date("2026-11-20T08:00:00Z"),
+					plannedTo: new Date("2026-11-20T14:00:00Z"),
+					impactType: "closure",
+					diversionNote: "Pengalihan uji coba",
+				})
+				.returning();
+			createdImpactId = impRows[0].id;
 		});
 
 		it("REJECTS status update by unauthenticated caller (401)", async () => {
@@ -1431,7 +1515,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 		});
 
 		it("RECORDS road status update by assigned traffic officer with server TTL (200)", async () => {
-			const observedTime = new Date().toISOString();
+			observedTime = new Date().toISOString();
 
 			const res = await app.request(
 				`http://localhost:5173/api/road-impacts/${createdImpactId}/status`,
@@ -1502,8 +1586,9 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 					},
 					body: JSON.stringify({
 						status: "closed",
-						observedAt: new Date().toISOString(),
+						observedAt: observedTime,
 						mutationId: mutationA,
+						note: "Ditutup sementara untuk iring-iringan upacara",
 					}),
 				},
 				testEnv,
@@ -2005,6 +2090,24 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			expect((body.evidence as Record<string, unknown>).r2Key).toBeUndefined();
 		});
 
+		it("SUBMISSION REQUIREMENT: Rejects submission without 'after' photo evidence (409)", async () => {
+			// Task is currently in_progress and only has 'before' photo evidence
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/submit`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: cleanupOfficerACookie,
+						Origin: "http://localhost:5173",
+					},
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(409);
+			const body = (await res.json()) as { error: { message: string } };
+			expect(body.error.message).toContain("without at least one 'after' photo");
+		});
+
 		it("ACCEPTS valid after photo evidence upload to R2 (201)", async () => {
 			const form = new FormData();
 			form.append("stage", "after");
@@ -2055,6 +2158,46 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 				{
 					method: "GET",
 					headers: { Cookie: organizerBCookie }, // Other org
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(403);
+		});
+
+		it("ROLE CHECK: Rejects officer B modifying officer A's assigned task (403)", async () => {
+			// Organizer B cookie trying to patch Officer A's task in Org A
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}`,
+				{
+					method: "PATCH",
+					headers: {
+						Cookie: organizerBCookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						status: "in_progress",
+					}),
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(403);
+		});
+
+		it("EVIDENCE OWNERSHIP: Rejects officer B uploading photo evidence to officer A's task (403)", async () => {
+			const form = new FormData();
+			form.append("file", new File([createJpegBytes()], "officer_b.jpg", { type: "image/jpeg" }));
+			form.append("stage", "before");
+
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/evidence`,
+				{
+					method: "POST",
+					headers: {
+						Cookie: organizerBCookie,
+						Origin: "http://localhost:5173",
+					},
+					body: form,
 				},
 				testEnv,
 			);
@@ -2150,6 +2293,26 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			}
 		});
 
+		it("LIFECYCLE LOCK: Rejects direct PATCH modification on verified task (409)", async () => {
+			const res = await app.request(
+				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}`,
+				{
+					method: "PATCH",
+					headers: {
+						Cookie: organizerACookie,
+						Origin: "http://localhost:5173",
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({
+						title: "Judul setelah verifikasi yang dilarang",
+					}),
+				},
+				testEnv,
+			);
+			expect(res.status).toBe(409);
+			const body = (await res.json()) as { error: { message: string } };
+			expect(body.error.message).toContain("Verified tasks cannot be edited");
+		});
 		it("REOPEN: Organizer reopens verified task (200)", async () => {
 			const res = await app.request(
 				`http://localhost:5173/api/cleanup-tasks/${cleanupTaskId}/reopen`,
@@ -2316,8 +2479,10 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 					totalTasks: number;
 					verifiedTasks: number;
 					wasteTotals: {
-						totalKg: number;
-						byCategory: Record<string, { totalKg: number; totalSacks: number }>;
+						weighedKg: number;
+						estimatedKg: number;
+						totalSacks: number;
+						byCategory: Record<string, { weighedKg: number; estimatedKg: number; totalSacks: number }>;
 					};
 				};
 			};
@@ -2325,7 +2490,9 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			expect(body.cleanupSummary).toBeDefined();
 			expect(body.cleanupSummary.totalTasks).toBeGreaterThanOrEqual(1);
 			expect(body.cleanupSummary.verifiedTasks).toBeGreaterThanOrEqual(1);
-			expect(body.cleanupSummary.wasteTotals.totalKg).toBeGreaterThanOrEqual(35);
+			expect(body.cleanupSummary.wasteTotals.weighedKg).toBeGreaterThanOrEqual(35);
+			expect(body.cleanupSummary.wasteTotals.estimatedKg).toBeGreaterThanOrEqual(0);
+			expect(body.cleanupSummary.wasteTotals.totalSacks).toBeGreaterThanOrEqual(0);
 
 			// PRIVACY CHECK: Zero private notes, keys, assignee emails
 			expect((body.cleanupSummary as Record<string, unknown>).assignedUserEmail).toBeUndefined();

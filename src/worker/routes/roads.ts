@@ -235,37 +235,51 @@ roadImpactsRouter.post("/:eventId/road-impacts", async (c) => {
 	const plannedFromDate = new Date(data.plannedFrom);
 	const plannedToDate = new Date(data.plannedTo);
 
+	// Atomic insert with authoritative lock and audit logging
 	const query = sql`
-		WITH inserted AS (
+		WITH current_event AS (
+			SELECT e.id, e.organization_id
+			FROM events e
+			JOIN memberships m ON m.organization_id = e.organization_id
+			WHERE e.id = ${eventId}
+			  AND e.status IN ('draft', 'review')
+			  AND m.user_id = ${currentUser.id}
+			  AND m.role = 'organizer'
+			FOR UPDATE OF e
+		),
+		inserted AS (
 			INSERT INTO road_impacts (
 				id, event_id, road_segment_id, planned_from, planned_to, impact_type, diversion_note, created_at
 			)
-			VALUES (
-				${impactId}, ${eventId}, ${data.roadSegmentId}, ${plannedFromDate}, ${plannedToDate},
+			SELECT
+				${impactId}, ce.id, ${data.roadSegmentId}, ${plannedFromDate}, ${plannedToDate},
 				${data.impactType}, ${data.diversionNote ?? null}, ${now}
-			)
+			FROM current_event ce
 			RETURNING *
 		),
 		updated_event AS (
 			UPDATE events
 			SET status = 'draft', verified_by = NULL, verified_at = NULL, updated_at = ${now}
-			WHERE id = ${eventId} AND status = 'review'
-			RETURNING id
+			FROM current_event ce
+			WHERE events.id = ce.id AND events.status = 'review'
+			RETURNING events.id
 		),
 		logged AS (
 			INSERT INTO audit_logs (
 				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 			)
 			SELECT
-				${auditId}, ${event.organizationId}, ${eventId}, ${currentUser.id}, 'road_impact.created', 'road_impact', id, null,
+				${auditId}, ce.organization_id, ${eventId}, ${currentUser.id}, 'road_impact.created', 'road_impact', i.id, null,
 				json_build_object(
-					'roadSegmentId', road_segment_id,
-					'plannedFrom', planned_from,
-					'plannedTo', planned_to,
-					'impactType', impact_type
+					'impactId', i.id,
+					'roadSegmentId', i.road_segment_id,
+					'plannedFrom', i.planned_from,
+					'plannedTo', i.planned_to,
+					'impactType', i.impact_type
 				),
 				${now}
-			FROM inserted
+			FROM inserted i
+			JOIN current_event ce ON ce.id = i.event_id
 			RETURNING id
 		)
 		SELECT
@@ -283,24 +297,36 @@ roadImpactsRouter.post("/:eventId/road-impacts", async (c) => {
 	const res = await db.execute(query);
 	const row = res.rows[0];
 
+	if (!row) {
+		return sendError(
+			c,
+			"STATE_CONFLICT",
+			"Road impact could not be created. Ensure the event is in draft or review status and you are an authorized organizer.",
+			409,
+		);
+	}
+
+	const impactData = {
+		id: row.id as string,
+		eventId: row.eventId as string,
+		roadSegmentId: row.roadSegmentId as string,
+		plannedFrom: new Date(row.plannedFrom as string).toISOString(),
+		plannedTo: new Date(row.plannedTo as string).toISOString(),
+		impactType: row.impactType as string,
+		diversionNote: (row.diversionNote as string | null) ?? null,
+		createdAt: new Date(row.createdAt as string).toISOString(),
+	};
+
 	return c.json(
 		{
-			roadImpact: {
-				id: row.id as string,
-				eventId: row.eventId as string,
-				roadSegmentId: row.roadSegmentId as string,
-				plannedFrom: new Date(row.plannedFrom as string),
-				plannedTo: new Date(row.plannedTo as string),
-				impactType: row.impactType as string,
-				diversionNote: (row.diversionNote ?? null) as string | null,
-				createdAt: new Date(row.createdAt as string),
-			},
+			impact: impactData,
+			roadImpact: impactData,
 		},
 		201,
 	);
 });
 
-// GET /api/events/:eventId/road-impacts - List impacts for an event
+// GET /api/events/:eventId/road-impacts - List planned road impacts for event
 roadImpactsRouter.get("/:eventId/road-impacts", async (c) => {
 	const currentUser = c.get("user")!;
 	const eventId = c.req.param("eventId");
@@ -310,71 +336,24 @@ roadImpactsRouter.get("/:eventId/road-impacts", async (c) => {
 		return sendError(c, "VALIDATION_FAILED", "Invalid event ID format.", 422);
 	}
 
+	const check = await assertOrganizerForEvent(c, eventId, currentUser.id);
+	if (check.error) return check.error;
+
 	const db = c.get("db");
-
-	// Verify caller has access to view event
-	const eventRows = await db
-		.select()
-		.from(events)
-		.where(eq(events.id, eventId))
-		.limit(1);
-
-	const event = eventRows[0];
-	if (!event) {
-		return sendError(c, "NOT_FOUND", "Event not found.", 404);
-	}
-
-	// Membership check
-	const memberRows = await db
-		.select({ role: memberships.role })
-		.from(memberships)
-		.where(
-			and(
-				eq(memberships.organizationId, event.organizationId),
-				eq(memberships.userId, currentUser.id),
-			),
-		)
-		.limit(1);
-
-	const membership = memberRows[0];
-	if (!membership) {
-		return sendError(c, "FORBIDDEN", "You do not have access to this event.", 403);
-	}
-
-	// If officer, verify assignment
-	if (membership.role === "officer") {
-		const assignment = await db
-			.select()
-			.from(eventAssignments)
-			.where(
-				and(
-					eq(eventAssignments.eventId, eventId),
-					eq(eventAssignments.userId, currentUser.id),
-				),
-			)
-			.limit(1);
-
-		if (assignment.length === 0) {
-			return sendError(
-				c,
-				"FORBIDDEN",
-				"You are not assigned to this event.",
-				403,
-			);
-		}
-	}
 
 	const query = sql`
 		SELECT
 			ri.id,
 			ri.event_id AS "eventId",
 			ri.road_segment_id AS "roadSegmentId",
-			rs.display_name AS "roadSegmentName",
 			ri.planned_from AS "plannedFrom",
 			ri.planned_to AS "plannedTo",
 			ri.impact_type AS "impactType",
 			ri.diversion_note AS "diversionNote",
-			ri.created_at AS "createdAt"
+			ri.created_at AS "createdAt",
+			rs.display_name AS "roadSegmentDisplayName",
+			rs.coverage_area AS "roadSegmentCoverageArea",
+			ST_AsGeoJSON(rs.geom)::json AS "roadSegmentGeometry"
 		FROM road_impacts ri
 		INNER JOIN road_segments rs ON ri.road_segment_id = rs.id
 		WHERE ri.event_id = ${eventId}
@@ -386,18 +365,22 @@ roadImpactsRouter.get("/:eventId/road-impacts", async (c) => {
 		id: row.id as string,
 		eventId: row.eventId as string,
 		roadSegmentId: row.roadSegmentId as string,
-		roadSegmentName: row.roadSegmentName as string,
-		plannedFrom: new Date(row.plannedFrom as string),
-		plannedTo: new Date(row.plannedTo as string),
+		plannedFrom: new Date(row.plannedFrom as string).toISOString(),
+		plannedTo: new Date(row.plannedTo as string).toISOString(),
 		impactType: row.impactType as string,
-		diversionNote: (row.diversionNote ?? null) as string | null,
-		createdAt: new Date(row.createdAt as string),
+		diversionNote: (row.diversionNote as string | null) ?? null,
+		createdAt: new Date(row.createdAt as string).toISOString(),
+		roadSegment: {
+			displayName: row.roadSegmentDisplayName as string,
+			coverageArea: row.roadSegmentCoverageArea as string,
+			geometry: row.roadSegmentGeometry,
+		},
 	}));
 
-	return c.json({ roadImpacts: impacts }, 200);
+	return c.json({ impacts }, 200);
 });
 
-// PATCH /api/events/:eventId/road-impacts/:impactId - Edit road impact
+// PATCH /api/events/:eventId/road-impacts/:impactId - Update road impact
 roadImpactsRouter.patch("/:eventId/road-impacts/:impactId", async (c) => {
 	const currentUser = c.get("user")!;
 	const eventId = c.req.param("eventId");
@@ -413,7 +396,10 @@ roadImpactsRouter.patch("/:eventId/road-impacts/:impactId", async (c) => {
 	if (check.error) return check.error;
 	const event = check.event;
 
-	if (event.status === "published" || event.status === "active") {
+	if (
+		event.status === "published" ||
+		event.status === "active"
+	) {
 		return sendError(
 			c,
 			"STATE_CONFLICT",
@@ -421,27 +407,16 @@ roadImpactsRouter.patch("/:eventId/road-impacts/:impactId", async (c) => {
 			409,
 		);
 	}
-	if (event.status === "completed" || event.status === "cancelled") {
+	if (
+		event.status === "completed" ||
+		event.status === "cancelled"
+	) {
 		return sendError(
 			c,
 			"STATE_CONFLICT",
-			`Cannot edit road impacts on an event in terminal status: ${event.status}.`,
+			`Cannot modify road impacts of an event in terminal status: ${event.status}.`,
 			409,
 		);
-	}
-
-	const db = c.get("db");
-	const impactRows = await db
-		.select()
-		.from(roadImpacts)
-		.where(
-			and(eq(roadImpacts.id, impactId), eq(roadImpacts.eventId, eventId)),
-		)
-		.limit(1);
-
-	const existingImpact = impactRows[0];
-	if (!existingImpact) {
-		return sendError(c, "NOT_FOUND", "Road impact not found.", 404);
 	}
 
 	let body: unknown;
@@ -456,16 +431,29 @@ roadImpactsRouter.patch("/:eventId/road-impacts/:impactId", async (c) => {
 		return sendError(
 			c,
 			"VALIDATION_FAILED",
-			parseResult.error.issues[0]?.message || "Invalid update data.",
+			parseResult.error.issues[0]?.message || "Invalid update payload.",
 			422,
 		);
 	}
 
 	const data = parseResult.data;
+	const db = c.get("db");
 
-	let newSegmentId = existingImpact.roadSegmentId;
+	// Fetch existing impact
+	const existingImpacts = await db
+		.select()
+		.from(roadImpacts)
+		.where(and(eq(roadImpacts.id, impactId), eq(roadImpacts.eventId, eventId)))
+		.limit(1);
+
+	const existingImpact = existingImpacts[0];
+	if (!existingImpact) {
+		return sendError(c, "NOT_FOUND", "Road impact not found.", 404);
+	}
+
+	// If segment changed, verify new segment
 	if (data.roadSegmentId && data.roadSegmentId !== existingImpact.roadSegmentId) {
-		const segRows = await db
+		const segmentRows = await db
 			.select({
 				id: roadSegments.id,
 				verifiedBy: roadSegments.verifiedBy,
@@ -475,16 +463,15 @@ roadImpactsRouter.patch("/:eventId/road-impacts/:impactId", async (c) => {
 			.where(eq(roadSegments.id, data.roadSegmentId))
 			.limit(1);
 
-		const seg = segRows[0];
-		if (!seg || !seg.verifiedBy || !seg.verifiedAt) {
+		const segment = segmentRows[0];
+		if (!segment || !segment.verifiedBy || !segment.verifiedAt) {
 			return sendError(
 				c,
 				"VALIDATION_FAILED",
-				"Referenced road segment does not exist or has not been verified.",
+				"New road segment does not exist or has not been verified.",
 				422,
 			);
 		}
-		newSegmentId = data.roadSegmentId;
 	}
 
 	const newPlannedFrom = data.plannedFrom
@@ -503,6 +490,7 @@ roadImpactsRouter.patch("/:eventId/road-impacts/:impactId", async (c) => {
 		);
 	}
 
+	const newSegmentId = data.roadSegmentId ?? existingImpact.roadSegmentId;
 	const newImpactType = data.impactType ?? existingImpact.impactType;
 	const newDiversionNote =
 		data.diversionNote !== undefined
@@ -512,50 +500,60 @@ roadImpactsRouter.patch("/:eventId/road-impacts/:impactId", async (c) => {
 	const auditId = crypto.randomUUID();
 	const now = new Date();
 
-	const beforeSnapshot = {
-		roadSegmentId: existingImpact.roadSegmentId,
-		plannedFrom: existingImpact.plannedFrom.toISOString(),
-		plannedTo: existingImpact.plannedTo.toISOString(),
-		impactType: existingImpact.impactType,
-		diversionNote: existingImpact.diversionNote,
-	};
-
-	const afterSnapshot = {
-		roadSegmentId: newSegmentId,
-		plannedFrom: newPlannedFrom.toISOString(),
-		plannedTo: newPlannedTo.toISOString(),
-		impactType: newImpactType,
-		diversionNote: newDiversionNote,
-	};
-
+	// Atomic update with authoritative lock checking draft/review status and organizer role
 	const query = sql`
-		WITH updated AS (
-			UPDATE road_impacts
+		WITH current_impact AS (
+			SELECT ri.id, ri.event_id, ri.road_segment_id, ri.planned_from, ri.planned_to, ri.impact_type, ri.diversion_note, e.organization_id
+			FROM road_impacts ri
+			JOIN events e ON e.id = ri.event_id
+			JOIN memberships m ON m.organization_id = e.organization_id
+			WHERE ri.id = ${impactId} AND ri.event_id = ${eventId}
+			  AND e.status IN ('draft', 'review')
+			  AND m.user_id = ${currentUser.id}
+			  AND m.role = 'organizer'
+			FOR UPDATE OF ri
+		),
+		updated AS (
+			UPDATE road_impacts ri
 			SET
 				road_segment_id = ${newSegmentId},
 				planned_from = ${newPlannedFrom},
 				planned_to = ${newPlannedTo},
 				impact_type = ${newImpactType},
 				diversion_note = ${newDiversionNote}
-			WHERE id = ${impactId} AND event_id = ${eventId}
-			RETURNING *
+			FROM current_impact ci
+			WHERE ri.id = ci.id
+			RETURNING ri.*, ci.road_segment_id AS old_segment_id, ci.planned_from AS old_planned_from, ci.planned_to AS old_planned_to, ci.impact_type AS old_impact_type, ci.diversion_note AS old_diversion_note, ci.organization_id
 		),
 		updated_event AS (
 			UPDATE events
 			SET status = 'draft', verified_by = NULL, verified_at = NULL, updated_at = ${now}
-			WHERE id = ${eventId} AND status = 'review'
-			RETURNING id
+			FROM current_impact ci
+			WHERE events.id = ci.event_id AND events.status = 'review'
+			RETURNING events.id
 		),
 		logged AS (
 			INSERT INTO audit_logs (
 				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 			)
 			SELECT
-				${auditId}, ${event.organizationId}, ${eventId}, ${currentUser.id}, 'road_impact.updated', 'road_impact', id,
-				${JSON.stringify(beforeSnapshot)}::jsonb,
-				${JSON.stringify(afterSnapshot)}::jsonb,
+				${auditId}, u.organization_id, ${eventId}, ${currentUser.id}, 'road_impact.updated', 'road_impact', u.id,
+				json_build_object(
+					'roadSegmentId', u.old_segment_id,
+					'plannedFrom', u.old_planned_from,
+					'plannedTo', u.old_planned_to,
+					'impactType', u.old_impact_type,
+					'diversionNote', u.old_diversion_note
+				),
+				json_build_object(
+					'roadSegmentId', u.road_segment_id,
+					'plannedFrom', u.planned_from,
+					'plannedTo', u.planned_to,
+					'impactType', u.impact_type,
+					'diversionNote', u.diversion_note
+				),
 				${now}
-			FROM updated
+			FROM updated u
 			RETURNING id
 		)
 		SELECT
@@ -571,34 +569,38 @@ roadImpactsRouter.patch("/:eventId/road-impacts/:impactId", async (c) => {
 	`;
 
 	const res = await db.execute(query);
-	if (res.rows.length === 0) {
+	const row = res.rows[0];
+
+	if (!row) {
 		return sendError(
 			c,
 			"STATE_CONFLICT",
-			"Road impact could not be updated.",
+			"Road impact could not be updated. Ensure event is in draft or review status and you are an authorized organizer.",
 			409,
 		);
 	}
 
-	const row = res.rows[0];
+	const impactData = {
+		id: row.id as string,
+		eventId: row.eventId as string,
+		roadSegmentId: row.roadSegmentId as string,
+		plannedFrom: new Date(row.plannedFrom as string).toISOString(),
+		plannedTo: new Date(row.plannedTo as string).toISOString(),
+		impactType: row.impactType as string,
+		diversionNote: (row.diversionNote as string | null) ?? null,
+		createdAt: new Date(row.createdAt as string).toISOString(),
+	};
+
 	return c.json(
 		{
-			roadImpact: {
-				id: row.id as string,
-				eventId: row.eventId as string,
-				roadSegmentId: row.roadSegmentId as string,
-				plannedFrom: new Date(row.plannedFrom as string),
-				plannedTo: new Date(row.plannedTo as string),
-				impactType: row.impactType as string,
-				diversionNote: (row.diversionNote ?? null) as string | null,
-				createdAt: new Date(row.createdAt as string),
-			},
+			impact: impactData,
+			roadImpact: impactData,
 		},
 		200,
 	);
 });
 
-// 3. Road Status Updates Router: POST /api/road-impacts/:impactId/status
+// 3. Live Road Status Router: /api/road-impacts/:impactId/status
 export const roadStatusRouter = new Hono<{
 	Bindings: Env;
 	Variables: AppVariables;
@@ -606,29 +608,86 @@ export const roadStatusRouter = new Hono<{
 
 roadStatusRouter.use("*", requireAuth);
 
+// Helper: Assert officer has traffic update assignment on the impact's event
+async function assertEventTrafficOfficer(
+	c: Parameters<typeof sendError>[0],
+	eventId: string,
+	userId: string,
+) {
+	const db = c.get("db");
+
+	// 1. Check direct event assignment with canUpdateTraffic
+	const assignments = await db
+		.select()
+		.from(eventAssignments)
+		.where(
+			and(
+				eq(eventAssignments.eventId, eventId),
+				eq(eventAssignments.userId, userId),
+				eq(eventAssignments.canUpdateTraffic, true),
+			),
+		)
+		.limit(1);
+
+	if (assignments.length > 0) {
+		return { authorized: true };
+	}
+
+	// 2. Alternatively, organizer of the hosting organization has administrative override
+	const eventRows = await db
+		.select({ organizationId: events.organizationId })
+		.from(events)
+		.where(eq(events.id, eventId))
+		.limit(1);
+
+	if (eventRows.length > 0) {
+		const orgId = eventRows[0].organizationId;
+		const memberRows = await db
+			.select({ role: memberships.role })
+			.from(memberships)
+			.where(
+				and(
+					eq(memberships.organizationId, orgId),
+					eq(memberships.userId, userId),
+					eq(memberships.role, "organizer"),
+				),
+			)
+			.limit(1);
+
+		if (memberRows.length > 0) {
+			return { authorized: true };
+		}
+	}
+
+	return {
+		error: sendError(
+			c,
+			"FORBIDDEN",
+			"Field officer traffic update permission required for this event.",
+			403,
+		),
+	};
+}
+
+// POST /api/road-impacts/:impactId/status - Update live road status
 roadStatusRouter.post("/:impactId/status", async (c) => {
 	const currentUser = c.get("user")!;
 	const impactId = c.req.param("impactId");
 
 	const idValidation = uuidParamSchema.safeParse(impactId);
 	if (!idValidation.success) {
-		return sendError(
-			c,
-			"VALIDATION_FAILED",
-			"Invalid road impact ID format.",
-			422,
-		);
+		return sendError(c, "VALIDATION_FAILED", "Invalid road impact ID format.", 422);
 	}
 
 	const db = c.get("db");
 
-	// Query impact and associated event
+	// Find road impact and event details
 	const impactRows = await db
 		.select({
-			impactId: roadImpacts.id,
+			id: roadImpacts.id,
 			eventId: roadImpacts.eventId,
-			organizationId: events.organizationId,
 			eventStatus: events.status,
+			organizationId: events.organizationId,
 		})
 		.from(roadImpacts)
 		.innerJoin(events, eq(roadImpacts.eventId, events.id))
@@ -653,51 +712,13 @@ roadStatusRouter.post("/:impactId/status", async (c) => {
 		);
 	}
 
-	// Authorization check: organizer of organization OR assigned officer with canUpdateTraffic
-	const memberRows = await db
-		.select({ role: memberships.role })
-		.from(memberships)
-		.where(
-			and(
-				eq(memberships.organizationId, impact.organizationId),
-				eq(memberships.userId, currentUser.id),
-			),
-		)
-		.limit(1);
-
-	const membership = memberRows[0];
-	if (!membership) {
-		return sendError(
-			c,
-			"FORBIDDEN",
-			"You are not a member of the event organization.",
-			403,
-		);
-	}
-
-	if (membership.role !== "organizer") {
-		// Field officer: must have active event assignment with canUpdateTraffic
-		const assignmentRows = await db
-			.select({ canUpdateTraffic: eventAssignments.canUpdateTraffic })
-			.from(eventAssignments)
-			.where(
-				and(
-					eq(eventAssignments.eventId, impact.eventId),
-					eq(eventAssignments.userId, currentUser.id),
-				),
-			)
-			.limit(1);
-
-		const assignment = assignmentRows[0];
-		if (!assignment || !assignment.canUpdateTraffic) {
-			return sendError(
-				c,
-				"FORBIDDEN",
-				"You do not have traffic update permissions for this event.",
-				403,
-			);
-		}
-	}
+	// Verify caller authorization
+	const authCheck = await assertEventTrafficOfficer(
+		c,
+		impact.eventId,
+		currentUser.id,
+	);
+	if (authCheck.error) return authCheck.error;
 
 	let body: unknown;
 	try {
@@ -711,7 +732,7 @@ roadStatusRouter.post("/:impactId/status", async (c) => {
 		return sendError(
 			c,
 			"VALIDATION_FAILED",
-			parseResult.error.issues[0]?.message || "Invalid status payload.",
+			parseResult.error.issues[0]?.message || "Invalid road status update data.",
 			422,
 		);
 	}
@@ -720,32 +741,21 @@ roadStatusRouter.post("/:impactId/status", async (c) => {
 	const now = new Date();
 	const observedDate = new Date(data.observedAt);
 
-	// Validate observation timestamp bounds: reject future timestamps beyond 5m skew, or older than 24h
-	const MAX_FUTURE_SKEW_MS = 5 * 60 * 1000; // 5 minutes
-	const MAX_PAST_SKEW_MS = 24 * 60 * 60 * 1000; // 24 hours
-
-	if (observedDate.getTime() > now.getTime() + MAX_FUTURE_SKEW_MS) {
+	// Observation timestamp cannot be more than 5 minutes in the future
+	if (observedDate.getTime() > now.getTime() + 5 * 60 * 1000) {
 		return sendError(
 			c,
 			"VALIDATION_FAILED",
-			"Observed time cannot be more than 5 minutes in the future.",
-			422,
-		);
-	}
-	if (observedDate.getTime() < now.getTime() - MAX_PAST_SKEW_MS) {
-		return sendError(
-			c,
-			"VALIDATION_FAILED",
-			"Observed time cannot be older than 24 hours.",
+			"Observation timestamp cannot be more than 5 minutes in the future.",
 			422,
 		);
 	}
 
-	// Server assigns authoritative TTL = 30 minutes
+	// Server enforces 30-minute status TTL from observation time
 	const TTL_MS = 30 * 60 * 1000;
-	const expiresAtDate = new Date(now.getTime() + TTL_MS);
+	const expiresAtDate = new Date(observedDate.getTime() + TTL_MS);
 
-	// Idempotency check via mutationId
+	// Fast-path Idempotency Check: compare entire normalized operation
 	const existingUpdate = await db
 		.select()
 		.from(roadStatusUpdates)
@@ -754,11 +764,13 @@ roadStatusRouter.post("/:impactId/status", async (c) => {
 
 	if (existingUpdate.length > 0) {
 		const existing = existingUpdate[0];
-		// If identical payload & actor, return original result idempotently
+		// Compare entire normalized operation: actor, tenant/impact, status, observation, note
 		const isIdentical =
 			existing.roadImpactId === impactId &&
+			existing.updatedBy === currentUser.id &&
 			existing.status === data.status &&
-			existing.updatedBy === currentUser.id;
+			Math.abs(existing.observedAt.getTime() - observedDate.getTime()) <= 1000 &&
+			(existing.note ?? null) === (data.note ?? null);
 
 		if (isIdentical) {
 			return c.json(
@@ -772,7 +784,7 @@ roadStatusRouter.post("/:impactId/status", async (c) => {
 			);
 		}
 
-		// Conflict: reused mutation ID with mismatched payload or actor
+		// Conflict: reused mutation ID with mismatched payload or actor (prevent cross-tenant leak)
 		return sendError(
 			c,
 			"STATE_CONFLICT",
@@ -784,15 +796,27 @@ roadStatusRouter.post("/:impactId/status", async (c) => {
 	const updateId = crypto.randomUUID();
 	const auditId = crypto.randomUUID();
 
+	// Atomic insert with authoritative lock verifying event is published/active and actor has traffic permissions
 	const query = sql`
-		WITH inserted AS (
+		WITH checked_impact AS (
+			SELECT ri.id, e.id AS event_id, e.organization_id
+			FROM road_impacts ri
+			JOIN events e ON e.id = ri.event_id
+			LEFT JOIN event_assignments ea ON ea.event_id = e.id AND ea.user_id = ${currentUser.id} AND ea.can_update_traffic = true
+			LEFT JOIN memberships m ON m.organization_id = e.organization_id AND m.user_id = ${currentUser.id} AND m.role = 'organizer'
+			WHERE ri.id = ${impactId}
+			  AND e.status IN ('published', 'active')
+			  AND (ea.id IS NOT NULL OR m.id IS NOT NULL)
+			FOR UPDATE OF ri
+		),
+		inserted AS (
 			INSERT INTO road_status_updates (
 				id, road_impact_id, status, observed_at, expires_at, updated_by, note, mutation_id, created_at
 			)
-			VALUES (
-				${updateId}, ${impactId}, ${data.status}, ${observedDate}, ${expiresAtDate},
+			SELECT
+				${updateId}, ci.id, ${data.status}, ${observedDate}, ${expiresAtDate},
 				${currentUser.id}, ${data.note ?? null}, ${data.mutationId}, ${now}
-			)
+			FROM checked_impact ci
 			ON CONFLICT (mutation_id) DO NOTHING
 			RETURNING *
 		),
@@ -801,15 +825,16 @@ roadStatusRouter.post("/:impactId/status", async (c) => {
 				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 			)
 			SELECT
-				${auditId}, ${impact.organizationId}, ${impact.eventId}, ${currentUser.id}, 'road_status.updated', 'road_status_update', id, null,
+				${auditId}, ci.organization_id, ci.event_id, ${currentUser.id}, 'road_status.updated', 'road_status_update', i.id, null,
 				json_build_object(
-					'status', status,
-					'observedAt', observed_at,
-					'expiresAt', expires_at,
-					'mutationId', mutation_id
+					'status', i.status,
+					'observedAt', i.observed_at,
+					'expiresAt', i.expires_at,
+					'mutationId', i.mutation_id
 				),
 				${now}
-			FROM inserted
+			FROM inserted i
+			JOIN checked_impact ci ON ci.id = i.road_impact_id
 			RETURNING id
 		)
 		SELECT
@@ -823,7 +848,7 @@ roadStatusRouter.post("/:impactId/status", async (c) => {
 	const res = await db.execute(query);
 
 	if (res.rows.length === 0) {
-		// Concurrent execution established the mutation row
+		// Concurrent execution collision: check if same mutation_id was inserted by a concurrent thread
 		const concurrentRow = await db
 			.select()
 			.from(roadStatusUpdates)
@@ -832,21 +857,38 @@ roadStatusRouter.post("/:impactId/status", async (c) => {
 
 		if (concurrentRow.length > 0) {
 			const existing = concurrentRow[0];
-			return c.json(
-				{
-					status: existing.status,
-					observedAt: existing.observedAt.toISOString(),
-					expiresAt: existing.expiresAt.toISOString(),
-					updatedBy: existing.updatedBy,
-				},
-				200,
+			// Strictly compare normalized operation on concurrent path
+			const isIdentical =
+				existing.roadImpactId === impactId &&
+				existing.updatedBy === currentUser.id &&
+				existing.status === data.status &&
+				Math.abs(existing.observedAt.getTime() - observedDate.getTime()) <= 1000 &&
+				(existing.note ?? null) === (data.note ?? null);
+
+			if (isIdentical) {
+				return c.json(
+					{
+						status: existing.status,
+						observedAt: existing.observedAt.toISOString(),
+						expiresAt: existing.expiresAt.toISOString(),
+						updatedBy: existing.updatedBy,
+					},
+					200,
+				);
+			}
+
+			return sendError(
+				c,
+				"STATE_CONFLICT",
+				"Mutation ID has already been used with different parameters.",
+				409,
 			);
 		}
 
 		return sendError(
 			c,
 			"STATE_CONFLICT",
-			"Road status update could not be applied.",
+			"Road status update could not be applied due to event lifecycle or assignment changes.",
 			409,
 		);
 	}
@@ -855,8 +897,14 @@ roadStatusRouter.post("/:impactId/status", async (c) => {
 	return c.json(
 		{
 			status: row.status as string,
-			observedAt: new Date(row.observedAt as string).toISOString(),
-			expiresAt: new Date(row.expiresAt as string).toISOString(),
+			observedAt:
+				row.observedAt instanceof Date
+					? row.observedAt.toISOString()
+					: (row.observedAt as string),
+			expiresAt:
+				row.expiresAt instanceof Date
+					? row.expiresAt.toISOString()
+					: (row.expiresAt as string),
 			updatedBy: row.updatedBy as string,
 		},
 		200,

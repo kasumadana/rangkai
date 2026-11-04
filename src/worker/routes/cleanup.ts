@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import path from "node:path";
 import { Hono } from "hono";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
@@ -20,7 +22,13 @@ import {
 	patchCleanupTaskSchema,
 	reopenCleanupTaskSchema,
 } from "../validators/cleanup";
-import { checkUploadRateLimit } from "../validators/documents";
+import {
+	ALLOWED_PHOTO_EXTENSIONS,
+	checkUploadRateLimit,
+	MAX_PHOTO_SIZE_BYTES,
+	readBoundedRequestBody,
+	sanitizeFilename,
+} from "../validators/documents";
 
 const uuidParamSchema = z.string().uuid();
 
@@ -194,7 +202,7 @@ eventsCleanupRouter.get("/:eventId/cleanup-tasks", async (c) => {
 
 	const db = c.get("db");
 
-	// Query cleanup tasks with PostGIS Point as geojson/coordinates and evidence count
+	// Query cleanup tasks with PostGIS Point coordinates and evidence count
 	const query = sql`
 		SELECT
 			ct.id,
@@ -332,25 +340,36 @@ eventsCleanupRouter.post("/:eventId/cleanup-tasks", async (c) => {
 		: sql`NULL`;
 
 	const query = sql`
-		WITH new_task AS (
+		WITH current_event AS (
+			SELECT e.id, e.organization_id
+			FROM events e
+			JOIN memberships m ON m.organization_id = e.organization_id
+			WHERE e.id = ${eventId}
+			  AND e.status != 'cancelled'
+			  AND m.user_id = ${currentUser.id}
+			  AND m.role = 'organizer'
+			FOR UPDATE OF e
+		),
+		new_task AS (
 			INSERT INTO cleanup_tasks (
 				id, event_id, title, description, location, assigned_user_id, status, due_at, created_at, updated_at
 			)
-			VALUES (
-				${taskId}, ${eventId}, ${input.title}, ${input.description ?? null},
+			SELECT
+				${taskId}, ce.id, ${input.title}, ${input.description ?? null},
 				${locationSql}, ${input.assignedUserId ?? null}, 'todo', ${dueAtDate}, ${now}, ${now}
-			)
+			FROM current_event ce
 			RETURNING *
 		),
 		logged AS (
 			INSERT INTO audit_logs (
 				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 			)
-			VALUES (
-				${auditId}, ${event.organizationId}, ${eventId}, ${currentUser.id},
-				'cleanup_task.created', 'cleanup_task', ${taskId},
+			SELECT
+				${auditId}, ce.organization_id, ${eventId}, ${currentUser.id},
+				'cleanup_task.created', 'cleanup_task', nt.id,
 				NULL, ${JSON.stringify(afterSnapshot)}::jsonb, ${now}
-			)
+			FROM new_task nt
+			JOIN current_event ce ON ce.id = nt.event_id
 			RETURNING id
 		)
 		SELECT
@@ -361,8 +380,6 @@ eventsCleanupRouter.post("/:eventId/cleanup-tasks", async (c) => {
 			assigned_user_id AS "assignedUserId",
 			status,
 			due_at AS "dueAt",
-			verified_by AS "verifiedBy",
-			verified_at AS "verifiedAt",
 			created_at AS "createdAt",
 			updated_at AS "updatedAt"
 		FROM new_task;
@@ -370,6 +387,15 @@ eventsCleanupRouter.post("/:eventId/cleanup-tasks", async (c) => {
 
 	const res = await db.execute(query);
 	const created = res.rows[0];
+
+	if (!created) {
+		return sendError(
+			c,
+			"STATE_CONFLICT",
+			"Cleanup task could not be created due to event status or permission changes.",
+			409,
+		);
+	}
 
 	return c.json(
 		{
@@ -390,42 +416,6 @@ eventsCleanupRouter.post("/:eventId/cleanup-tasks", async (c) => {
 		},
 		201,
 	);
-});
-
-// GET /api/events/:eventId/waste-records
-eventsCleanupRouter.get("/:eventId/waste-records", async (c) => {
-	const currentUser = c.get("user")!;
-	const eventId = c.req.param("eventId");
-
-	const idValidation = uuidParamSchema.safeParse(eventId);
-	if (!idValidation.success) {
-		return sendError(c, "VALIDATION_FAILED", "Invalid event ID format.", 422);
-	}
-
-	const access = await assertCleanupAccessForEvent(c, eventId, currentUser.id);
-	if (access.error) return access.error;
-
-	const db = c.get("db");
-	const records = await db
-		.select({
-			id: wasteRecords.id,
-			eventId: wasteRecords.eventId,
-			taskId: wasteRecords.taskId,
-			category: wasteRecords.category,
-			quantityKg: wasteRecords.quantityKg,
-			sackCount: wasteRecords.sackCount,
-			measurementMethod: wasteRecords.measurementMethod,
-			destination: wasteRecords.destination,
-			recordedBy: wasteRecords.recordedBy,
-			recordedAt: wasteRecords.recordedAt,
-			recordedByName: userTable.name,
-		})
-		.from(wasteRecords)
-		.leftJoin(userTable, eq(wasteRecords.recordedBy, userTable.id))
-		.where(eq(wasteRecords.eventId, eventId))
-		.orderBy(desc(wasteRecords.recordedAt));
-
-	return c.json({ wasteRecords: records }, 200);
 });
 
 // POST /api/events/:eventId/waste-records
@@ -473,7 +463,7 @@ eventsCleanupRouter.post("/:eventId/waste-records", async (c) => {
 
 	// If taskId provided, verify it belongs to this event
 	if (input.taskId) {
-		const taskRows = await db
+		const task = await db
 			.select({ id: cleanupTasks.id })
 			.from(cleanupTasks)
 			.where(
@@ -484,17 +474,17 @@ eventsCleanupRouter.post("/:eventId/waste-records", async (c) => {
 			)
 			.limit(1);
 
-		if (taskRows.length === 0) {
+		if (task.length === 0) {
 			return sendError(
 				c,
 				"VALIDATION_FAILED",
-				"Referenced cleanup task does not belong to this event.",
+				"Referenced cleanup task does not exist for this event.",
 				422,
 			);
 		}
 	}
 
-	const wasteId = crypto.randomUUID();
+	const recordId = crypto.randomUUID();
 	const auditId = crypto.randomUUID();
 	const now = new Date();
 
@@ -506,22 +496,18 @@ eventsCleanupRouter.post("/:eventId/waste-records", async (c) => {
 		destination: input.destination ?? null,
 		taskId: input.taskId ?? null,
 		recordedBy: currentUser.id,
-		recordedAt: now.toISOString(),
 	};
 
 	const query = sql`
-		WITH new_waste AS (
+		WITH new_record AS (
 			INSERT INTO waste_records (
 				id, event_id, task_id, category, quantity_kg, sack_count, measurement_method, destination, recorded_by, recorded_at
 			)
 			VALUES (
-				${wasteId}, ${eventId}, ${input.taskId ?? null}, ${input.category},
-				${input.quantityKg !== undefined ? input.quantityKg.toString() : null},
-				${input.sackCount ?? null},
-				${input.measurementMethod},
-				${input.destination ?? null},
-				${currentUser.id},
-				${now}
+				${recordId}, ${eventId}, ${input.taskId ?? null}, ${input.category},
+				${input.quantityKg !== undefined ? String(input.quantityKg) : null},
+				${input.sackCount ?? null}, ${input.measurementMethod}, ${input.destination ?? null},
+				${currentUser.id}, ${now}
 			)
 			RETURNING *
 		),
@@ -531,7 +517,7 @@ eventsCleanupRouter.post("/:eventId/waste-records", async (c) => {
 			)
 			VALUES (
 				${auditId}, ${event.organizationId}, ${eventId}, ${currentUser.id},
-				'waste_record.created', 'waste_record', ${wasteId},
+				'waste_record.created', 'waste_record', ${recordId},
 				NULL, ${JSON.stringify(afterSnapshot)}::jsonb, ${now}
 			)
 			RETURNING id
@@ -547,38 +533,183 @@ eventsCleanupRouter.post("/:eventId/waste-records", async (c) => {
 			destination,
 			recorded_by AS "recordedBy",
 			recorded_at AS "recordedAt"
-		FROM new_waste;
+		FROM new_record;
 	`;
 
 	const res = await db.execute(query);
-	const created = res.rows[0];
+	const row = res.rows[0];
 
 	return c.json(
 		{
 			wasteRecord: {
-				id: created.id as string,
-				eventId: created.eventId as string,
-				taskId: (created.taskId ?? null) as string | null,
-				category: created.category as string,
-				quantityKg: created.quantityKg ? Number(created.quantityKg) : null,
-				sackCount: created.sackCount ? Number(created.sackCount) : null,
-				measurementMethod: created.measurementMethod as string,
-				destination: (created.destination ?? null) as string | null,
-				recordedBy: created.recordedBy as string,
-				recordedAt: new Date(created.recordedAt as string),
+				id: row.id as string,
+				eventId: row.eventId as string,
+				taskId: (row.taskId ?? null) as string | null,
+				category: row.category as string,
+				quantityKg: row.quantityKg ? Number(row.quantityKg) : null,
+				sackCount: row.sackCount ? Number(row.sackCount) : null,
+				measurementMethod: row.measurementMethod as string,
+				destination: (row.destination ?? null) as string | null,
+				recordedBy: row.recordedBy as string,
+				recordedAt: new Date(row.recordedAt as string).toISOString(),
 			},
 		},
 		201,
 	);
 });
 
-// 2. Direct Cleanup Tasks Router: /api/cleanup-tasks
+// GET /api/events/:eventId/waste-records
+eventsCleanupRouter.get("/:eventId/waste-records", async (c) => {
+	const currentUser = c.get("user")!;
+	const eventId = c.req.param("eventId");
+
+	const idValidation = uuidParamSchema.safeParse(eventId);
+	if (!idValidation.success) {
+		return sendError(c, "VALIDATION_FAILED", "Invalid event ID format.", 422);
+	}
+
+	const access = await assertCleanupAccessForEvent(c, eventId, currentUser.id);
+	if (access.error) return access.error;
+
+	const db = c.get("db");
+	const rows = await db
+		.select({
+			id: wasteRecords.id,
+			eventId: wasteRecords.eventId,
+			taskId: wasteRecords.taskId,
+			category: wasteRecords.category,
+			quantityKg: wasteRecords.quantityKg,
+			sackCount: wasteRecords.sackCount,
+			measurementMethod: wasteRecords.measurementMethod,
+			destination: wasteRecords.destination,
+			recordedBy: wasteRecords.recordedBy,
+			recordedByName: userTable.name,
+			recordedAt: wasteRecords.recordedAt,
+		})
+		.from(wasteRecords)
+		.leftJoin(userTable, eq(wasteRecords.recordedBy, userTable.id))
+		.where(eq(wasteRecords.eventId, eventId))
+		.orderBy(desc(wasteRecords.recordedAt));
+
+	const records = rows.map((r) => ({
+		id: r.id,
+		eventId: r.eventId,
+		taskId: r.taskId ?? null,
+		category: r.category,
+		quantityKg: r.quantityKg ? Number(r.quantityKg) : null,
+		sackCount: r.sackCount ? Number(r.sackCount) : null,
+		measurementMethod: r.measurementMethod,
+		destination: r.destination ?? null,
+		recordedBy: r.recordedBy,
+		recordedByName: r.recordedByName ?? null,
+		recordedAt: r.recordedAt.toISOString(),
+	}));
+
+	return c.json({ wasteRecords: records }, 200);
+});
+
+// 2. Cleanup Tasks individual router: /api/cleanup-tasks
 export const cleanupTasksRouter = new Hono<{
 	Bindings: Env;
 	Variables: AppVariables;
 }>();
 
 cleanupTasksRouter.use("*", requireAuth);
+
+// GET /api/cleanup-tasks/:taskId
+cleanupTasksRouter.get("/:taskId", async (c) => {
+	const currentUser = c.get("user")!;
+	const taskId = c.req.param("taskId");
+
+	const idValidation = uuidParamSchema.safeParse(taskId);
+	if (!idValidation.success) {
+		return sendError(c, "VALIDATION_FAILED", "Invalid cleanup task ID format.", 422);
+	}
+
+	const task = await getTaskWithEvent(c, taskId);
+	if (!task) {
+		return sendError(c, "NOT_FOUND", "Cleanup task not found.", 404);
+	}
+
+	const access = await assertCleanupAccessForEvent(c, task.eventId, currentUser.id);
+	if (access.error) return access.error;
+
+	const db = c.get("db");
+
+	// Query task with coordinates and evidence list
+	const query = sql`
+		SELECT
+			ct.id,
+			ct.event_id AS "eventId",
+			ct.title,
+			ct.description,
+			CASE
+				WHEN ct.location IS NOT NULL THEN
+					json_build_object(
+						'lng', ST_X(ct.location::geometry),
+						'lat', ST_Y(ct.location::geometry)
+					)
+				ELSE NULL
+			END AS location,
+			ct.assigned_user_id AS "assignedUserId",
+			u.name AS "assignedUserName",
+			ct.status,
+			ct.due_at AS "dueAt",
+			ct.verified_by AS "verifiedBy",
+			ct.verified_at AS "verifiedAt",
+			ct.created_at AS "createdAt",
+			ct.updated_at AS "updatedAt"
+		FROM cleanup_tasks ct
+		LEFT JOIN "user" u ON ct.assigned_user_id = u.id
+		WHERE ct.id = ${taskId}
+		LIMIT 1;
+	`;
+
+	const res = await db.execute(query);
+	const row = res.rows[0];
+
+	if (!row) {
+		return sendError(c, "NOT_FOUND", "Cleanup task not found.", 404);
+	}
+
+	// Fetch evidence items
+	const evidenceRows = await db
+		.select({
+			id: cleanupEvidence.id,
+			taskId: cleanupEvidence.taskId,
+			stage: cleanupEvidence.stage,
+			createdAt: cleanupEvidence.createdAt,
+		})
+		.from(cleanupEvidence)
+		.where(eq(cleanupEvidence.taskId, taskId))
+		.orderBy(desc(cleanupEvidence.createdAt));
+
+	return c.json(
+		{
+			cleanupTask: {
+				id: row.id as string,
+				eventId: row.eventId as string,
+				title: row.title as string,
+				description: (row.description ?? null) as string | null,
+				location: row.location as { lng: number; lat: number } | null,
+				assignedUserId: (row.assignedUserId ?? null) as string | null,
+				assignedUserName: (row.assignedUserName ?? null) as string | null,
+				status: row.status as string,
+				dueAt: row.dueAt ? new Date(row.dueAt as string) : null,
+				verifiedBy: (row.verifiedBy ?? null) as string | null,
+				verifiedAt: row.verifiedAt ? new Date(row.verifiedAt as string) : null,
+				createdAt: new Date(row.createdAt as string),
+				updatedAt: new Date(row.updatedAt as string),
+				evidence: evidenceRows.map((e) => ({
+					id: e.id,
+					stage: e.stage,
+					createdAt: e.createdAt.toISOString(),
+				})),
+			},
+		},
+		200,
+	);
+});
 
 // PATCH /api/cleanup-tasks/:taskId
 cleanupTasksRouter.patch("/:taskId", async (c) => {
@@ -597,6 +728,16 @@ cleanupTasksRouter.patch("/:taskId", async (c) => {
 
 	const access = await assertCleanupAccessForEvent(c, task.eventId, currentUser.id);
 	if (access.error) return access.error;
+
+	// Invariant: Once verified, a task cannot be modified via PATCH (must use /reopen)
+	if (task.status === "verified") {
+		return sendError(
+			c,
+			"STATE_CONFLICT",
+			"Verified tasks cannot be edited via PATCH; use explicit POST /api/cleanup-tasks/:taskId/reopen to reopen.",
+			409,
+		);
+	}
 
 	let body: unknown;
 	try {
@@ -617,9 +758,19 @@ cleanupTasksRouter.patch("/:taskId", async (c) => {
 
 	const input = parsed.data;
 
-	// Role-dependent field enforcement (AGENTS §16, API-CONTRACT §8)
+	// Role-dependent field enforcement & task ownership (AGENTS §16, API-CONTRACT §8)
 	if (!access.isOrganizer) {
-		// Field officer: CANNOT change title, description, assignedUserId, dueAt, or set verified/reopened status
+		// Field officer: must be assigned to this task!
+		if (task.assignedUserId !== currentUser.id) {
+			return sendError(
+				c,
+				"FORBIDDEN",
+				"Field officers may only update tasks assigned to them.",
+				403,
+			);
+		}
+
+		// Field officer CANNOT change title, description, assignedUserId, dueAt, or location
 		if (
 			input.title !== undefined ||
 			input.description !== undefined ||
@@ -636,7 +787,7 @@ cleanupTasksRouter.patch("/:taskId", async (c) => {
 		}
 
 		if (input.status !== undefined) {
-			// Officer can only transition from todo -> in_progress, or in_progress -> submitted
+			// Officer can only transition from todo -> in_progress, reopened -> in_progress, or in_progress -> submitted
 			const allowedFromTodo = task.status === "todo" && input.status === "in_progress";
 			const allowedFromReopened = task.status === "reopened" && input.status === "in_progress";
 			const allowedFromInProgress = task.status === "in_progress" && input.status === "submitted";
@@ -663,6 +814,23 @@ cleanupTasksRouter.patch("/:taskId", async (c) => {
 	}
 
 	const db = c.get("db");
+
+	// If transitioning to 'submitted', enforce after-photo evidence requirement!
+	if (input.status === "submitted" && task.status !== "submitted") {
+		const afterCount = await db
+			.select({ count: sql<number>`count(*)::int` })
+			.from(cleanupEvidence)
+			.where(and(eq(cleanupEvidence.taskId, taskId), eq(cleanupEvidence.stage, "after")));
+
+		if ((afterCount[0]?.count ?? 0) === 0) {
+			return sendError(
+				c,
+				"STATE_CONFLICT",
+				"Task cannot be submitted without at least one 'after' photo evidence.",
+				409,
+			);
+		}
+	}
 
 	// If assignedUserId updated by organizer, verify membership
 	if (input.assignedUserId) {
@@ -706,6 +874,8 @@ cleanupTasksRouter.patch("/:taskId", async (c) => {
 		assignedUserId: task.assignedUserId,
 		status: task.status,
 		dueAt: task.dueAt ? task.dueAt.toISOString() : null,
+		verifiedBy: task.verifiedBy,
+		verifiedAt: task.verifiedAt ? task.verifiedAt.toISOString() : null,
 	};
 
 	const afterSnapshot = {
@@ -714,6 +884,8 @@ cleanupTasksRouter.patch("/:taskId", async (c) => {
 		assignedUserId: newAssignedUserId,
 		status: newStatus,
 		dueAt: newDueAt ? newDueAt.toISOString() : null,
+		verifiedBy: null, // Any material change or reopen clears verification!
+		verifiedAt: null,
 	};
 
 	const locationSql =
@@ -721,13 +893,28 @@ cleanupTasksRouter.patch("/:taskId", async (c) => {
 			? input.location
 				? sql`ST_SetSRID(ST_MakePoint(${input.location.lng}, ${input.location.lat}), 4326)`
 				: sql`NULL`
-			: sql`location`;
+			: sql`ct.location`;
 
 	const auditId = crypto.randomUUID();
 
+	// Atomic update with authoritative lock: prevent stale updates on verified task or revoked assignment
+	const officerPredicate = access.isOrganizer
+		? sql`TRUE`
+		: sql`ct.assigned_user_id = ${currentUser.id}`;
+
 	const query = sql`
-		WITH updated AS (
-			UPDATE cleanup_tasks
+		WITH current_task AS (
+			SELECT ct.*
+			FROM cleanup_tasks ct
+			JOIN events e ON e.id = ct.event_id
+			WHERE ct.id = ${taskId}
+			  AND ct.status != 'verified'
+			  AND e.status != 'cancelled'
+			  AND ${officerPredicate}
+			FOR UPDATE
+		),
+		updated AS (
+			UPDATE cleanup_tasks ct
 			SET
 				title = ${newTitle},
 				description = ${newDesc},
@@ -735,21 +922,24 @@ cleanupTasksRouter.patch("/:taskId", async (c) => {
 				assigned_user_id = ${newAssignedUserId},
 				status = ${newStatus},
 				due_at = ${newDueAt},
+				verified_by = NULL,
+				verified_at = NULL,
 				updated_at = ${now}
-			WHERE id = ${taskId}
-			RETURNING *
+			FROM current_task ctk
+			WHERE ct.id = ctk.id
+			RETURNING ct.*
 		),
 		logged AS (
 			INSERT INTO audit_logs (
 				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 			)
-			VALUES (
+			SELECT
 				${auditId}, ${task.organizationId}, ${task.eventId}, ${currentUser.id},
-				'cleanup_task.updated', 'cleanup_task', ${taskId},
+				'cleanup_task.updated', 'cleanup_task', u.id,
 				${JSON.stringify(beforeSnapshot)}::jsonb,
 				${JSON.stringify(afterSnapshot)}::jsonb,
 				${now}
-			)
+			FROM updated u
 			RETURNING id
 		)
 		SELECT
@@ -770,6 +960,15 @@ cleanupTasksRouter.patch("/:taskId", async (c) => {
 	const res = await db.execute(query);
 	const updated = res.rows[0];
 
+	if (!updated) {
+		return sendError(
+			c,
+			"STATE_CONFLICT",
+			"Cleanup task could not be updated. Ensure the task is not verified, event is not cancelled, and you have active assignment.",
+			409,
+		);
+	}
+
 	return c.json(
 		{
 			cleanupTask: {
@@ -781,8 +980,8 @@ cleanupTasksRouter.patch("/:taskId", async (c) => {
 				assignedUserId: (updated.assignedUserId ?? null) as string | null,
 				status: updated.status as string,
 				dueAt: updated.dueAt ? new Date(updated.dueAt as string) : null,
-				verifiedBy: (updated.verifiedBy ?? null) as string | null,
-				verifiedAt: updated.verifiedAt ? new Date(updated.verifiedAt as string) : null,
+				verifiedBy: null,
+				verifiedAt: null,
 				createdAt: new Date(updated.createdAt as string),
 				updatedAt: new Date(updated.updatedAt as string),
 			},
@@ -809,6 +1008,16 @@ cleanupTasksRouter.post("/:taskId/submit", async (c) => {
 	const access = await assertCleanupAccessForEvent(c, task.eventId, currentUser.id);
 	if (access.error) return access.error;
 
+	// Officer task ownership
+	if (!access.isOrganizer && task.assignedUserId !== currentUser.id) {
+		return sendError(
+			c,
+			"FORBIDDEN",
+			"Field officers may only submit tasks assigned to them.",
+			403,
+		);
+	}
+
 	if (task.status !== "in_progress" && task.status !== "todo" && task.status !== "reopened") {
 		return sendError(
 			c,
@@ -819,19 +1028,50 @@ cleanupTasksRouter.post("/:taskId/submit", async (c) => {
 	}
 
 	const db = c.get("db");
+
+	// Enforce after-evidence requirement!
+	const afterCount = await db
+		.select({ count: sql<number>`count(*)::int` })
+		.from(cleanupEvidence)
+		.where(and(eq(cleanupEvidence.taskId, taskId), eq(cleanupEvidence.stage, "after")));
+
+	if ((afterCount[0]?.count ?? 0) === 0) {
+		return sendError(
+			c,
+			"STATE_CONFLICT",
+			"Task cannot be submitted without at least one 'after' photo evidence.",
+			409,
+		);
+	}
+
 	const auditId = crypto.randomUUID();
 	const now = new Date();
 
+	const officerPredicate = access.isOrganizer
+		? sql`TRUE`
+		: sql`ct.assigned_user_id = ${currentUser.id}`;
+
 	const query = sql`
-		WITH updated AS (
-			UPDATE cleanup_tasks
+		WITH current_task AS (
+			SELECT ct.*
+			FROM cleanup_tasks ct
+			JOIN events e ON e.id = ct.event_id
+			WHERE ct.id = ${taskId}
+			  AND ct.status IN ('todo', 'in_progress', 'reopened')
+			  AND e.status != 'cancelled'
+			  AND ${officerPredicate}
+			FOR UPDATE OF ct
+		),
+		updated AS (
+			UPDATE cleanup_tasks ct
 			SET
 				status = 'submitted',
 				verified_by = NULL,
 				verified_at = NULL,
 				updated_at = ${now}
-			WHERE id = ${taskId} AND status IN ('todo', 'in_progress', 'reopened')
-			RETURNING *
+			FROM current_task ctk
+			WHERE ct.id = ctk.id
+			RETURNING ct.*
 		),
 		logged AS (
 			INSERT INTO audit_logs (
@@ -839,11 +1079,11 @@ cleanupTasksRouter.post("/:taskId/submit", async (c) => {
 			)
 			SELECT
 				${auditId}, ${task.organizationId}, ${task.eventId}, ${currentUser.id},
-				'cleanup_task.submitted', 'cleanup_task', id,
+				'cleanup_task.submitted', 'cleanup_task', u.id,
 				${JSON.stringify({ status: task.status })}::jsonb,
 				${JSON.stringify({ status: "submitted" })}::jsonb,
 				${now}
-			FROM updated
+			FROM updated u
 			RETURNING id
 		)
 		SELECT
@@ -866,7 +1106,7 @@ cleanupTasksRouter.post("/:taskId/submit", async (c) => {
 		return sendError(
 			c,
 			"STATE_CONFLICT",
-			"Cleanup task could not be submitted. It may have been updated concurrently.",
+			"Cleanup task could not be submitted. It may have been updated concurrently or assignment changed.",
 			409,
 		);
 	}
@@ -926,15 +1166,27 @@ cleanupTasksRouter.post("/:taskId/verify", async (c) => {
 
 	// Independent invariant: Cleanup verification does NOT open or update roads!
 	const query = sql`
-		WITH updated AS (
-			UPDATE cleanup_tasks
+		WITH current_task AS (
+			SELECT ct.*
+			FROM cleanup_tasks ct
+			JOIN events e ON e.id = ct.event_id
+			JOIN memberships m ON m.organization_id = e.organization_id
+			WHERE ct.id = ${taskId}
+			  AND ct.status = 'submitted'
+			  AND m.user_id = ${currentUser.id}
+			  AND m.role = 'organizer'
+			FOR UPDATE OF ct
+		),
+		updated AS (
+			UPDATE cleanup_tasks ct
 			SET
 				status = 'verified',
 				verified_by = ${currentUser.id},
 				verified_at = ${now},
 				updated_at = ${now}
-			WHERE id = ${taskId} AND status = 'submitted'
-			RETURNING *
+			FROM current_task ctk
+			WHERE ct.id = ctk.id
+			RETURNING ct.*
 		),
 		logged AS (
 			INSERT INTO audit_logs (
@@ -942,11 +1194,11 @@ cleanupTasksRouter.post("/:taskId/verify", async (c) => {
 			)
 			SELECT
 				${auditId}, ${task.organizationId}, ${task.eventId}, ${currentUser.id},
-				'cleanup_task.verified', 'cleanup_task', id,
+				'cleanup_task.verified', 'cleanup_task', u.id,
 				${JSON.stringify({ status: "submitted" })}::jsonb,
 				${JSON.stringify({ status: "verified", verifiedBy: currentUser.id, verifiedAt: now.toISOString() })}::jsonb,
 				${now}
-			FROM updated
+			FROM updated u
 			RETURNING id
 		)
 		SELECT
@@ -1051,15 +1303,27 @@ cleanupTasksRouter.post("/:taskId/reopen", async (c) => {
 	};
 
 	const query = sql`
-		WITH updated AS (
-			UPDATE cleanup_tasks
+		WITH current_task AS (
+			SELECT ct.*
+			FROM cleanup_tasks ct
+			JOIN events e ON e.id = ct.event_id
+			JOIN memberships m ON m.organization_id = e.organization_id
+			WHERE ct.id = ${taskId}
+			  AND ct.status IN ('submitted', 'verified')
+			  AND m.user_id = ${currentUser.id}
+			  AND m.role = 'organizer'
+			FOR UPDATE OF ct
+		),
+		updated AS (
+			UPDATE cleanup_tasks ct
 			SET
 				status = 'reopened',
 				verified_by = NULL,
 				verified_at = NULL,
 				updated_at = ${now}
-			WHERE id = ${taskId} AND status IN ('submitted', 'verified')
-			RETURNING *
+			FROM current_task ctk
+			WHERE ct.id = ctk.id
+			RETURNING ct.*
 		),
 		logged AS (
 			INSERT INTO audit_logs (
@@ -1067,11 +1331,11 @@ cleanupTasksRouter.post("/:taskId/reopen", async (c) => {
 			)
 			SELECT
 				${auditId}, ${task.organizationId}, ${task.eventId}, ${currentUser.id},
-				'cleanup_task.reopened', 'cleanup_task', id,
+				'cleanup_task.reopened', 'cleanup_task', u.id,
 				${JSON.stringify(beforeSnapshot)}::jsonb,
 				${JSON.stringify(afterSnapshot)}::jsonb,
 				${now}
-			FROM updated
+			FROM updated u
 			RETURNING id
 		)
 		SELECT
@@ -1138,6 +1402,16 @@ cleanupTasksRouter.post("/:taskId/evidence", async (c) => {
 	const access = await assertCleanupAccessForEvent(c, task.eventId, currentUser.id);
 	if (access.error) return access.error;
 
+	// Officer task ownership: cannot upload photo to another officer's task
+	if (!access.isOrganizer && task.assignedUserId !== currentUser.id) {
+		return sendError(
+			c,
+			"FORBIDDEN",
+			"Field officers may only upload evidence for tasks assigned to them.",
+			403,
+		);
+	}
+
 	if (task.eventStatus === "cancelled") {
 		return sendError(
 			c,
@@ -1147,20 +1421,59 @@ cleanupTasksRouter.post("/:taskId/evidence", async (c) => {
 		);
 	}
 
+	if (task.status === "verified") {
+		return sendError(
+			c,
+			"STATE_CONFLICT",
+			"Cannot upload evidence to a verified task. Task must be reopened first.",
+			409,
+		);
+	}
+
 	// Rate limit check
 	if (!checkUploadRateLimit(currentUser.id)) {
 		return sendError(
 			c,
-			"TOO_MANY_REQUESTS",
+			"RATE_LIMITED",
 			"Upload rate limit exceeded. Please retry later.",
 			429,
 		);
 	}
 
-	// Parse multipart form
+	// 1. Content-Length pre-check
+	const contentLengthHeader = c.req.header("content-length");
+	if (contentLengthHeader) {
+		const cl = parseInt(contentLengthHeader, 10);
+		if (!isNaN(cl) && cl > MAX_PHOTO_SIZE_BYTES + 65536) {
+			return sendError(
+				c,
+				"FILE_TOO_LARGE",
+				`Photo exceeds maximum permitted size of ${MAX_PHOTO_SIZE_BYTES} bytes (5 MB).`,
+				413,
+			);
+		}
+	}
+
+	// 2. Stream-bound request body before buffering
+	const bounded = await readBoundedRequestBody(c.req.raw, MAX_PHOTO_SIZE_BYTES + 65536);
+	if (bounded.error === "FILE_TOO_LARGE") {
+		return sendError(
+			c,
+			"FILE_TOO_LARGE",
+			`Photo exceeds maximum permitted size of ${MAX_PHOTO_SIZE_BYTES} bytes (5 MB).`,
+			413,
+		);
+	}
+
+	// 3. Parse bounded multipart form
 	let formData: FormData;
 	try {
-		formData = await c.req.formData();
+		const boundedReq = new Request(c.req.raw.url, {
+			method: c.req.raw.method,
+			headers: c.req.raw.headers,
+			body: bounded.buffer,
+		});
+		formData = await boundedReq.formData();
 	} catch {
 		return sendError(
 			c,
@@ -1180,32 +1493,56 @@ cleanupTasksRouter.post("/:taskId/evidence", async (c) => {
 		);
 	}
 
-	const fileField = formData.get("file");
-	if (!fileField || !(fileField instanceof File)) {
+	// 4. Enforce exactly one file in the multipart payload
+	let fileCount = 0;
+	let photoFile: File | null = null;
+	for (const [key, value] of formData.entries()) {
+		if (
+			value instanceof File ||
+			(typeof value === "object" && value !== null && "arrayBuffer" in value)
+		) {
+			fileCount++;
+			if ((key === "file" || key === "photo") && !photoFile) {
+				photoFile = value as File;
+			}
+		}
+	}
+
+	if (fileCount !== 1 || !photoFile) {
 		return sendError(
 			c,
 			"VALIDATION_FAILED",
-			"Evidence photo file is required.",
+			"Exactly one evidence photo file is required.",
 			422,
 		);
 	}
 
-	// Size limit: 8MB
-	const MAX_SIZE = 8 * 1024 * 1024;
-	if (fileField.size === 0) {
+	if (photoFile.size === 0) {
 		return sendError(c, "VALIDATION_FAILED", "Uploaded file is empty.", 422);
 	}
-	if (fileField.size > MAX_SIZE) {
+	if (photoFile.size > MAX_PHOTO_SIZE_BYTES) {
+		return sendError(
+			c,
+			"FILE_TOO_LARGE",
+			`File size exceeds 5MB limit (got ${photoFile.size} bytes).`,
+			413,
+		);
+	}
+
+	// 5. Allowed extension check
+	const originalName = sanitizeFilename(photoFile.name || "photo.jpg");
+	const ext = path.extname(originalName).toLowerCase();
+	if (!ALLOWED_PHOTO_EXTENSIONS.has(ext)) {
 		return sendError(
 			c,
 			"VALIDATION_FAILED",
-			`File size exceeds 8MB limit (got ${fileField.size} bytes).`,
+			`Photo extension '${ext}' is not permitted. Only .jpg, .jpeg, and .png photos are accepted.`,
 			422,
 		);
 	}
 
-	// Read bytes and verify magic bytes
-	const arrayBuffer = await fileField.arrayBuffer();
+	// 6. Magic bytes check
+	const arrayBuffer = await photoFile.arrayBuffer();
 	const bytes = new Uint8Array(arrayBuffer);
 	const magic = detectPhotoMagicBytes(bytes);
 
@@ -1218,7 +1555,21 @@ cleanupTasksRouter.post("/:taskId/evidence", async (c) => {
 		);
 	}
 
-	// Check R2 bucket binding
+	// 7. Claimed MIME check
+	if (
+		photoFile.type &&
+		photoFile.type !== magic.mimeType &&
+		!(photoFile.type === "image/jpg" && magic.mimeType === "image/jpeg")
+	) {
+		return sendError(
+			c,
+			"VALIDATION_FAILED",
+			"Claimed Content-Type does not match inspected photo signature.",
+			422,
+		);
+	}
+
+	// 8. Put photo to R2
 	const bucket =
 		c.env.rangkai_documents_dev ??
 		((c.env as Record<string, unknown>).DOCUMENTS as R2Bucket | undefined);
@@ -1226,16 +1577,15 @@ cleanupTasksRouter.post("/:taskId/evidence", async (c) => {
 	if (!bucket) {
 		return sendError(
 			c,
-			"INTERNAL_SERVER_ERROR",
+			"DEPENDENCY_UNAVAILABLE",
 			"Storage service binding is unavailable.",
-			500,
+			503,
 		);
 	}
 
 	const evidenceId = crypto.randomUUID();
 	const r2Key = `events/${task.eventId}/cleanup-tasks/${taskId}/${stageParam}-${crypto.randomUUID()}.${magic.extension}`;
 
-	// Store in R2
 	try {
 		await bucket.put(r2Key, arrayBuffer, {
 			httpMetadata: {
@@ -1251,13 +1601,13 @@ cleanupTasksRouter.post("/:taskId/evidence", async (c) => {
 	} catch {
 		return sendError(
 			c,
-			"SERVICE_UNAVAILABLE",
+			"DEPENDENCY_UNAVAILABLE",
 			"Failed to store photo evidence in storage.",
 			503,
 		);
 	}
 
-	// Persist metadata in Neon
+	// 9. Persist metadata in DB with authoritative check
 	const db = c.get("db");
 	const auditId = crypto.randomUUID();
 	const now = new Date();
@@ -1271,25 +1621,39 @@ cleanupTasksRouter.post("/:taskId/evidence", async (c) => {
 	};
 
 	try {
+		const officerPredicate = access.isOrganizer
+			? sql`TRUE`
+			: sql`ct.assigned_user_id = ${currentUser.id}`;
+
 		const query = sql`
-			WITH new_evidence AS (
+			WITH current_task AS (
+				SELECT ct.id
+				FROM cleanup_tasks ct
+				JOIN events e ON e.id = ct.event_id
+				WHERE ct.id = ${taskId}
+				  AND ct.status != 'verified'
+				  AND e.status != 'cancelled'
+				  AND ${officerPredicate}
+				FOR UPDATE OF ct
+			),
+			new_evidence AS (
 				INSERT INTO cleanup_evidence (
 					id, task_id, uploaded_by, r2_key, stage, created_at
 				)
-				VALUES (
-					${evidenceId}, ${taskId}, ${currentUser.id}, ${r2Key}, ${stageParam}, ${now}
-				)
+				SELECT
+					${evidenceId}, ct.id, ${currentUser.id}, ${r2Key}, ${stageParam}, ${now}
+				FROM current_task ct
 				RETURNING *
 			),
 			logged AS (
 				INSERT INTO audit_logs (
 					id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 				)
-				VALUES (
+				SELECT
 					${auditId}, ${task.organizationId}, ${task.eventId}, ${currentUser.id},
-					'cleanup_evidence.uploaded', 'cleanup_evidence', ${evidenceId},
+					'cleanup_evidence.uploaded', 'cleanup_evidence', ne.id,
 					NULL, ${JSON.stringify(afterSnapshot)}::jsonb, ${now}
-				)
+				FROM new_evidence ne
 				RETURNING id
 			)
 			SELECT id, task_id AS "taskId", stage, created_at AS "createdAt"
@@ -1298,6 +1662,37 @@ cleanupTasksRouter.post("/:taskId/evidence", async (c) => {
 
 		const res = await db.execute(query);
 		const created = res.rows[0];
+
+		if (!created) {
+			// Winning mutation check failed: compensate by deleting from R2
+			let compensationSuccess = true;
+			try {
+				await bucket.delete(r2Key);
+			} catch (compErr) {
+				compensationSuccess = false;
+				console.error("COMPENSATION_FAILURE: R2 orphan photo requires manual reconciliation", {
+					taskId,
+					evidenceId,
+					error: compErr instanceof Error ? compErr.message : String(compErr),
+				});
+			}
+
+			if (!compensationSuccess) {
+				return sendError(
+					c,
+					"DEPENDENCY_UNAVAILABLE",
+					"Task state conflict occurred and storage cleanup requires manual reconciliation.",
+					503,
+				);
+			}
+
+			return sendError(
+				c,
+				"STATE_CONFLICT",
+				"Cleanup task is verified, cancelled, or assignment changed.",
+				409,
+			);
+		}
 
 		// Return safe metadata ONLY - never raw R2 key or public URL!
 		return c.json(
@@ -1313,16 +1708,32 @@ cleanupTasksRouter.post("/:taskId/evidence", async (c) => {
 		);
 	} catch {
 		// Compensation: delete R2 object on DB failure to avoid orphaned storage
+		let compensationSuccess = true;
 		try {
 			await bucket.delete(r2Key);
-		} catch {
-			// Best effort cleanup
+		} catch (compErr) {
+			compensationSuccess = false;
+			console.error("COMPENSATION_FAILURE: R2 orphan photo requires manual reconciliation", {
+				taskId,
+				evidenceId,
+				error: compErr instanceof Error ? compErr.message : String(compErr),
+			});
 		}
+
+		if (!compensationSuccess) {
+			return sendError(
+				c,
+				"DEPENDENCY_UNAVAILABLE",
+				"Failed to record evidence metadata and storage cleanup failed. Manual reconciliation required.",
+				503,
+			);
+		}
+
 		return sendError(
 			c,
-			"INTERNAL_SERVER_ERROR",
+			"DEPENDENCY_UNAVAILABLE",
 			"Failed to record evidence metadata.",
-			500,
+			503,
 		);
 	}
 });
@@ -1349,7 +1760,7 @@ cleanupTasksRouter.get("/:taskId/evidence/:evidenceId", async (c) => {
 	if (access.error) return access.error;
 
 	const db = c.get("db");
-	const evidenceRows = await db
+	const rows = await db
 		.select()
 		.from(cleanupEvidence)
 		.where(
@@ -1360,9 +1771,9 @@ cleanupTasksRouter.get("/:taskId/evidence/:evidenceId", async (c) => {
 		)
 		.limit(1);
 
-	const evidence = evidenceRows[0];
+	const evidence = rows[0];
 	if (!evidence) {
-		return sendError(c, "NOT_FOUND", "Cleanup evidence photo not found.", 404);
+		return sendError(c, "NOT_FOUND", "Evidence not found.", 404);
 	}
 
 	const bucket =
@@ -1372,29 +1783,20 @@ cleanupTasksRouter.get("/:taskId/evidence/:evidenceId", async (c) => {
 	if (!bucket) {
 		return sendError(
 			c,
-			"INTERNAL_SERVER_ERROR",
+			"DEPENDENCY_UNAVAILABLE",
 			"Storage service binding is unavailable.",
-			500,
+			503,
 		);
 	}
 
 	const object = await bucket.get(evidence.r2Key);
 	if (!object) {
-		return sendError(
-			c,
-			"NOT_FOUND",
-			"Photo file not found in storage.",
-			404,
-		);
+		return sendError(c, "NOT_FOUND", "Evidence file not found in storage.", 404);
 	}
 
 	const headers = new Headers();
 	object.writeHttpMetadata(headers);
-	headers.set("Cache-Control", "private, no-cache, no-store, must-revalidate");
-	headers.set("Content-Disposition", "inline");
+	headers.set("Cache-Control", "private, no-store");
 
-	return new Response(object.body, {
-		status: 200,
-		headers,
-	});
+	return new Response(object.body, { headers });
 });

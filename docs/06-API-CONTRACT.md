@@ -169,8 +169,8 @@ Response: 200 OK with status "completed". Atomic audit log recorded. Zero-row co
 
 POST /api/events/:eventId/documents
 Permission: organizer
-Content-Type: multipart/form-data (JPEG, PNG, PDF up to 8 MB)
-Returns documentId and safe metadata. Private R2 storage.
+Content-Type: multipart/form-data (JPEG, PNG, PDF up to 8 MB, bounded stream validation)
+Returns documentId and safe metadata. Private R2 storage. Single file multipart validation; byte stream counting enforces `MAX_DOCUMENT_SIZE_BYTES` (8 MB) before full buffering. Magic byte verification. R2 upload rollback compensation with safe diagnostic logging on database failure.
 
 GET /api/events/:eventId/documents
 Permission: organizer
@@ -193,15 +193,33 @@ Request:
 
 Response:
 
-- 200 with completed extraction, or
-- 202 with processing job ID.
+- 200 OK with completed structured extraction conforming to AI-SPEC §4:
+  `eventName`, `eventType`, `eventDescription`, `startTime` (ISO 8601 UTC), `endTime` (ISO 8601 UTC or null), `locationName`, `affectedRoads` (string array), `processionRoute` (string or null), `wasteMitigationNotes` (string or null), `eventImpactLevel` (`low` | `moderate` | `high`), `confidenceScore` (0.0 - 1.0), `unverified: true`, `extractionModel`, `extractedAt`.
+- Concurrency Lock: 409 Conflict if an extraction is already in progress for this event (atomic pre-call reservation).
+- Rate Limit: 429 Too Many Requests if rate limit is exceeded (maximum 5 extraction requests per 10 minutes sliding window per organization).
+- Upstream AI Error: 502 Bad Gateway if Gemini returns an error or is unreachable (`AI_EXTRACTION_FAILED`), preserving manual data entry fallback.
 
 GET /api/extractions/:extractionId
 Permission: organizer of owning event
 
 PATCH /api/events/:eventId/extracted-fields
 Permission: organizer
-Stores corrected fields for review.
+Request:
+```json
+{
+  "corrections": {
+    "eventName": "Piodalan Pura Jagatnatha",
+    "startTime": "2026-11-10T00:00:00.000Z",
+    "endTime": "2026-11-10T04:00:00.000Z",
+    "locationName": "Pura Jagatnatha Denpasar",
+    "affectedRoads": ["Jalan Surapati", "Jalan Veteran"],
+    "processionRoute": "Pura Jagatnatha menuju Lapangan Puputan Badung",
+    "wasteMitigationNotes": "Disediakan tempat sampah terpilah di 4 titik",
+    "eventImpactLevel": "high"
+  }
+}
+```
+Validates corrected fields against AI-SPEC §4 schema and stores in database.
 
 ## 6. Road Segments
 
@@ -244,22 +262,37 @@ Request:
 }
 ```
 
-Response:
+Validation:
+- `status`: "open" | "intermittent" | "closed"
+- `observedAt`: ISO 8601 UTC timestamp. Must not be more than 5 minutes in the future relative to server time (422 Unprocessable Entity).
+
+Response (200 OK):
 
 ```json
 {
-  "status": "closed",
-  "observedAt": "2026-11-10T00:05:00Z",
-  "expiresAt": "2026-11-10T00:35:00Z",
-  "updatedBy": "authorized-officer-id"
+  "impact": {
+    "status": "closed",
+    "observedAt": "2026-11-10T00:05:00.000Z",
+    "expiresAt": "2026-11-10T00:35:00.000Z",
+    "updatedBy": "authorized-officer-id"
+  },
+  "roadImpact": {
+    "status": "closed",
+    "observedAt": "2026-11-10T00:05:00.000Z",
+    "expiresAt": "2026-11-10T00:35:00.000Z",
+    "updatedBy": "authorized-officer-id"
+  }
 }
 ```
 
-The server determines expiry policy.
+The server determines expiry policy (30 minutes default).
 The client cannot extend validity arbitrarily.
 
-Use mutationId for idempotent retries.
-A repeated mutationId must not create duplicate updates.
+Idempotency and Concurrency:
+- Use `mutationId` for idempotent retries.
+- If `mutationId` was already processed, the server performs a 5-field normalized comparison (`roadImpactId`, `updatedBy`, `status`, `observedAt` within 1 second, `note`).
+- If all 5 fields match, returns 200 OK (`{ impact, roadImpact, duplicate: true }`) without appending duplicate history.
+- If any field conflicts (e.g. status or timestamp mismatch with an existing mutationId), returns 409 Conflict.
 
 ## 8. Cleanup
 
@@ -271,22 +304,28 @@ Permission: organizer
 
 PATCH /api/cleanup-tasks/:taskId
 Permission: organizer or assigned cleanup officer
-Allowed fields depend on permission.
+- Officer Task Ownership: If an assigned officer attempts to update a task assigned to a different officer, returns 403 Forbidden.
+- State Lock: Once a task is `verified`, direct PATCH modifications return 409 Conflict (must be reopened first).
 
 POST /api/cleanup-tasks/:taskId/evidence
 Permission: assigned cleanup officer or organizer
-Content-Type: multipart/form-data
+Content-Type: multipart/form-data (`photo`, `evidenceType`: "before" | "after")
+- Single-file validation with stream-bounded size check (`MAX_PHOTO_SIZE_BYTES`: 5 MB) and JPEG/PNG magic byte verification.
+- Officer Task Ownership: Officers can only upload evidence to their own assigned task (403 Forbidden).
 
 POST /api/cleanup-tasks/:taskId/submit
 Permission: assigned cleanup officer or organizer
+- Officer Task Ownership: Officers can only submit their own assigned task (403 Forbidden).
+- Prerequisite: Requires at least one "after" evidence photo uploaded prior to submission (409 Conflict if missing).
+- Transitions status from `in_progress` to `submitted`.
 
 POST /api/cleanup-tasks/:taskId/verify
 Permission: organizer
-Verifies submitted cleanup task. Invariant: Does not alter road status.
+Verifies submitted cleanup task. Invariant: Does not alter road status. Sets `verifiedBy`, `verifiedAt`, and status `verified`.
 
 POST /api/cleanup-tasks/:taskId/reopen
 Permission: organizer
-Reopens submitted or verified task, clearing verification fields.
+Reopens submitted or verified task to `in_progress`, clearing verification fields (`verifiedBy = null`, `verifiedAt = null`).
 
 GET /api/cleanup-tasks/:taskId/evidence/:evidenceId
 Permission: organizer or assigned cleanup officer
@@ -298,6 +337,7 @@ Returns list of waste records for the event.
 
 POST /api/events/:eventId/waste-records
 Permission: organizer or assigned cleanup officer
+Records waste quantity by category (`organic`, `recyclable`, `residual`). Distinguishes measured `weighedKg` from `estimatedKg` and `sackCount`. Never silently converts estimated quantities into measured facts.
 
 ## 9. Assignments
 
@@ -335,7 +375,44 @@ GET /api/public/events/:slug/roads
 Returns planned road impacts and effective status.
 
 GET /api/public/events/:slug/cleanup-summary
-Returns only explicitly public, aggregated information.
+Returns explicitly public, aggregated cleanup information.
+Response (200 OK):
+```json
+{
+  "event": {
+    "title": "Piodalan Pura Jagatnatha",
+    "status": "published"
+  },
+  "summary": {
+    "totalTasks": 2,
+    "completedTasks": 1,
+    "verifiedTasks": 1
+  },
+  "wasteTotals": {
+    "weighedKg": 45.5,
+    "estimatedKg": 10.0,
+    "totalSacks": 8
+  },
+  "byCategory": {
+    "organic": {
+      "weighedKg": 25.5,
+      "estimatedKg": 0,
+      "sackCount": 4
+    },
+    "recyclable": {
+      "weighedKg": 20.0,
+      "estimatedKg": 10.0,
+      "sackCount": 3
+    },
+    "residual": {
+      "weighedKg": 0,
+      "estimatedKg": 0,
+      "sackCount": 1
+    }
+  }
+}
+```
+Strictly separates measured `weighedKg` and unverified `estimatedKg` per FR-055.
 
 Public responses must exclude:
 

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import path from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { documents, events, memberships } from "../../db/schema";
@@ -7,10 +8,12 @@ import { requireAuth } from "../middleware/auth";
 import type { AppVariables, Env } from "../types";
 import { uuidParamSchema } from "../validators/events";
 import {
-	ALLOWED_MIME_TYPES,
+	ALLOWED_DOCUMENT_EXTENSIONS,
+	ALLOWED_DOCUMENT_MIME_TYPES,
 	checkUploadRateLimit,
 	detectMimeTypeFromMagicBytes,
 	MAX_DOCUMENT_SIZE_BYTES,
+	readBoundedRequestBody,
 	sanitizeFilename,
 } from "../validators/documents";
 
@@ -107,33 +110,73 @@ documentsRouter.post("/:eventId/documents", async (c) => {
 		);
 	}
 
-	// Parse multipart
+	// 1. Content-Length pre-check
+	const contentLengthHeader = c.req.header("content-length");
+	if (contentLengthHeader) {
+		const cl = parseInt(contentLengthHeader, 10);
+		if (!isNaN(cl) && cl > MAX_DOCUMENT_SIZE_BYTES + 65536) {
+			return sendError(
+				c,
+				"FILE_TOO_LARGE",
+				`Upload exceeds maximum permitted size of ${MAX_DOCUMENT_SIZE_BYTES} bytes (8 MB).`,
+				413,
+			);
+		}
+	}
+
+	// 2. Stream-bound request body before full buffering
+	const bounded = await readBoundedRequestBody(c.req.raw, MAX_DOCUMENT_SIZE_BYTES + 65536);
+	if (bounded.error === "FILE_TOO_LARGE") {
+		return sendError(
+			c,
+			"FILE_TOO_LARGE",
+			`Upload exceeds maximum permitted size of ${MAX_DOCUMENT_SIZE_BYTES} bytes (8 MB).`,
+			413,
+		);
+	}
+
+	// 3. Parse bounded multipart form data
 	let formData: FormData;
 	try {
-		formData = await c.req.formData();
+		const boundedReq = new Request(c.req.raw.url, {
+			method: c.req.raw.method,
+			headers: c.req.raw.headers,
+			body: bounded.buffer,
+		});
+		formData = await boundedReq.formData();
 	} catch {
 		return sendError(c, "BAD_REQUEST", "Malformed multipart form data.", 400);
 	}
 
-	const file = formData.get("file");
-	if (
-		!file ||
-		typeof file === "string" ||
-		!(file instanceof File || (typeof file === "object" && "arrayBuffer" in file))
-	) {
+	// 4. Enforce exactly one file in the multipart payload
+	let fileCount = 0;
+	let uploadedFile: File | null = null;
+	for (const [key, value] of formData.entries()) {
+		if (
+			value instanceof File ||
+			(typeof value === "object" && value !== null && "arrayBuffer" in value)
+		) {
+			fileCount++;
+			if (key === "file" && !uploadedFile) {
+				uploadedFile = value as File;
+			}
+		}
+	}
+
+	if (fileCount !== 1 || !uploadedFile) {
 		return sendError(
 			c,
 			"BAD_REQUEST",
-			"File is required in the 'file' multipart field.",
+			"Exactly one file must be provided in the 'file' multipart field.",
 			400,
 		);
 	}
 
-	if (file.size === 0) {
+	if (uploadedFile.size === 0) {
 		return sendError(c, "BAD_REQUEST", "Uploaded file cannot be empty.", 400);
 	}
 
-	if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
+	if (uploadedFile.size > MAX_DOCUMENT_SIZE_BYTES) {
 		return sendError(
 			c,
 			"FILE_TOO_LARGE",
@@ -142,7 +185,19 @@ documentsRouter.post("/:eventId/documents", async (c) => {
 		);
 	}
 
-	const buffer = await file.arrayBuffer();
+	// 5. Allowed extension check
+	const originalName = sanitizeFilename(uploadedFile.name || "document");
+	const ext = path.extname(originalName).toLowerCase();
+	if (!ALLOWED_DOCUMENT_EXTENSIONS.has(ext)) {
+		return sendError(
+			c,
+			"BAD_REQUEST",
+			`File extension '${ext}' is not permitted. Permitted extensions: .jpg, .jpeg, .png, .pdf.`,
+			400,
+		);
+	}
+
+	const buffer = await uploadedFile.arrayBuffer();
 	const bytes = new Uint8Array(buffer);
 
 	if (bytes.byteLength > MAX_DOCUMENT_SIZE_BYTES) {
@@ -154,8 +209,9 @@ documentsRouter.post("/:eventId/documents", async (c) => {
 		);
 	}
 
+	// 6. Magic bytes signature check
 	const detectedMime = detectMimeTypeFromMagicBytes(bytes);
-	if (!detectedMime || !ALLOWED_MIME_TYPES.has(detectedMime)) {
+	if (!detectedMime || !ALLOWED_DOCUMENT_MIME_TYPES.has(detectedMime)) {
 		return sendError(
 			c,
 			"BAD_REQUEST",
@@ -164,11 +220,11 @@ documentsRouter.post("/:eventId/documents", async (c) => {
 		);
 	}
 
-	// Claimed MIME type check if present
+	// 7. Claimed MIME type vs signature check
 	if (
-		file.type &&
-		file.type !== detectedMime &&
-		!(file.type === "image/jpg" && detectedMime === "image/jpeg")
+		uploadedFile.type &&
+		uploadedFile.type !== detectedMime &&
+		!(uploadedFile.type === "image/jpg" && detectedMime === "image/jpeg")
 	) {
 		return sendError(
 			c,
@@ -178,7 +234,7 @@ documentsRouter.post("/:eventId/documents", async (c) => {
 		);
 	}
 
-	// Check R2 binding
+	// 8. Put object to private R2 storage
 	const r2 = c.env?.rangkai_documents_dev;
 	if (!r2) {
 		return sendError(
@@ -189,24 +245,20 @@ documentsRouter.post("/:eventId/documents", async (c) => {
 		);
 	}
 
-	const ext =
-		detectedMime === "application/pdf"
-			? "pdf"
-			: detectedMime === "image/png"
-				? "png"
-				: "jpg";
 	const docId = crypto.randomUUID();
-	const r2Key = `events/${eventId}/${docId}.${ext}`;
-	const originalName = sanitizeFilename(file.name || `document.${ext}`);
+	const r2Key = `events/${eventId}/documents/${docId}`;
 
-	// Write to R2
 	try {
 		await r2.put(r2Key, buffer, {
-			httpMetadata: { contentType: detectedMime },
+			httpMetadata: {
+				contentType: detectedMime,
+			},
 			customMetadata: {
 				eventId,
+				documentId: docId,
 				uploadedBy: currentUser.id,
 				originalName,
+				uploadedAt: new Date().toISOString(),
 			},
 		});
 	} catch {
@@ -218,56 +270,100 @@ documentsRouter.post("/:eventId/documents", async (c) => {
 		);
 	}
 
-	// Atomic DB insert + audit log + invalidate review if in review status
+	// 9. Atomic DB insert + authoritative state check + audit log + invalidate review if in review status
 	const db = c.get("db");
 	const auditId = crypto.randomUUID();
 	const now = new Date();
 
-	const query = sql`
-		WITH inserted AS (
-			INSERT INTO documents (
-				id, event_id, uploaded_by, r2_key, original_name, mime_type, size_bytes, visibility, created_at
-			)
-			VALUES (
-				${docId}, ${eventId}, ${currentUser.id}, ${r2Key}, ${originalName}, ${detectedMime}, ${bytes.byteLength}, 'private', ${now}
-			)
-			RETURNING *
-		),
-		updated_event AS (
-			UPDATE events
-			SET status = 'draft', verified_by = NULL, verified_at = NULL, updated_at = ${now}
-			WHERE id = ${eventId} AND status = 'review'
-			RETURNING id
-		),
-		logged AS (
-			INSERT INTO audit_logs (
-				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+	try {
+		const query = sql`
+			WITH checked_event AS (
+				SELECT e.id, e.organization_id
+				FROM events e
+				JOIN memberships m ON m.organization_id = e.organization_id
+				WHERE e.id = ${eventId}
+				  AND e.status IN ('draft', 'review')
+				  AND m.user_id = ${currentUser.id}
+				  AND m.role = 'organizer'
+				FOR UPDATE OF e
+			),
+			inserted AS (
+				INSERT INTO documents (
+					id, event_id, uploaded_by, r2_key, original_name, mime_type, size_bytes, visibility, created_at
+				)
+				SELECT
+					${docId}, ce.id, ${currentUser.id}, ${r2Key}, ${originalName}, ${detectedMime}, ${bytes.byteLength}, 'private', ${now}
+				FROM checked_event ce
+				RETURNING *
+			),
+			updated_event AS (
+				UPDATE events
+				SET status = 'draft', verified_by = NULL, verified_at = NULL, updated_at = ${now}
+				FROM checked_event ce
+				WHERE events.id = ce.id AND events.status = 'review'
+				RETURNING events.id
+			),
+			logged AS (
+				INSERT INTO audit_logs (
+					id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+				)
+				SELECT
+					${auditId}, ce.organization_id, ${eventId}, ${currentUser.id}, 'document.uploaded', 'document', i.id, null,
+					json_build_object(
+						'documentId', i.id,
+						'originalName', i.original_name,
+						'mimeType', i.mime_type,
+						'sizeBytes', i.size_bytes
+					),
+					${now}
+				FROM inserted i
+				JOIN checked_event ce ON ce.id = i.event_id
+				RETURNING id
 			)
 			SELECT
-				${auditId}, ${event.organizationId}, ${eventId}, ${currentUser.id}, 'document.uploaded', 'document', id, null,
-				json_build_object(
-					'documentId', id,
-					'originalName', original_name,
-					'mimeType', mime_type,
-					'sizeBytes', size_bytes
-				),
-				${now}
-			FROM inserted
-			RETURNING id
-		)
-		SELECT
-			id,
-			event_id AS "eventId",
-			original_name AS "originalName",
-			mime_type AS "mimeType",
-			size_bytes AS "sizeBytes",
-			created_at AS "createdAt"
-		FROM inserted;
-	`;
+				id,
+				event_id AS "eventId",
+				original_name AS "originalName",
+				mime_type AS "mimeType",
+				size_bytes AS "sizeBytes",
+				created_at AS "createdAt"
+			FROM inserted;
+		`;
 
-	try {
 		const res = await db.execute(query);
 		const row = res.rows[0];
+
+		if (!row) {
+			// Winning mutation check failed (event was published or organizer role revoked)
+			let compensationSuccess = true;
+			try {
+				await r2.delete(r2Key);
+			} catch (compErr) {
+				compensationSuccess = false;
+				console.error("COMPENSATION_FAILURE: R2 orphan object requires manual reconciliation", {
+					documentId: docId,
+					eventId,
+					error: compErr instanceof Error ? compErr.message : String(compErr),
+				});
+			}
+
+			if (!compensationSuccess) {
+				return sendError(
+					c,
+					"DEPENDENCY_UNAVAILABLE",
+					"Event state conflict occurred and storage cleanup requires manual reconciliation.",
+					503,
+				);
+			}
+
+			return sendError(
+				c,
+				"STATE_CONFLICT",
+				"Event is no longer in draft or review status, or organizer authorization was changed.",
+				409,
+			);
+		}
+
 		return c.json(
 			{
 				document: {
@@ -276,14 +372,37 @@ documentsRouter.post("/:eventId/documents", async (c) => {
 					originalName: row.originalName as string,
 					mimeType: row.mimeType as string,
 					sizeBytes: Number(row.sizeBytes),
-					createdAt: new Date(row.createdAt as string),
+					createdAt:
+						row.createdAt instanceof Date
+							? row.createdAt.toISOString()
+							: (row.createdAt as string),
 				},
 			},
 			201,
 		);
 	} catch {
 		// Compensation: delete object from R2 on DB failure
-		await r2.delete(r2Key).catch(() => {});
+		let compensationSuccess = true;
+		try {
+			await r2.delete(r2Key);
+		} catch (compErr) {
+			compensationSuccess = false;
+			console.error("COMPENSATION_FAILURE: R2 orphan document requires manual reconciliation", {
+				documentId: docId,
+				eventId,
+				error: compErr instanceof Error ? compErr.message : String(compErr),
+			});
+		}
+
+		if (!compensationSuccess) {
+			return sendError(
+				c,
+				"DEPENDENCY_UNAVAILABLE",
+				"Failed to persist document in database and storage cleanup failed. Manual reconciliation required.",
+				503,
+			);
+		}
+
 		return sendError(
 			c,
 			"DEPENDENCY_UNAVAILABLE",

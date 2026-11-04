@@ -1,28 +1,24 @@
 import crypto from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
-import {
-	aiExtractions,
-	documents,
-	events,
-	memberships,
-} from "../../db/schema";
+import { aiExtractions, documents, events, memberships } from "../../db/schema";
 import { sendError } from "../lib/errors";
 import { requireAuth } from "../middleware/auth";
 import {
-	GEMINI_MODEL_NAME,
+	GEMINI_MODEL_DEFAULT,
 	GEMINI_PROMPT_VERSION,
 	GEMINI_SCHEMA_VERSION,
 	invokeGeminiExtraction,
 } from "../services/gemini";
 import type { AppVariables, Env } from "../types";
 import { uuidParamSchema } from "../validators/events";
+import { checkExtractionRateLimit } from "../validators/documents";
 import {
 	createExtractionSchema,
 	patchExtractedFieldsSchema,
 } from "../validators/extractions";
 
-// Helper: Verify organizer role for a given event
+// Helper: Assert current user is an organizer in the event's organization
 async function assertOrganizerForEvent(
 	c: Parameters<typeof sendError>[0],
 	eventId: string,
@@ -74,7 +70,7 @@ export const eventsExtractionsRouter = new Hono<{
 
 eventsExtractionsRouter.use("*", requireAuth);
 
-// POST /api/events/:eventId/extractions - Extract structured fields from uploaded document using Gemini
+// POST /api/events/:eventId/extractions - Trigger AI document extraction
 eventsExtractionsRouter.post("/:eventId/extractions", async (c) => {
 	const currentUser = c.get("user")!;
 	const eventId = c.req.param("eventId");
@@ -88,11 +84,12 @@ eventsExtractionsRouter.post("/:eventId/extractions", async (c) => {
 	if (check.error) return check.error;
 	const event = check.event;
 
+	// Invariant: cannot trigger extractions on terminal, published, or active events
 	if (event.status === "completed" || event.status === "cancelled") {
 		return sendError(
 			c,
 			"STATE_CONFLICT",
-			`Cannot extract fields for an event in terminal status: ${event.status}.`,
+			`Cannot extract fields for event in terminal status: ${event.status}.`,
 			409,
 		);
 	}
@@ -102,6 +99,16 @@ eventsExtractionsRouter.post("/:eventId/extractions", async (c) => {
 			"STATE_CONFLICT",
 			`Cannot extract fields for published or active event. Current status: ${event.status}.`,
 			409,
+		);
+	}
+
+	// Rate limit check for AI extractions
+	if (!checkExtractionRateLimit(currentUser.id)) {
+		return sendError(
+			c,
+			"RATE_LIMITED",
+			"AI extraction rate limit exceeded. Please wait before triggering another extraction.",
+			429,
 		);
 	}
 
@@ -125,7 +132,7 @@ eventsExtractionsRouter.post("/:eventId/extractions", async (c) => {
 	const { documentId } = parseResult.data;
 	const db = c.get("db");
 
-	// Verify document exists and belongs to this event
+	// Verify document exists and belongs to event
 	const docRows = await db
 		.select()
 		.from(documents)
@@ -144,23 +151,99 @@ eventsExtractionsRouter.post("/:eventId/extractions", async (c) => {
 		);
 	}
 
-	// Avoid duplicate active extractions
-	const activeExtractions = await db
-		.select()
-		.from(aiExtractions)
-		.where(
-			and(
-				eq(aiExtractions.documentId, documentId),
-				inArray(aiExtractions.status, ["pending", "processing"]),
-			),
-		)
-		.limit(1);
+	// Model resolution
+	const configuredModel =
+		c.env?.GEMINI_MODEL ||
+		(typeof process !== "undefined" ? process.env?.GEMINI_MODEL : undefined) ||
+		GEMINI_MODEL_DEFAULT;
 
-	if (activeExtractions.length > 0) {
+	const extractionId = crypto.randomUUID();
+	const initAuditId = crypto.randomUUID();
+	const now = new Date();
+
+	// Atomically reserve work in 'processing' status BEFORE calling provider
+	// Guarantees simultaneous requests cannot both invoke Gemini
+	const reserveQuery = sql`
+		WITH checked_doc AS (
+			SELECT d.id, d.r2_key, d.mime_type, e.organization_id, e.id AS event_id
+			FROM documents d
+			JOIN events e ON e.id = d.event_id
+			JOIN memberships m ON m.organization_id = e.organization_id
+			WHERE d.id = ${documentId} AND d.event_id = ${eventId}
+			  AND e.status IN ('draft', 'review')
+			  AND m.user_id = ${currentUser.id}
+			  AND m.role = 'organizer'
+			  AND NOT EXISTS (
+				  SELECT 1 FROM ai_extractions ax
+				  WHERE ax.document_id = d.id AND ax.status IN ('pending', 'processing')
+			  )
+			FOR UPDATE
+		),
+		inserted_res AS (
+			INSERT INTO ai_extractions (
+				id, document_id, model_name, prompt_version, schema_version, status, created_at
+			)
+			SELECT
+				${extractionId}, cd.id, ${configuredModel}, ${GEMINI_PROMPT_VERSION},
+				${GEMINI_SCHEMA_VERSION}, 'processing', ${now}
+			FROM checked_doc cd
+			RETURNING *
+		),
+		logged_init AS (
+			INSERT INTO audit_logs (
+				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+			)
+			SELECT
+				${initAuditId}, cd.organization_id, cd.event_id, ${currentUser.id}, 'extraction.initiated', 'ai_extraction', ir.id, null,
+				json_build_object(
+					'extractionId', ir.id,
+					'documentId', cd.id,
+					'status', 'processing',
+					'modelName', ${configuredModel}::text
+				),
+				${now}
+			FROM inserted_res ir
+			JOIN checked_doc cd ON cd.id = ir.document_id
+			RETURNING id
+		)
+		SELECT
+			id,
+			document_id AS "documentId",
+			model_name AS "modelName",
+			prompt_version AS "promptVersion",
+			schema_version AS "schemaVersion",
+			status,
+			created_at AS "createdAt"
+		FROM inserted_res;
+	`;
+
+	const reserveRes = await db.execute(reserveQuery);
+	if (reserveRes.rows.length === 0) {
+		// Reservation failed: either extraction already active or state changed
+		const existingActive = await db
+			.select()
+			.from(aiExtractions)
+			.where(
+				and(
+					eq(aiExtractions.documentId, documentId),
+					inArray(aiExtractions.status, ["pending", "processing"]),
+				),
+			)
+			.limit(1);
+
+		if (existingActive.length > 0) {
+			return sendError(
+				c,
+				"STATE_CONFLICT",
+				"An extraction is already in progress for this document.",
+				409,
+			);
+		}
+
 		return sendError(
 			c,
 			"STATE_CONFLICT",
-			"An extraction is already in progress for this document.",
+			"Document extraction could not be initiated due to event status or permission changes.",
 			409,
 		);
 	}
@@ -168,6 +251,10 @@ eventsExtractionsRouter.post("/:eventId/extractions", async (c) => {
 	// Get file from R2
 	const r2 = c.env?.rangkai_documents_dev;
 	if (!r2) {
+		await db
+			.update(aiExtractions)
+			.set({ status: "failed", errorCode: "STORAGE_UNAVAILABLE" })
+			.where(eq(aiExtractions.id, extractionId));
 		return sendError(
 			c,
 			"DEPENDENCY_UNAVAILABLE",
@@ -178,6 +265,10 @@ eventsExtractionsRouter.post("/:eventId/extractions", async (c) => {
 
 	const object = await r2.get(doc.r2Key);
 	if (!object) {
+		await db
+			.update(aiExtractions)
+			.set({ status: "failed", errorCode: "DOCUMENT_NOT_FOUND" })
+			.where(eq(aiExtractions.id, extractionId));
 		return sendError(c, "NOT_FOUND", "Document file not found in storage.", 404);
 	}
 
@@ -189,6 +280,10 @@ eventsExtractionsRouter.post("/:eventId/extractions", async (c) => {
 		(typeof process !== "undefined" ? process.env?.GEMINI_API_KEY : undefined);
 
 	if (!apiKey) {
+		await db
+			.update(aiExtractions)
+			.set({ status: "failed", errorCode: "CONFIG_MISSING" })
+			.where(eq(aiExtractions.id, extractionId));
 		return sendError(
 			c,
 			"DEPENDENCY_UNAVAILABLE",
@@ -197,91 +292,150 @@ eventsExtractionsRouter.post("/:eventId/extractions", async (c) => {
 		);
 	}
 
-	// Invoke Gemini multimodal extraction
-	const extractionResult = await invokeGeminiExtraction(
-		buffer,
-		doc.mimeType,
-		apiKey,
-	);
+	try {
+		// Invoke Gemini multimodal extraction with configurable model
+		const extractionResult = await invokeGeminiExtraction(
+			buffer,
+			doc.mimeType,
+			apiKey,
+			configuredModel,
+		);
 
-	const extractionId = crypto.randomUUID();
-	const auditId = crypto.randomUUID();
-	const now = new Date();
-	const status = extractionResult.success ? "completed" : "failed";
-	const outputJson = extractionResult.success
-		? JSON.stringify(extractionResult.data)
-		: null;
-	const errorCode = extractionResult.errorCode ?? null;
-	const latencyMs = extractionResult.latencyMs;
+		const finalStatus = extractionResult.success ? "completed" : "failed";
+		const outputJson = extractionResult.success
+			? JSON.stringify(extractionResult.data)
+			: null;
+		const errorCode = extractionResult.errorCode ?? null;
+		const latencyMs = extractionResult.latencyMs;
+		const updateAuditId = crypto.randomUUID();
+		const completedAt = new Date();
 
-	// Persist extraction atomically with audit log
-	const query = sql`
-		WITH inserted AS (
-			INSERT INTO ai_extractions (
-				id, document_id, model_name, prompt_version, schema_version,
-				output_json, status, error_code, latency_ms, created_at
-			)
-			VALUES (
-				${extractionId}, ${documentId}, ${GEMINI_MODEL_NAME}, ${GEMINI_PROMPT_VERSION},
-				${GEMINI_SCHEMA_VERSION}, ${outputJson}::jsonb, ${status}, ${errorCode},
-				${latencyMs}, ${now}
-			)
-			RETURNING *
-		),
-		logged AS (
-			INSERT INTO audit_logs (
-				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+		const updateQuery = sql`
+			WITH updated AS (
+				UPDATE ai_extractions
+				SET
+					status = ${finalStatus},
+					output_json = ${outputJson}::jsonb,
+					error_code = ${errorCode},
+					latency_ms = ${latencyMs}
+				WHERE id = ${extractionId}
+				RETURNING *
+			),
+			logged AS (
+				INSERT INTO audit_logs (
+					id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+				)
+				SELECT
+					${updateAuditId}, ${event.organizationId}, ${eventId}, ${currentUser.id},
+					${finalStatus === "completed" ? "extraction.completed" : "extraction.failed"},
+					'ai_extraction', id,
+					json_build_object('status', 'processing'),
+					json_build_object(
+						'extractionId', id,
+						'documentId', document_id,
+						'status', status,
+						'modelName', model_name,
+						'errorCode', error_code,
+						'latencyMs', latency_ms
+					),
+					${completedAt}
+				FROM updated
+				RETURNING id
 			)
 			SELECT
-				${auditId}, ${event.organizationId}, ${eventId}, ${currentUser.id}, 'extraction.created', 'ai_extraction', id, null,
-				json_build_object(
-					'extractionId', id,
-					'documentId', document_id,
-					'status', status,
-					'modelName', model_name,
-					'errorCode', error_code
-				),
-				${now}
-			FROM inserted
-			RETURNING id
-		)
-		SELECT
-			id,
-			document_id AS "documentId",
-			model_name AS "modelName",
-			prompt_version AS "promptVersion",
-			schema_version AS "schemaVersion",
-			output_json AS "outputJson",
-			status,
-			error_code AS "errorCode",
-			latency_ms AS "latencyMs",
-			created_at AS "createdAt"
-		FROM inserted;
-	`;
+				id,
+				document_id AS "documentId",
+				model_name AS "modelName",
+				prompt_version AS "promptVersion",
+				schema_version AS "schemaVersion",
+				output_json AS "outputJson",
+				status,
+				error_code AS "errorCode",
+				latency_ms AS "latencyMs",
+				created_at AS "createdAt"
+			FROM updated;
+		`;
 
-	const res = await db.execute(query);
-	const row = res.rows[0];
+		const updateRes = await db.execute(updateQuery);
+		const row = updateRes.rows[0];
 
-	return c.json(
-		{
-			extraction: {
-				id: row.id as string,
-				documentId: row.documentId as string,
-				modelName: row.modelName as string,
-				promptVersion: row.promptVersion as string,
-				schemaVersion: row.schemaVersion as string,
-				outputJson: row.outputJson,
-				status: row.status as string,
-				errorCode: (row.errorCode ?? null) as string | null,
-				latencyMs: Number(row.latencyMs),
-				createdAt: new Date(row.createdAt as string),
+		return c.json(
+			{
+				extraction: {
+					id: row.id as string,
+					documentId: row.documentId as string,
+					modelName: row.modelName as string,
+					promptVersion: row.promptVersion as string,
+					schemaVersion: row.schemaVersion as string,
+					outputJson: row.outputJson,
+					status: row.status as string,
+					errorCode: row.errorCode as string | null,
+					latencyMs: row.latencyMs ? Number(row.latencyMs) : null,
+					createdAt:
+						row.createdAt instanceof Date
+							? row.createdAt.toISOString()
+							: (row.createdAt as string),
+				},
 			},
-		},
-		200,
-	);
+			200,
+		);
+	} catch {
+		// Catch any unhandled error to prevent stuck 'processing' state
+		await db
+			.update(aiExtractions)
+			.set({
+				status: "failed",
+				errorCode: "UNHANDLED_EXCEPTION",
+			})
+			.where(eq(aiExtractions.id, extractionId));
+
+		return sendError(
+			c,
+			"DEPENDENCY_UNAVAILABLE",
+			"An unexpected error occurred during extraction.",
+			500,
+		);
+	}
 });
 
-// PATCH /api/events/:eventId/extracted-fields - Human organizer correction of extracted fields
+// GET /api/events/:eventId/extractions - Get latest extraction status & data
+eventsExtractionsRouter.get("/:eventId/extractions", async (c) => {
+	const currentUser = c.get("user")!;
+	const eventId = c.req.param("eventId");
+
+	const idValidation = uuidParamSchema.safeParse(eventId);
+	if (!idValidation.success) {
+		return sendError(c, "VALIDATION_FAILED", "Invalid event ID format.", 422);
+	}
+
+	const check = await assertOrganizerForEvent(c, eventId, currentUser.id);
+	if (check.error) return check.error;
+
+	const db = c.get("db");
+
+	// Find extractions for documents belonging to this event
+	const extractionRows = await db
+		.select({
+			id: aiExtractions.id,
+			documentId: aiExtractions.documentId,
+			modelName: aiExtractions.modelName,
+			promptVersion: aiExtractions.promptVersion,
+			schemaVersion: aiExtractions.schemaVersion,
+			outputJson: aiExtractions.outputJson,
+			status: aiExtractions.status,
+			errorCode: aiExtractions.errorCode,
+			latencyMs: aiExtractions.latencyMs,
+			createdAt: aiExtractions.createdAt,
+		})
+		.from(aiExtractions)
+		.innerJoin(documents, eq(aiExtractions.documentId, documents.id))
+		.where(eq(documents.eventId, eventId))
+		.orderBy(desc(aiExtractions.createdAt));
+
+	return c.json({ extractions: extractionRows }, 200);
+});
+
+// PATCH /api/events/:eventId/extracted-fields - Human organizer review & correction
 eventsExtractionsRouter.patch("/:eventId/extracted-fields", async (c) => {
 	const currentUser = c.get("user")!;
 	const eventId = c.req.param("eventId");
@@ -399,11 +553,27 @@ eventsExtractionsRouter.patch("/:eventId/extracted-fields", async (c) => {
 		endsAt: endsAtDate?.toISOString() ?? null,
 		permitReference: newPermitRef,
 		status: newStatus,
+		processionDescription: data.processionDescription ?? null,
+		trafficImpactDescription: data.trafficImpactDescription ?? null,
+		organizerName: data.organizerName ?? null,
+		cleanupLocationNotes: data.cleanupLocationNotes ?? null,
+		contactInformation: data.contactInformation ?? null,
 	};
 
+	// Atomic update with authoritative lock checking organizer role and draft/review state
 	const query = sql`
-		WITH updated AS (
-			UPDATE events
+		WITH current_event AS (
+			SELECT e.*
+			FROM events e
+			JOIN memberships m ON m.organization_id = e.organization_id
+			WHERE e.id = ${eventId}
+			  AND e.status IN ('draft', 'review')
+			  AND m.user_id = ${currentUser.id}
+			  AND m.role = 'organizer'
+			FOR UPDATE OF e
+		),
+		updated AS (
+			UPDATE events e
 			SET
 				title = ${newTitle},
 				category = ${newCategory},
@@ -416,19 +586,21 @@ eventsExtractionsRouter.patch("/:eventId/extracted-fields", async (c) => {
 				verified_by = ${newVerifiedBy},
 				verified_at = ${newVerifiedAt},
 				updated_at = ${now}
-			WHERE id = ${eventId} AND status IN ('draft', 'review')
-			RETURNING *
+			FROM current_event ce
+			WHERE e.id = ce.id
+			RETURNING e.*
 		),
 		logged AS (
 			INSERT INTO audit_logs (
 				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
 			)
 			SELECT
-				${auditId}, ${existingEvent.organizationId}, ${eventId}, ${currentUser.id}, 'event.extracted_fields_corrected', 'event', id,
+				${auditId}, ce.organization_id, ${eventId}, ${currentUser.id}, 'event.extracted_fields_corrected', 'event', u.id,
 				${JSON.stringify(beforeSnapshot)}::jsonb,
 				${JSON.stringify(afterSnapshot)}::jsonb,
 				${now}
-			FROM updated
+			FROM updated u
+			JOIN current_event ce ON ce.id = u.id
 			RETURNING id
 		)
 		SELECT
@@ -453,16 +625,17 @@ eventsExtractionsRouter.patch("/:eventId/extracted-fields", async (c) => {
 	`;
 
 	const res = await db.execute(query);
-	if (res.rows.length === 0) {
+	const row = res.rows[0];
+
+	if (!row) {
 		return sendError(
 			c,
 			"STATE_CONFLICT",
-			"Event state changed concurrently or is not editable.",
+			"Event could not be updated. Ensure it is in draft or review status and you are an authorized organizer.",
 			409,
 		);
 	}
 
-	const row = res.rows[0];
 	return c.json(
 		{
 			event: {
@@ -470,15 +643,15 @@ eventsExtractionsRouter.patch("/:eventId/extracted-fields", async (c) => {
 				organizationId: row.organizationId as string,
 				createdBy: row.createdBy as string,
 				title: row.title as string,
-				category: (row.category ?? null) as string | null,
-				description: (row.description ?? null) as string | null,
-				venueName: (row.venueName ?? null) as string | null,
+				category: (row.category as string | null) ?? null,
+				description: (row.description as string | null) ?? null,
+				venueName: (row.venueName as string | null) ?? null,
 				startsAt: row.startsAt ? new Date(row.startsAt as string) : null,
 				endsAt: row.endsAt ? new Date(row.endsAt as string) : null,
 				status: row.status as string,
-				publicSlug: (row.publicSlug ?? null) as string | null,
-				permitReference: (row.permitReference ?? null) as string | null,
-				verifiedBy: (row.verifiedBy ?? null) as string | null,
+				publicSlug: (row.publicSlug as string | null) ?? null,
+				permitReference: (row.permitReference as string | null) ?? null,
+				verifiedBy: (row.verifiedBy as string | null) ?? null,
 				verifiedAt: row.verifiedAt ? new Date(row.verifiedAt as string) : null,
 				publishedAt: row.publishedAt ? new Date(row.publishedAt as string) : null,
 				createdAt: new Date(row.createdAt as string),
@@ -489,7 +662,7 @@ eventsExtractionsRouter.patch("/:eventId/extracted-fields", async (c) => {
 	);
 });
 
-// 2. Extractions Detail Router: GET /api/extractions/:extractionId
+// 2. Extractions Detail Router: GET /api/extractions/:extractionId (Organizer controlled inspection)
 export const extractionsRouter = new Hono<{
 	Bindings: Env;
 	Variables: AppVariables;

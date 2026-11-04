@@ -597,15 +597,11 @@ describe("GET /api/health", () => {
 						}
 						await new Promise<void>((r) => otherServer?.close(() => r()));
 					}
-					if (chromeProcess && chromeProcess.pid) {
+					if (chromeProcess) {
 						try {
-							cp.execFileSync(
-								"taskkill.exe",
-								["/PID", String(chromeProcess.pid), "/T", "/F"],
-								{ stdio: "ignore", windowsHide: true },
-							);
+							chromeProcess.kill();
 						} catch {
-							// ignore taskkill error
+							// ignore chromeProcess kill error
 						}
 					}
 					if (profile && fs.existsSync(profile)) {

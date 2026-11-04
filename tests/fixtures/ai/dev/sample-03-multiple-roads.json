@@ -1,0 +1,69 @@
+{
+  "id": "SYNTH_AI_003",
+  "name": "Pawai Ogoh-ogoh Rute Kompleks",
+  "scenario": "multiple_roads_procession",
+  "provenance": "SYNTHETIC_TEST_DATA",
+  "isRealEvaluation": false,
+  "sourceFile": "sample-03-multiple-roads.pdf",
+  "groundTruth": {
+    "schema_version": "1.0",
+    "event_name": {
+      "value": "Pawai Malam Pengerupukan",
+      "evidence": "Pawai Ogoh-ogoh Malam Pengerupukan Caka 1948",
+      "needs_review": false
+    },
+    "event_category": {
+      "value": "pawai",
+      "evidence": "pawai ogoh-ogoh",
+      "needs_review": false
+    },
+    "start_datetime": {
+      "value": "2026-03-18T18:00:00+08:00",
+      "evidence": "18 Maret 2026 mulai pukul 18.00 WITA",
+      "needs_review": false
+    },
+    "end_datetime": {
+      "value": "2026-03-18T23:30:00+08:00",
+      "evidence": "selesai sekitar pukul 23.30 WITA",
+      "needs_review": false
+    },
+    "venue_name": {
+      "value": "Catus Pata Desa",
+      "evidence": "start dan finish di Catus Pata",
+      "needs_review": false
+    },
+    "affected_road_names": [
+      {
+        "name": "Jalan Danau Tamblingan",
+        "evidence": "melewati Jl. Danau Tamblingan",
+        "needs_review": true
+      },
+      {
+        "name": "Jalan Danau Poso",
+        "evidence": "belok ke Jl. Danau Poso",
+        "needs_review": true
+      },
+      {
+        "name": "Jalan Cemara",
+        "evidence": "melanjutkan ke Jl. Cemara",
+        "needs_review": true
+      }
+    ],
+    "procession_description": {
+      "value": "Parade ogoh-ogoh se-kelurahan",
+      "evidence": "parade ogoh-ogoh melibatkan seluruh banjar",
+      "needs_review": false
+    },
+    "traffic_impact_description": {
+      "value": "Penutupan total koridor utama",
+      "evidence": "jalur utama ditutup penuh selama parade",
+      "needs_review": true
+    },
+    "organizer_name": {
+      "value": "Sekaa Teruna Teruni Sanur",
+      "evidence": "Panitia STT Bersatu",
+      "needs_review": false
+    },
+    "issues": []
+  }
+}

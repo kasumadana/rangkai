@@ -352,13 +352,13 @@ pnpm exec wrangler r2 bucket create \
   rangkai-documents-dev
 ```
 
-Add the binding to `wrangler.jsonc`:
+Add the binding to `wrangler.json`:
 
 ```jsonc
 {
   "r2_buckets": [
     {
-      "binding": "DOCUMENTS",
+      "binding": "rangkai_documents_dev",
       "bucket_name": "rangkai-documents-dev",
     },
   ],
@@ -382,7 +382,7 @@ Create an API key:
 
 https://aistudio.google.com/apikey
 
-Save it as `GEMINI_API_KEY` in `.dev.vars`.
+Save it as `GEMINI_API_KEY` in `.dev.vars`. Optionally set `GEMINI_MODEL` (defaults to `gemini-2.5-flash`).
 
 Gemini must only be called from the backend.
 

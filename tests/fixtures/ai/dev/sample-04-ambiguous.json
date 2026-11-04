@@ -1,0 +1,62 @@
+{
+  "id": "SYNTH_AI_004",
+  "name": "Bulan Bahasa Bali Ambiguous Venue",
+  "scenario": "ambiguous_venue_and_dates",
+  "provenance": "SYNTHETIC_TEST_DATA",
+  "isRealEvaluation": false,
+  "sourceFile": "sample-04-ambiguous.png",
+  "groundTruth": {
+    "schema_version": "1.0",
+    "event_name": {
+      "value": "Festival Bulan Bahasa Bali",
+      "evidence": "Festival Bulan Bahasa Bali Tingkat Desa",
+      "needs_review": true
+    },
+    "event_category": {
+      "value": "festival",
+      "evidence": "festival budaya",
+      "needs_review": false
+    },
+    "start_datetime": {
+      "value": "2026-02-15T08:00:00+08:00",
+      "evidence": "Pertengahan Februari 2026",
+      "needs_review": true
+    },
+    "end_datetime": {
+      "value": "2026-02-15T17:00:00+08:00",
+      "evidence": "sampai sore hari",
+      "needs_review": true
+    },
+    "venue_name": {
+      "value": "Balai Masyarakat atau Wantilan",
+      "evidence": "antara Balai Masyarakat atau Wantilan Pura",
+      "needs_review": true
+    },
+    "affected_road_names": [
+      {
+        "name": "Jalan By Pass Ngurah Rai",
+        "evidence": "dekat simpang Jl. By Pass Ngurah Rai",
+        "needs_review": true
+      }
+    ],
+    "procession_description": {
+      "value": null,
+      "evidence": null,
+      "needs_review": true
+    },
+    "traffic_impact_description": {
+      "value": "Kepadatan arus lalu lintas di sekitar venue",
+      "evidence": "potensi kepadatan parkir",
+      "needs_review": true
+    },
+    "organizer_name": {
+      "value": "Lembaga Pemberdayaan Masyarakat",
+      "evidence": "Pengurus LPM",
+      "needs_review": false
+    },
+    "issues": [
+      "Lokasi definitif belum diputuskan",
+      "Jadwal pelaksanaan masih tentative"
+    ]
+  }
+}

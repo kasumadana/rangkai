@@ -27,6 +27,7 @@ declare global {
 		BETTER_AUTH_URL?: string;
 		rangkai_documents_dev?: R2Bucket;
 		GEMINI_API_KEY?: string;
+		GEMINI_MODEL?: string;
 	}
 }
 
