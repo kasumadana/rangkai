@@ -21,6 +21,11 @@ export interface EventAccessResult {
 		status: EventStatus;
 		publicSlug: string | null;
 		permitReference: string | null;
+		processionDescription: string | null;
+		trafficImpactDescription: string | null;
+		organizerName: string | null;
+		cleanupLocationNotes: string | null;
+		contactInformation: string | null;
 		verifiedBy: string | null;
 		verifiedAt: Date | null;
 		publishedAt: Date | null;

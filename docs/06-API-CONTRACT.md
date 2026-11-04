@@ -169,16 +169,21 @@ Response: 200 OK with status "completed". Atomic audit log recorded. Zero-row co
 
 POST /api/events/:eventId/documents
 Permission: organizer
-Content-Type: multipart/form-data (JPEG, PNG, PDF up to 8 MB, bounded stream validation)
-Returns documentId and safe metadata. Private R2 storage. Single file multipart validation; byte stream counting enforces `MAX_DOCUMENT_SIZE_BYTES` (8 MB) before full buffering. Magic byte verification. R2 upload rollback compensation with safe diagnostic logging on database failure.
+Content-Type: multipart/form-data (`file` or `document`, optional `processingConsent`: `"true"` | `"false"`, JPEG, PNG, PDF up to 8 MB)
+Returns `document` (`id`, `eventId`, `originalName`, `mimeType`, `sizeBytes`, `visibility`, `uploadedBy`, `aiConsentGranted`, `aiConsentAt`, `createdAt`). Private R2 storage (`r2Key` is never exposed). Enforces:
+- Narrow multipart CSRF validation (`Sec-Fetch-Site: cross-site` rejected with 403; `Origin` verified when present).
+- Bounded stream reading before multipart parsing (`MAX_DOCUMENT_SIZE_BYTES`: 8 MB + 64 KB multipart envelope overhead; 413 Payload Too Large on overflow).
+- Exactly one file part (`file` or `document`), non-empty bytes, and strict agreement between filename extension, claimed `Content-Type`, magic bytes, and binary format structure (`IHDR`+`IEND` with dimensions >= 2x2 for PNG, `SOI`+`SOF`+`EOI` with dimensions >= 2x2 for JPEG, `%PDF-`+`%%EOF` for PDF).
+- Atomic database insert + audit log with row-level lock on the event (`draft` or `review`; uploading to a `review` event resets status to `draft` and clears verification).
+- R2 rollback compensation on database failure, logging only sanitized identifiers (`eventId`, `documentId`) without exposing `r2Key` if R2 delete also fails.
 
 GET /api/events/:eventId/documents
 Permission: organizer
-Returns list of private documents for the event (id, eventId, originalName, mimeType, sizeBytes, createdAt).
+Returns list of private documents for the event (`id`, `eventId`, `originalName`, `mimeType`, `sizeBytes`, `visibility`, `uploadedBy`, `aiConsentGranted`, `aiConsentAt`, `createdAt`).
 
 GET /api/events/:eventId/documents/:documentId
 Permission: organizer
-Returns private document binary stream with Cache-Control: private, no-cache.
+Returns private document binary stream with `Cache-Control: private, no-store, no-cache, must-revalidate` and `X-Content-Type-Options: nosniff`.
 
 POST /api/events/:eventId/extractions
 Permission: organizer
@@ -187,39 +192,45 @@ Request:
 
 ```json
 {
-  "documentId": "uuid"
+  "documentId": "uuid",
+  "processingConsent": true
 }
 ```
 
-Response:
+Validation & Safeguards:
+- Explicit organizer processing authorization/consent (`processingConsent: true` in request or granted at document upload) is required before sending private documents to external AI processing (422 Unprocessable Entity if missing or false).
+- Event-level concurrency lock: atomically locks the event and document rows (`FOR UPDATE OF e, d`) and reserves an extraction slot in `ai_extractions` (`status = 'processing'`). Returns 409 Conflict if any extraction is already `pending` or `processing` across any document of the event.
+- Rate limit: maximum 5 extraction requests per 10-minute sliding window per organization (429 Too Many Requests).
+- Completion lifecycle guard: re-locks the event row on completion; if the event transitioned out of `draft`/`review` while Gemini was in flight, rejects completion with 409 Conflict (`EVENT_STATE_CONFLICT`) and does not persist output JSON.
 
-- 200 OK with completed structured extraction conforming to AI-SPEC §4:
-  `eventName`, `eventType`, `eventDescription`, `startTime` (ISO 8601 UTC), `endTime` (ISO 8601 UTC or null), `locationName`, `affectedRoads` (string array), `processionRoute` (string or null), `wasteMitigationNotes` (string or null), `eventImpactLevel` (`low` | `moderate` | `high`), `confidenceScore` (0.0 - 1.0), `unverified: true`, `extractionModel`, `extractedAt`.
-- Concurrency Lock: 409 Conflict if an extraction is already in progress for this event (atomic pre-call reservation).
-- Rate Limit: 429 Too Many Requests if rate limit is exceeded (maximum 5 extraction requests per 10 minutes sliding window per organization).
-- Upstream AI Error: 502 Bad Gateway if Gemini returns an error or is unreachable (`AI_EXTRACTION_FAILED`), preserving manual data entry fallback.
+Response (200 OK):
+- Returns `{ extraction, manualFallbackAvailable: true }`.
+- When `extraction.status === "completed"`, `outputJson` (and alias `extractedJson`) conforms strictly to `docs/05-AI-SPEC.md` §3 (`schema_version`, `event_name`, `event_category`, `start_datetime`, `end_datetime`, `venue_name`, `procession_description`, `affected_road_names`, `traffic_impact_description`, `organizer_name`, `cleanup_location_notes`, `contact_information`, `issues`), with all present datetime strings validated for calendar accuracy and normalized to UTC ISO 8601.
+- When Gemini fails, times out, or returns schema-invalid JSON (such as `{}` or impossible calendar dates), records `status: "failed"` with sanitized `errorCode` (`PROVIDER_ERROR`, `PROVIDER_TIMEOUT`, `SCHEMA_VALIDATION_FAILED`, etc.) and returns 200 OK with `manualFallbackAvailable: true` so the organizer can proceed with manual entry.
 
 GET /api/extractions/:extractionId
 Permission: organizer of owning event
 
 PATCH /api/events/:eventId/extracted-fields
 Permission: organizer
-Request:
+Request (accepts flat fields or `{ "corrections": { ... } }` wrapper):
 ```json
 {
-  "corrections": {
-    "eventName": "Piodalan Pura Jagatnatha",
-    "startTime": "2026-11-10T00:00:00.000Z",
-    "endTime": "2026-11-10T04:00:00.000Z",
-    "locationName": "Pura Jagatnatha Denpasar",
-    "affectedRoads": ["Jalan Surapati", "Jalan Veteran"],
-    "processionRoute": "Pura Jagatnatha menuju Lapangan Puputan Badung",
-    "wasteMitigationNotes": "Disediakan tempat sampah terpilah di 4 titik",
-    "eventImpactLevel": "high"
-  }
+  "title": "Karya Melasti Sanur",
+  "category": "upacara_adat",
+  "description": "Prosesi adat melasti menuju segara",
+  "venueName": "Pantai Matahari Terbit Sanur",
+  "startsAt": "2026-11-20T08:00:00+08:00",
+  "endsAt": "2026-11-20T16:00:00+08:00",
+  "permitReference": "SURAT/2026/099",
+  "processionDescription": "Berjalan kaki menuju Pantai Matahari Terbit",
+  "trafficImpactDescription": "Penutupan satu lajur selama iring-iringan",
+  "organizerName": "Prajuru Desa Adat Intaran",
+  "cleanupLocationNotes": "Titik kumpul karung sampah di parkir utara pantai",
+  "contactInformation": "I Made Surya (0812-0000-0101)"
 }
 ```
-Validates corrected fields against AI-SPEC §4 schema and stores in database.
+Persists all 12 reviewed/corrected fields on `events` atomically under `FOR UPDATE OF e`, resets `review` status to `draft` (clearing `verifiedBy`/`verifiedAt`) when any field changes, and records `before_json` and `after_json` from the locked row (`hasContactInformation` boolean is logged in audit JSON rather than raw private contact strings; `contactInformation` is returned only to organizers and stripped from officer and public responses).
 
 ## 6. Road Segments
 

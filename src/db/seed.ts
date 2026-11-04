@@ -1,5 +1,5 @@
 import * as dotenv from "dotenv";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
 import { assertDevBranch, sanitizeDatabaseError } from "./guard";
 import { getDb } from "./index";
@@ -44,7 +44,8 @@ export const SIMULATED_DATA = {
 		// Synthetic coordinates for testing spatial queries only; explicitly not real operational road geometry
 		geom: "SRID=4326;LINESTRING(115.2166 -8.6500, 115.2170 -8.6510)",
 		coverageArea: "Area Simulasi",
-		verifiedBy: "system_fixture",
+		verifiedBy: null,
+		verifiedAt: null,
 	},
 	event: {
 		id: "33333333-3333-4333-8333-333333333333",
@@ -56,13 +57,6 @@ export const SIMULATED_DATA = {
 		publicSlug: "simulated-upacara-uji-coba",
 		startsAt: new Date("2026-11-10T08:00:00Z"),
 		endsAt: new Date("2026-11-10T14:00:00Z"),
-	},
-	roadImpact: {
-		id: "55555555-5555-4555-8555-555555555555",
-		plannedFrom: new Date("2026-11-10T08:00:00Z"),
-		plannedTo: new Date("2026-11-10T12:00:00Z"),
-		impactType: "closure" as const,
-		diversionNote: "Pengalihan lalu lintas uji coba",
 	},
 	cleanupTask: {
 		id: "44444444-4444-4444-8444-444444444444",
@@ -109,8 +103,6 @@ export async function seedDatabase(databaseUrl?: string) {
 	const hashedOrganizerPassword = await hashPassword(organizerPassword);
 	const hashedOfficerPassword = await hashPassword(officerPassword);
 
-	// Seed Better Auth accounts for credential authentication using separate caller-supplied or ephemeral secure credentials.
-	// onConflictDoNothing preserves existing rotated/authorized credentials across repeated seeds.
 	await db
 		.insert(account)
 		.values([
@@ -162,7 +154,12 @@ export async function seedDatabase(databaseUrl?: string) {
 		])
 		.onConflictDoNothing();
 
-	// 4. Seed simulated road segment with typed PostGIS geometry
+	// Clean up any legacy road impact referencing the unverified simulated road segment
+	await db
+		.delete(roadImpacts)
+		.where(eq(roadImpacts.roadSegmentId, SIMULATED_DATA.roadSegment.id));
+
+	// 4. Seed simulated road segment as strictly UNVERIFIED (AGENTS.md §13, docs/03-ARCHITECTURE.md §8)
 	await db
 		.insert(roadSegments)
 		.values({
@@ -170,15 +167,19 @@ export async function seedDatabase(databaseUrl?: string) {
 			displayName: SIMULATED_DATA.roadSegment.displayName,
 			geom: sql`ST_GeomFromEWKT(${SIMULATED_DATA.roadSegment.geom})`,
 			coverageArea: SIMULATED_DATA.roadSegment.coverageArea,
-			verifiedBy: SIMULATED_DATA.roadSegment.verifiedBy,
-			verifiedAt: new Date(),
+			verifiedBy: null,
+			verifiedAt: null,
 		})
 		.onConflictDoUpdate({
 			target: roadSegments.id,
-			set: { displayName: sql`EXCLUDED.display_name` },
+			set: {
+				displayName: sql`EXCLUDED.display_name`,
+				verifiedBy: null,
+				verifiedAt: null,
+			},
 		});
 
-	// 5. Seed simulated event
+	// 5. Seed simulated event (draft only)
 	await db
 		.insert(events)
 		.values({
@@ -199,21 +200,7 @@ export async function seedDatabase(databaseUrl?: string) {
 			set: { title: sql`EXCLUDED.title` },
 		});
 
-	// 6. Seed simulated road impact for the event
-	await db
-		.insert(roadImpacts)
-		.values({
-			id: SIMULATED_DATA.roadImpact.id,
-			eventId: SIMULATED_DATA.event.id,
-			roadSegmentId: SIMULATED_DATA.roadSegment.id,
-			plannedFrom: SIMULATED_DATA.roadImpact.plannedFrom,
-			plannedTo: SIMULATED_DATA.roadImpact.plannedTo,
-			impactType: SIMULATED_DATA.roadImpact.impactType,
-			diversionNote: SIMULATED_DATA.roadImpact.diversionNote,
-		})
-		.onConflictDoNothing();
-
-	// 7. Seed event assignment
+	// 6. Seed event assignment
 	await db
 		.insert(eventAssignments)
 		.values({
@@ -224,7 +211,7 @@ export async function seedDatabase(databaseUrl?: string) {
 		})
 		.onConflictDoNothing();
 
-	// 8. Seed cleanup task with PostGIS point
+	// 7. Seed cleanup task with PostGIS point
 	await db
 		.insert(cleanupTasks)
 		.values({

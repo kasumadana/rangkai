@@ -1,21 +1,12 @@
 import { z } from "zod";
+import { isValidIsoDatetimeWithTimezone } from "./extractions";
 
-// Helper for ISO timestamp with explicit timezone offset
 const isoTimestampWithTimezone = z
 	.string()
-	.refine(
-		(val) => {
-			if (!val || typeof val !== "string") return false;
-			const hasExplicitTz = /([+-]\d{2}:\d{2}|Z)$/i.test(val);
-			if (!hasExplicitTz) return false;
-			const d = new Date(val);
-			return !isNaN(d.getTime());
-		},
-		{
-			message:
-				"Timestamp must be a valid ISO 8601 string with explicit timezone offset (e.g. '2026-03-29T10:00:00+08:00' or '2026-03-29T02:00:00Z').",
-		},
-	);
+	.refine(isValidIsoDatetimeWithTimezone, {
+		message:
+			"Timestamp must be a valid ISO 8601 string with explicit timezone offset and valid calendar date (e.g. '2026-03-29T10:00:00+08:00' or '2026-03-29T02:00:00Z').",
+	});
 
 // Schema for POST /api/events/:eventId/cleanup-tasks
 export const createCleanupTaskSchema = z.object({

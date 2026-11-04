@@ -18,12 +18,12 @@
       "needs_review": false
     },
     "start_datetime": {
-      "value": "2026-02-15T08:00:00+08:00",
+      "value": null,
       "evidence": "Pertengahan Februari 2026",
       "needs_review": true
     },
     "end_datetime": {
-      "value": "2026-02-15T17:00:00+08:00",
+      "value": null,
       "evidence": "sampai sore hari",
       "needs_review": true
     },

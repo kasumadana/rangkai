@@ -4,19 +4,12 @@ import { AuthConfigError, createAuth } from "./auth";
 import { formatErrorEnvelope } from "./lib/errors";
 import { csrfAndOriginProtection } from "./middleware/csrf";
 import { assignmentsRouter } from "./routes/assignments";
-import { cleanupTasksRouter, eventsCleanupRouter } from "./routes/cleanup";
+import { cleanupRouter } from "./routes/cleanup";
 import { documentsRouter } from "./routes/documents";
 import { eventsRouter } from "./routes/events";
-import {
-	eventsExtractionsRouter,
-	extractionsRouter,
-} from "./routes/extractions";
+import { extractionsRouter } from "./routes/extractions";
 import { publicRouter } from "./routes/public";
-import {
-	roadImpactsRouter,
-	roadSegmentsRouter,
-	roadStatusRouter,
-} from "./routes/roads";
+import { roadsRouter } from "./routes/roads";
 import type { AppVariables, Env } from "./types";
 
 declare global {
@@ -45,8 +38,14 @@ app.get("/api/", (c) => c.json({ name: "Cloudflare" }));
 
 // Request context middleware: assigns requestId, db client, and auth instance for API operations
 app.use("/api/*", async (c, next) => {
+	const rawHeaderId = c.req.header("x-request-id")?.trim();
 	const requestId =
-		c.req.header("x-request-id") || crypto.randomUUID();
+		rawHeaderId &&
+		rawHeaderId.length >= 1 &&
+		rawHeaderId.length <= 64 &&
+		/^[A-Za-z0-9._-]+$/.test(rawHeaderId)
+			? rawHeaderId
+			: crypto.randomUUID();
 	c.set("requestId", requestId);
 	c.header("x-request-id", requestId);
 
@@ -113,23 +112,13 @@ app.all("/api/auth/*", async (c) => {
 // Mount Public API routes (anonymous read-only access)
 app.route("/api/public", publicRouter);
 
-// Mount Road Segments catalog router
-app.route("/api/road-segments", roadSegmentsRouter);
-
-// Mount Live Road Status updates router
-app.route("/api/road-impacts", roadStatusRouter);
-
-// Mount Cleanup Tasks direct router
-app.route("/api/cleanup-tasks", cleanupTasksRouter);
-
-// Mount Extractions detail router
-app.route("/api/extractions", extractionsRouter);
-
-// Mount Events-scoped routers (Cleanup, Documents, Extractions, Road Impacts, Assignments, Events)
-app.route("/api/events", eventsCleanupRouter);
+// Mount A05-A08 routers
 app.route("/api/events", documentsRouter);
-app.route("/api/events", eventsExtractionsRouter);
-app.route("/api/events", roadImpactsRouter);
+app.route("/api", extractionsRouter);
+app.route("/api", roadsRouter);
+app.route("/api", cleanupRouter);
+
+// Mount Events and Assignments routes
 app.route("/api/events", assignmentsRouter);
 app.route("/api/events", eventsRouter);
 
@@ -137,7 +126,11 @@ app.route("/api/events", eventsRouter);
 app.notFound((c) => {
 	const requestId = c.get("requestId") || "unknown";
 	return c.json(
-		formatErrorEnvelope("NOT_FOUND", "Resource not found or not visible.", requestId),
+		formatErrorEnvelope(
+			"NOT_FOUND",
+			"Resource not found or not visible.",
+			requestId,
+		),
 		404,
 	);
 });
