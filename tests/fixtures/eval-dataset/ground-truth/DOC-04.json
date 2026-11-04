@@ -1,0 +1,74 @@
+{
+  "doc_id": "DOC-04-GIANYAR-MARATHON",
+  "category": "missing_date",
+  "filename": "4.png",
+  "event_name": {
+    "value": "Maybank Marathon 10K Bali",
+    "evidence": "10K MAYBANK MARATHON IN PARTNERSHIP WITH VISA",
+    "needs_review": false
+  },
+  "event_category": "sports_procession",
+  "start_datetime": {
+    "value": "2026-08-22T00:00:00+08:00",
+    "evidence": "22-23 AGUSTUS 2026",
+    "needs_review": true
+  },
+  "end_datetime": {
+    "value": "2026-08-23T23:59:59+08:00",
+    "evidence": "22-23 AGUSTUS 2026",
+    "needs_review": true
+  },
+  "venue_name": {
+    "value": "Bali United Training Center (BUTC) Gianyar",
+    "evidence": "BUTC",
+    "needs_review": false
+  },
+  "affected_road_names": [
+    {
+      "name": "Jalan Bypass I.B. Mantra",
+      "evidence": "Jl. Bypass I.B. Mantra (Sp. Ketewel - Sp. Selukat)",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Raya Pering",
+      "evidence": "Jl. Raya Pering",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Permata Pering",
+      "evidence": "Jl. Permata Pering",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Segara Wilis",
+      "evidence": "Jl. Segara Wilis",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Maruti",
+      "evidence": "Jl. Maruti",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Selukat",
+      "evidence": "Jl. Selukat",
+      "needs_review": false
+    }
+  ],
+  "traffic_impact_description": {
+    "value": "Penutupan jalur rute marathon dan imbauan hindari ruas jalan yang dilalui",
+    "evidence": "HINDARI RUAS JALAN BERIKUT",
+    "needs_review": false
+  },
+  "organizer_name": {
+    "value": "Sat Lantas Polres Gianyar & Maybank",
+    "evidence": "SAT LANTAS POLRES GIANYAR",
+    "needs_review": false
+  },
+  "permit_reference_text": null,
+  "expected_issues": [
+    "Jam mulai dan jam selesai harian tidak tercantum pada poster (memerlukan review manual waktu pelaksanaan lomba)",
+    "Rentang multi-hari (22-23 Agustus)"
+  ],
+  "split": "unseen_test"
+}

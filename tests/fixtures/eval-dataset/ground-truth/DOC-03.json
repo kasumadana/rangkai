@@ -1,0 +1,79 @@
+{
+  "doc_id": "DOC-03-BATUR-MEPADA-AGUNG",
+  "category": "clear_permit",
+  "filename": "3.png",
+  "event_name": {
+    "value": "Upacara Mepada Agung di Pura Tulukbiyu Batur",
+    "evidence": "KEGIATAN UPACARA MEPADA AGUNG DI PURA TULUKBIYU BATUR",
+    "needs_review": false
+  },
+  "event_category": "religious_ceremony",
+  "start_datetime": {
+    "value": "2026-09-26T08:00:00+08:00",
+    "evidence": "SABTU, 26 SEPTEMBER 2026 | PUKUL 08.00 WITA",
+    "needs_review": false
+  },
+  "end_datetime": {
+    "value": "2026-09-26T18:00:00+08:00",
+    "evidence": "s/d 18.00 WITA",
+    "needs_review": false
+  },
+  "venue_name": {
+    "value": "Pura Tulukbiyu Batur (Kintamani)",
+    "evidence": "PURA TULUKBIYU BATUR",
+    "needs_review": false
+  },
+  "affected_road_names": [
+    {
+      "name": "Pertigaan Belancan",
+      "evidence": "ST. BELANCAN",
+      "needs_review": false
+    },
+    {
+      "name": "Pertigaan Peludu",
+      "evidence": "SE. PELUDU",
+      "needs_review": false
+    },
+    {
+      "name": "Pertigaan Gunung Kunyit",
+      "evidence": "ST. GUNUNG KUNYIT",
+      "needs_review": false
+    },
+    {
+      "name": "Pertigaan Katung / Culali Atas",
+      "evidence": "ST. KATUNG / CULALI ATAS",
+      "needs_review": false
+    },
+    {
+      "name": "Pertigaan KUD",
+      "evidence": "ST. KUD",
+      "needs_review": false
+    },
+    {
+      "name": "Pertigaan Maharaja",
+      "evidence": "ST. MAHARAJA",
+      "needs_review": false
+    },
+    {
+      "name": "Depan Pura UDB",
+      "evidence": "DEPAN PURA UDB.",
+      "needs_review": false
+    }
+  ],
+  "traffic_impact_description": {
+    "value": "Pengalihan arus satu arah dan titik penutupan di jalur Kintamani/Singaraja menuju Bangli/Gianyar",
+    "evidence": "RUTE REKAYASA LALU LINTAS... Titik Penutupan / Pengalihan",
+    "needs_review": false
+  },
+  "organizer_name": {
+    "value": "Polres Bangli (Polantas Karib)",
+    "evidence": "POLANTAS KARIB BANGLI",
+    "needs_review": false
+  },
+  "permit_reference_text": null,
+  "expected_issues": [
+    "Menggunakan singkatan lokal Bali untuk persimpangan jalan ('ST.' / simpang tiga, 'SE.' / simpang empat)",
+    "Akronim tempat ibadah ('Pura UDB' = Pura Ulun Danu Batur)"
+  ],
+  "split": "train_dev"
+}

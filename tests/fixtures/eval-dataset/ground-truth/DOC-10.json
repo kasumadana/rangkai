@@ -1,0 +1,79 @@
+{
+  "doc_id": "DOC-10-PEDUNGAN-PEMELASPASAN",
+  "category": "clear_permit",
+  "filename": "10.jpeg",
+  "event_name": {
+    "value": "Karya Pemelaspasan Pura Ratu Gede Begawan Penyarikan, Bale Kulkul dan Bale Panjang Banjar Dukuh Pesirahan",
+    "evidence": "karya Pemelaspasan Pura Ratu Gede Begawan Penyarikan, Bale Kulkul dan Bale Panjang Banjar Dukuh Pesirahan",
+    "needs_review": false
+  },
+  "event_category": "religious_ceremony",
+  "start_datetime": {
+    "value": "2026-06-11T07:00:00+08:00",
+    "evidence": "Kamis, 11 Juni 2026 | Pukul 07.00",
+    "needs_review": false
+  },
+  "end_datetime": {
+    "value": "2026-06-11T13:00:00+08:00",
+    "evidence": "S/D 13.00 Wita",
+    "needs_review": false
+  },
+  "venue_name": {
+    "value": "Banjar Dukuh Pesirahan Desa Adat Pedungan",
+    "evidence": "Banjar Dukuh Pesirahan, Kel.Pedungan, Denpasar Selatan",
+    "needs_review": false
+  },
+  "affected_road_names": [
+    {
+      "name": "Jalan Pulau Roti",
+      "evidence": "jln. Pulau roti",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Pulau Moyo",
+      "evidence": "JL. P. MOYO",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Dukuh Sari",
+      "evidence": "JL. DUKUH SARI",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Batas Dukuh Sari",
+      "evidence": "JL. BATAS DUKUH SARI",
+      "needs_review": true
+    },
+    {
+      "name": "Gang Banteng",
+      "evidence": "GANG BANTENG",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Gurita I",
+      "evidence": "JL. GURITA I",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Raya Sesetan",
+      "evidence": "JL. RAYA SESETAN",
+      "needs_review": true
+    }
+  ],
+  "traffic_impact_description": {
+    "value": "Penutupan Jalan Pulau Roti di depan Banjar Dukuh Pesirahan dan pengalihan arus ke rute sekitarnya",
+    "evidence": "pengalihan lalu lintas di jln. Pulau roti seperti di peta terlampir",
+    "needs_review": false
+  },
+  "organizer_name": {
+    "value": "Prawartaka Karya Banjar Dukuh Pesirahan Desa Adat Pedungan",
+    "evidence": "PRAWARTAKA KARYA... BANJAR DUKUH PESIRAHAN DÉSA ADAT PEDUNGAN",
+    "needs_review": false
+  },
+  "permit_reference_text": null,
+  "expected_issues": [
+    "Singkatan nama jalan 'JL. P. ROTI' dan 'jln. Pulau roti'",
+    "Perlu verifikasi batas ruas yang ditutup pada Jalan Pulau Roti di peta"
+  ],
+  "split": "train_dev"
+}

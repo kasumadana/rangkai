@@ -1,0 +1,94 @@
+{
+  "doc_id": "DOC-09-PEDUNGAN-MAP-DIVERSION",
+  "category": "multiple_roads",
+  "filename": "9.jpeg",
+  "event_name": {
+    "value": "Pengalihan Arus Lalu Lintas Penutupan Jl. Pulau Moyo Br. Dukuh Pesirahan",
+    "evidence": "PENGALIHAN ARUS LALU LINTAS... Penutupan arus lalu lintas sekitaran Jl. Pulau Moyo",
+    "needs_review": false
+  },
+  "event_category": "religious_ceremony",
+  "start_datetime": {
+    "value": "2026-08-24T11:30:00+08:00",
+    "evidence": "Senin, 24 Agustus 2026 (11.30 - 13.00 Wita)",
+    "needs_review": false
+  },
+  "end_datetime": {
+    "value": "2026-08-24T13:00:00+08:00",
+    "evidence": "13.00 Wita",
+    "needs_review": false
+  },
+  "venue_name": {
+    "value": "Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Prajapati, Pemanahan",
+    "evidence": "Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Pura Prajapati dan Pura Pemanahan",
+    "needs_review": false
+  },
+  "affected_road_names": [
+    {
+      "name": "Jalan Pulau Moyo",
+      "evidence": "Jl. Pulau Moyo",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Pulau Singkep",
+      "evidence": "Jl. Pulau Singkep",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Pulau Belitung",
+      "evidence": "Jl. Pulau Belitung",
+      "needs_review": false
+    },
+    {
+      "name": "Gang Babakan Sari VII E",
+      "evidence": "Gg. Babakan Sari VII E",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Pulau Moyo I",
+      "evidence": "Jl. Pulau Moyo I",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Gurita I",
+      "evidence": "Jl. Gurita I",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Raya Sesetan",
+      "evidence": "Jl. Raya Sesetan",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Pulau Saelus",
+      "evidence": "Jl. Pulau Saelus",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Pulau Roti",
+      "evidence": "Jl. Pulau Roti",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Dukuh Sari",
+      "evidence": "Jl. Dukuh Sari",
+      "needs_review": false
+    }
+  ],
+  "traffic_impact_description": {
+    "value": "Penutupan Jl. Pulau Moyo; sepeda motor dialihkan via Gg. Babakan Sari, mobil dialihkan via Jl. Gurita I dan Jl. Raya Sesetan",
+    "evidence": "Penutupan arus lalu lintas sekitaran Jl. Pulau Moyo... Arus Sepeda Motor... Arus Mobil",
+    "needs_review": false
+  },
+  "organizer_name": {
+    "value": "Banjar Dukuh Pesirahan Desa Adat Pedungan",
+    "evidence": "BANJAR DUKUH PESIRAHAN DESA ADAT PEDUNGAN",
+    "needs_review": false
+  },
+  "permit_reference_text": null,
+  "expected_issues": [
+    "Skema rekayasa multi-moda (pemisahan arus motor vs mobil)",
+    "Banyak nama gang dan jalan sekunder yang terpetakan"
+  ],
+  "split": "unseen_test"
+}

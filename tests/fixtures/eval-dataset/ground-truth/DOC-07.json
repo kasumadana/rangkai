@@ -1,0 +1,75 @@
+{
+  "doc_id": "DOC-07-TONJA-KARYA-MAMUNGKAH",
+  "category": "ambiguity",
+  "filename": "7.png",
+  "event_name": {
+    "value": "Pengratep Karya Mamungkah, Ngenteg Linggih, Padudusan Agung miwah Caru Balik Sumpah",
+    "evidence": "Pengratep Karya Mamungkah, Ngenteg Linggih, Padudusan Agung miwah Caru Balik Sumpah",
+    "needs_review": false
+  },
+  "event_category": "religious_ceremony",
+  "start_datetime": {
+    "value": "2026-10-14T00:00:00+08:00",
+    "evidence": "Buda Wage Klawu, 14 Oktober 2026",
+    "needs_review": false
+  },
+  "end_datetime": {
+    "value": "2026-10-17T23:59:59+08:00",
+    "evidence": "s/d 17 Oktober 2026",
+    "needs_review": false
+  },
+  "venue_name": {
+    "value": "Pura Gede Batur Sari",
+    "evidence": "LOKASI ACARA Pura Gede Batur Sari",
+    "needs_review": false
+  },
+  "affected_road_names": [
+    {
+      "name": "Jalan Seroja",
+      "evidence": "Jl. Seroja (POTENSI KEMACETAN / PADAT)",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Antasura",
+      "evidence": "Jl. Antasura (JALUR ALTERNATIF)",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Kemuda",
+      "evidence": "Jl. Kemuda (JALUR ALTERNATIF)",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Nangka Utara",
+      "evidence": "Jl. Nangka Utara",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Noja Saraswati",
+      "evidence": "Jl. Noja Saraswati",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Gatot Subroto",
+      "evidence": "Jl. Gatot Subroto",
+      "needs_review": true
+    }
+  ],
+  "traffic_impact_description": {
+    "value": "Potensi kemacetan / padat di Jl. Seroja, diimbau mencari jalur alternatif",
+    "evidence": "POTENSI KEMACETAN / PADAT... Dihimbau bagi pengguna jalan agar mencari jalur alternatif",
+    "needs_review": false
+  },
+  "organizer_name": {
+    "value": "Desa Adat Tonja Denpasar",
+    "evidence": "DESA ADAT TONJA DENPASAR",
+    "needs_review": false
+  },
+  "permit_reference_text": null,
+  "expected_issues": [
+    "Menyertakan penanggalan kalender Bali ('Buda Wage Klawu')",
+    "Perlu membedakan jalan yang terdampak macet (Jl. Seroja) vs ruas jalan yang menjadi jalur alternatif pada peta",
+    "Jam spesifik harian tidak tercantum"
+  ],
+  "split": "unseen_test"
+}

@@ -1,0 +1,79 @@
+{
+  "doc_id": "DOC-08-PEDUNGAN-MULTISESSION",
+  "category": "conflicting_times",
+  "filename": "8.jpeg",
+  "event_name": {
+    "value": "Karya Ngenteg Linggih Mepedudusan Alit Lan Ngersigana Br. Dukuh Pesirahan Desa Adat Pedungan",
+    "evidence": "Karya Ngenteg Linggih Mepedudusan Alit Lan Ngersigana... Br. Dukuh Pesirahan Desa Adat Pedungan",
+    "needs_review": false
+  },
+  "event_category": "religious_ceremony",
+  "start_datetime": {
+    "value": "2026-08-23T12:30:00+08:00",
+    "evidence": "Hari Minggu, 23 Agustus 2026 (Pukul 12.30 - 16.00 Wita)",
+    "needs_review": true
+  },
+  "end_datetime": {
+    "value": "2026-08-26T13:00:00+08:00",
+    "evidence": "Hari Rabu, 26 Agustus 2026 (Pukul 08.00 - 13.00 Wita)",
+    "needs_review": true
+  },
+  "venue_name": {
+    "value": "Pura Kahyangan, Prajapati, Ratu Gede Begawan Penyarikan, Pemanahan Br. Dukuh Pesirahan",
+    "evidence": "Pura Kahyangan, Pura Prajapati, Pura Ratu Gede Begawan Penyarikan lan Pura Pemanahan",
+    "needs_review": false
+  },
+  "affected_road_names": [
+    {
+      "name": "Jalan Pulau Moyo",
+      "evidence": "JL. P. MOYO",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Pulau Singkep",
+      "evidence": "JL. P. SINGKEP",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Pulau Roti",
+      "evidence": "JL. P. ROTI",
+      "needs_review": false
+    },
+    {
+      "name": "Jalan Pulau Saelus",
+      "evidence": "JL. P. SAELUS",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Pulau Bungin",
+      "evidence": "JL. P. BUNGIN",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Pulau Belitung",
+      "evidence": "JL. P. BELITUNG",
+      "needs_review": true
+    },
+    {
+      "name": "Jalan Raya Sesetan",
+      "evidence": "JL. RAYA SESETAN",
+      "needs_review": true
+    }
+  ],
+  "traffic_impact_description": {
+    "value": "Penutupan ruas Jalan Pulau Moyo di depan pura dan pengalihan arus ke jalan sekitar",
+    "evidence": "PENGALIHAN ARUS LALU LINTAS",
+    "needs_review": false
+  },
+  "organizer_name": {
+    "value": "Banjar Dukuh Pesirahan Desa Adat Pedungan",
+    "evidence": "BANJAR DUKUH PESIRAHAN DESA ADAT PEDUNGAN",
+    "needs_review": false
+  },
+  "permit_reference_text": null,
+  "expected_issues": [
+    "Jadwal multi-sesi (23 Agustus 12.30-16.00 WITA dan 26 Agustus 08.00-13.00 WITA)",
+    "Singkatan nama jalan berawalan 'JL. P.' yang merujuk pada nama pulau di Denpasar Selatan ('Pulau Moyo', 'Pulau Saelus', 'Pulau Roti')"
+  ],
+  "split": "train_dev"
+}
