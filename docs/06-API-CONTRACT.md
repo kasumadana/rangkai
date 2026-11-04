@@ -169,8 +169,16 @@ Response: 200 OK with status "completed". Atomic audit log recorded. Zero-row co
 
 POST /api/events/:eventId/documents
 Permission: organizer
-Content-Type: multipart/form-data
-Returns documentId.
+Content-Type: multipart/form-data (JPEG, PNG, PDF up to 8 MB)
+Returns documentId and safe metadata. Private R2 storage.
+
+GET /api/events/:eventId/documents
+Permission: organizer
+Returns list of private documents for the event (id, eventId, originalName, mimeType, sizeBytes, createdAt).
+
+GET /api/events/:eventId/documents/:documentId
+Permission: organizer
+Returns private document binary stream with Cache-Control: private, no-cache.
 
 POST /api/events/:eventId/extractions
 Permission: organizer
@@ -274,6 +282,19 @@ Permission: assigned cleanup officer or organizer
 
 POST /api/cleanup-tasks/:taskId/verify
 Permission: organizer
+Verifies submitted cleanup task. Invariant: Does not alter road status.
+
+POST /api/cleanup-tasks/:taskId/reopen
+Permission: organizer
+Reopens submitted or verified task, clearing verification fields.
+
+GET /api/cleanup-tasks/:taskId/evidence/:evidenceId
+Permission: organizer or assigned cleanup officer
+Controlled retrieval of private photo evidence with Cache-Control: private, no-cache.
+
+GET /api/events/:eventId/waste-records
+Permission: organizer or assigned cleanup officer
+Returns list of waste records for the event.
 
 POST /api/events/:eventId/waste-records
 Permission: organizer or assigned cleanup officer
