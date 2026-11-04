@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-04T09:43:00+08:00",
+  "title": "Design System: Rangkai",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Terracotta Crimson",
+        "canonical": "oklch(45% 0.16 28)",
+        "tonalRamp": ["#4a1012", "#6e1d1f", "#9e2a2b", "#bf3c3e", "#dd6263", "#efa0a1", "#f9d4d5", "#fdf2f2"]
+      },
+      "secondary": {
+        "role": "secondary",
+        "displayName": "Saffron Ochre",
+        "canonical": "oklch(56% 0.15 48)",
+        "tonalRamp": ["#5c2b0e", "#8c3e15", "#c25e24", "#e07d43", "#f29c66", "#fabf99", "#fde0cd", "#fef6f0"]
+      },
+      "neutral-canvas": {
+        "role": "neutral",
+        "displayName": "Chalk Canvas",
+        "canonical": "oklch(98.5% 0.003 80)",
+        "tonalRamp": ["#181b20", "#313640", "#545b67", "#878f9c", "#bcc1cb", "#e2e4e8", "#f4f4f3", "#fbfbfa"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display / H1", "purpose": "Nama acara utama dan judul dashboard." },
+      "headline": { "displayName": "Headline / H2", "purpose": "Judul seksi panel review dan pemetaan." },
+      "title": { "displayName": "Title / H3", "purpose": "Nama ruas jalan dan judul kartu tugas." },
+      "body": { "displayName": "Body Default", "purpose": "Teks deskripsi pengumuman dan isi formulir." },
+      "label": { "displayName": "Label / Badge", "purpose": "Pill status operasional ruas jalan dan tag verifikasi." }
+    },
+    "shadows": [
+      { "name": "card-ambient", "value": "0 1px 3px 0 rgba(24, 27, 32, 0.05), 0 1px 2px -1px rgba(24, 27, 32, 0.05)", "purpose": "Kedalaman subtil untuk kartu aktif di atas kanvas." },
+      { "name": "overlay-floating", "value": "0 10px 15px -3px rgba(24, 27, 32, 0.1), 0 4px 6px -4px rgba(24, 27, 32, 0.05)", "purpose": "Elevasi modal dialog, bottom sheet mobile, dan kartu informasi di atas peta." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Transisi baku untuk hover dan focus (maksimal 150ms)." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Tombol aksi utama per layar (Publikasikan Kegiatan, Simpan Verifikasi).",
+      "html": "<button class=\"ds-btn-primary\">Publikasikan Kegiatan</button>",
+      "css": ".ds-btn-primary { background: #9e2a2b; color: #ffffff; padding: 10px 20px; font-size: 15px; font-weight: 600; border: none; border-radius: 8px; cursor: pointer; transition: background 0.15s; } .ds-btn-primary:hover { background: #832223; }"
+    },
+    {
+      "name": "Status Badge Open",
+      "kind": "chip",
+      "refersTo": "badge-status-open",
+      "description": "Indikator jalan lancar / buka.",
+      "html": "<span class=\"ds-badge ds-badge-open\"><span class=\"ds-dot\"></span>LANCAR (OPEN)</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; border-radius: 9999px; letter-spacing: 0.025em; } .ds-badge-open { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; } .ds-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }"
+    },
+    {
+      "name": "Status Badge Closed",
+      "kind": "chip",
+      "refersTo": "badge-status-closed",
+      "description": "Indikator jalan ditutup sementara.",
+      "html": "<span class=\"ds-badge ds-badge-closed\"><span class=\"ds-dot\"></span>DITUTUP (CLOSED)</span>",
+      "css": ".ds-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; border-radius: 9999px; letter-spacing: 0.025em; } .ds-badge-closed { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; } .ds-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Tri Datu Civic Utility",
+    "overview": "Rangkai adalah instrumen koordinasi operasional publik untuk mengelola dampak ruang jalan dan kebersihan acara adat/budaya di Bali. Mengadopsi filosofi Tri Datu yang dipadukan ke dalam arsitektur utilitas sipil modern dengan etika Pramana.",
+    "keyCharacteristics": [
+      "Civic Restraint: Antarmuka tenang, fungsional, dan bersih; warna aksen hanya hadir pada aksi kritis.",
+      "Outdoor High Contrast: Kontras tinggi di bawah terik matahari Bali sesuai WCAG 2.2 AA.",
+      "Honest System Signals: Status kedaluwarsa dan saran AI unverified tidak ambigu.",
+      "Mobile Ergonomics: Target sentuh minimal 48px dan ramah perangkat lapangan."
+    ],
+    "rules": [
+      { "name": "The Rarity Accent Rule", "body": "Warna Terracotta Crimson (#9E2A2B) tidak boleh menguasai lebih dari 10% luas tampilan.", "section": "colors" },
+      { "name": "The Non-Color Redundancy Rule", "body": "Dilarang menyampaikan status operasional hanya melalui warna; wajib sertakan ikon dan teks.", "section": "colors" },
+      { "name": "The Stale-Is-Never-Green Rule", "body": "Status jalan yang kedaluwarsa dilarang otomatis dianggap OPEN; wajib ditampilkan UNKNOWN.", "section": "colors" },
+      { "name": "The Mobile 16px Floor Rule", "body": "Ukuran font input mobile minimal 16px guna mencegah auto-zoom iOS Safari.", "section": "typography" },
+      { "name": "The Tabular Numbers Rule", "body": "Jam acara, koordinat, dan kilogram sampah wajib menggunakan tabular-nums.", "section": "typography" },
+      { "name": "The Flat-By-Default Rule", "body": "Surfaces bertumpu rata; bayangan hanya ada untuk overlay peta dan modal dialog.", "section": "elevation" }
+    ],
+    "dos": [
+      "Gunakan kanvas hangat #FBFBFA untuk meminimalkan pantulan silau di luar ruangan.",
+      "Pasangkan setiap indikator status warna dengan teks dan simbol ikon yang berbeda.",
+      "Tampilkan status 'Belum Terkonfirmasi' jika pembaruan dari lapangan kedaluwarsa.",
+      "Sediakan opsi input formulir manual jika proses ekstraksi AI gagal.",
+      "Pastikan target sentuh tombol status di layar lapangan memiliki tinggi minimal 48px."
+    ],
+    "donts": [
+      "Menggunakan motif pura, ukiran barong, atau kain seremonial sebagai background layar aplikasi.",
+      "Menyamarkan rute jalan yang belum dikonfirmasi statusnya sebagai jalan lancar secara otomatis.",
+      "Menggunakan ukuran font input di bawah 16px pada tampilan mobile.",
+      "Menyajikan informasi estimasi AI sebagai fakta operasional tanpa tinjauan manusia.",
+      "Menyembunyikan navigasi atau status penting di balik efek transisi animasi yang panjang."
+    ]
+  }
+}
