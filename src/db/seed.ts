@@ -3,6 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
 import { assertDevBranch, sanitizeDatabaseError } from "./guard";
 import { getDb } from "./index";
+import { PILOT_ROAD_SEGMENTS } from "./fixtures/road-segments";
 import {
 	cleanupTasks,
 	eventAssignments,
@@ -174,10 +175,37 @@ export async function seedDatabase(databaseUrl?: string) {
 			target: roadSegments.id,
 			set: {
 				displayName: sql`EXCLUDED.display_name`,
+				geom: sql`EXCLUDED.geom`,
+				coverageArea: sql`EXCLUDED.coverage_area`,
 				verifiedBy: null,
 				verifiedAt: null,
 			},
 		});
+
+	// 4b. Seed pilot road segments (Catur Muka) preserving truthful verification metadata
+	for (const segment of PILOT_ROAD_SEGMENTS) {
+		if (segment.id === SIMULATED_DATA.roadSegment.id) continue;
+		await db
+			.insert(roadSegments)
+			.values({
+				id: segment.id,
+				displayName: segment.displayName,
+				geom: sql`ST_GeomFromEWKT(${segment.geom})`,
+				coverageArea: segment.coverageArea,
+				verifiedBy: segment.verifiedBy,
+				verifiedAt: segment.verifiedAt,
+			})
+			.onConflictDoUpdate({
+				target: roadSegments.id,
+				set: {
+					displayName: sql`EXCLUDED.display_name`,
+					geom: sql`EXCLUDED.geom`,
+					coverageArea: sql`EXCLUDED.coverage_area`,
+					verifiedBy: sql`EXCLUDED.verified_by`,
+					verifiedAt: sql`EXCLUDED.verified_at`,
+				},
+			});
+	}
 
 	// 5. Seed simulated event (draft only)
 	await db
