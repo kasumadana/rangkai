@@ -201,3 +201,4 @@ dist
 
 # Release manifest post-freeze output
 release-manifest.json
+.scratch
