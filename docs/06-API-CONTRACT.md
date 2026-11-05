@@ -320,7 +320,8 @@ Permission: organizer or assigned cleanup officer
 
 POST /api/cleanup-tasks/:taskId/evidence
 Permission: assigned cleanup officer or organizer
-Content-Type: multipart/form-data (`photo`, `evidenceType`: "before" | "after")
+Content-Type: multipart/form-data (file field: `photo` or `file`; stage field: `evidenceType` or `stage`: "before" | "after")
+- Response: 201 Created with `{ "evidence": { "id": "uuid", "taskId": "uuid", "stage": "before" | "after", "uploadedBy": "user-id", "createdAt": "iso-timestamp" } }`.
 - Single-file validation with stream-bounded size check (`MAX_PHOTO_SIZE_BYTES`: 5 MB) and JPEG/PNG magic byte verification.
 - Officer Task Ownership: Officers can only upload evidence to their own assigned task (403 Forbidden).
 
@@ -349,6 +350,8 @@ Returns list of waste records for the event.
 POST /api/events/:eventId/waste-records
 Permission: organizer or assigned cleanup officer
 Records waste quantity by category (`organic`, `recyclable`, `residual`). Distinguishes measured `weighedKg` from `estimatedKg` and `sackCount`. Never silently converts estimated quantities into measured facts.
+Request body: `{ "category": "organic" | "recyclable" | "residual", "quantityKg"?: number, "sackCount"?: number, "measurementMethod": "weighed" | "estimated", "destination"?: string, "taskId"?: "uuid" }` (at least one of `quantityKg` or `sackCount` required).
+Response: 201 Created with `{ "wasteRecord": { "id": "uuid", "eventId": "uuid", "taskId": "uuid" | null, "category": string, "quantityKg": number | null, "sackCount": number | null, "measurementMethod": "weighed" | "estimated", "destination": string | null, "recordedBy": string, "recordedAt": "iso-timestamp", "createdAt": "iso-timestamp" } }`.
 
 ## 9. Assignments
 

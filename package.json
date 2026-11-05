@@ -53,6 +53,7 @@
 		"dev": "vite",
 		"lint": "eslint .",
 		"preview": "pnpm build && vite preview",
+		"smoke": "tsx scripts/smoke.ts",
 		"test": "vitest run"
 	},
 	"type": "module"

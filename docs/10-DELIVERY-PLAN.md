@@ -286,3 +286,39 @@ DEC-009: Treat stale road statuses as unconfirmed.
 DEC-010: Keep public access read-only and login-free.
 
 Update this log when architectural decisions change.
+
+## 15. Release Runbook & Operational Verification (ROADMAP A10)
+
+### 15.1 Release Prerequisites & Required Secrets
+Production deployment requires explicitly provisioned remote Cloudflare and Neon resources.
+Never commit secrets to git or pass secret values directly in CLI flags.
+
+| Resource / Setting | Requirement | Supply Mechanism |
+|---|---|---|
+| `DATABASE_URL` | Production Neon PostgreSQL connection string (with PostGIS enabled, unpooled for migrations) | `pnpm exec wrangler secret put DATABASE_URL --env production` |
+| `BETTER_AUTH_SECRET` | Cryptographically secure random secret (>= 32 characters) | `pnpm exec wrangler secret put BETTER_AUTH_SECRET --env production` |
+| `GEMINI_API_KEY` | Google Gemini API key with access to `gemini-3.5-flash-lite` | `pnpm exec wrangler secret put GEMINI_API_KEY --env production` |
+| `BETTER_AUTH_URL` | Canonical production HTTPS custom domain (e.g. `https://rangkai.id`) | Configured in `wrangler.json` `env.production.vars` or production secret |
+| Production R2 Bucket | Bucket `rangkai-documents-prod` created in Cloudflare R2 | `pnpm exec wrangler r2 bucket create rangkai-documents-prod` |
+| Production Neon Branch | Dedicated production database branch (separate from `br-wandering-paper-aogdxs48`) | Created in Neon console; production migration authorization required |
+
+### 15.2 Verification Commands
+Prior to any production deployment, execute the local quality gates:
+1. Full test suite: `pnpm test` (`vitest run`).
+2. Typecheck: `pnpm exec tsc -b`.
+3. Linter: `pnpm lint`.
+4. Production bundle build: `pnpm build`.
+5. Direct-API smoke: `pnpm smoke`.
+6. Safe Cloudflare deployment dry-run: `pnpm exec wrangler deploy --dry-run --env production`.
+
+### 15.3 Deployment & Rollback Runbook
+- **Deploy:** `pnpm exec wrangler deploy --env production` (requires explicit production authorization).
+- **Inspect Logs:** `pnpm exec wrangler tail --env production`.
+- **Version List:** `pnpm exec wrangler versions list --env production`.
+- **Rollback:** `pnpm exec wrangler rollback <VERSION_ID> --env production`.
+
+### 15.4 Release Gates Status
+- **Backend Software Preparation (A10 Backend):** **PASS** — Configured isolated environments, validated same-origin asset/API routing, dry-run executable, and standalone direct-API smoke suite verified.
+- **Production Deployment (A10 Production):** **BLOCKED** — Cloudflare Worker `rangkai` has not been deployed, production R2 bucket is unprovisioned, and production deployment authorization is withheld.
+- **Frontend Delivery (B09):** **PENDING** — Remote frontend repository contains only the starter template (Roadmap B01-B03 discrepancy); full browser UI release is blocked pending B09.
+- **Teammate Regression (C09):** **PENDING** — Teammate independent QA results remain unexecuted.

@@ -278,3 +278,20 @@ P2:
 
 None of these may override an authorized officer's
 operational decision.
+
+## 14. Operational Limitations and Evidence Baseline (ROADMAP A11)
+
+### 14.1 Dataset and Evaluation Boundaries
+- Current AI extraction tests and accuracy assertions are executed exclusively against synthetic test fixtures (`SYNTH_AI_001` through `SYNTH_AI_005` in `tests/fixtures/ai/dev`).
+- Task C02 raw document images exist in `tests/fixtures/eval-dataset/`, but formal consent, publisher provenance, and PII clearances have not been completed. Processing real community documents against commercial LLM endpoints is strictly forbidden until provenance clearance is granted.
+- No production accuracy benchmark or automated pass rate may be claimed for unverified real-world documents.
+
+### 14.2 Model Governance and Provider Fail-Safe
+- Active model: Google Gemini `gemini-3.5-flash-lite` (prompt `v1.1`, JSON schema `v1.0`), configurable via `GEMINI_MODEL` environment variable.
+- Under upstream provider failure, rate limits (HTTP 429), or temporary high demand (HTTP 503), the system records `status: "failed"` with sanitized error codes (`PROVIDER_ERROR`, `SCHEMA_VALIDATION_FAILED`) and returns `manualFallbackAvailable: true`.
+- Organizers retain complete capability to create, edit, and publish events via manual entry when AI extraction fails.
+
+### 14.3 Road Name Candidate Quarantining
+- Extracted road names (`affected_road_names`) are strictly advisory text candidates (`needs_review: true`).
+- Only human-reviewed road segments from the verified database catalog (10 verified pilot segments in Denpasar) can be attached to events or published.
+- Quarantined geometries (e.g. Jl. Hasanudin) cannot be certified automatically or published to public maps.
