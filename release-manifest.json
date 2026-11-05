@@ -1,0 +1,35 @@
+{
+	"version": "1.0.0",
+	"candidateCommit": "d8627000b5156a925383048f15c37eddcf10c177",
+	"environment": "production",
+	"cloudflare": {
+		"accountId": null,
+		"workerName": "rangkai-production",
+		"productionDomain": null,
+		"r2Bucket": "rangkai-documents-prod",
+		"r2Provisioned": false
+	},
+	"database": {
+		"targetBranch": null,
+		"postgisEnabled": null,
+		"migrationPreparation": {
+			"migrationOwner": null,
+			"approvedTargetBranch": null,
+			"backupCheckpointCreated": false,
+			"backupCheckpointId": null,
+			"recoveryRehearsalCompleted": false
+		}
+	},
+	"secretsReadiness": {
+		"DATABASE_URL": false,
+		"BETTER_AUTH_SECRET": false,
+		"GEMINI_API_KEY": false,
+		"BETTER_AUTH_URL": false
+	},
+	"authorizations": {
+		"productionMigrationApproved": false,
+		"productionDeploymentApproved": false,
+		"approvedBy": null
+	},
+	"status": "BLOCKED"
+}

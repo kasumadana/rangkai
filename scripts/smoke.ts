@@ -1,14 +1,24 @@
 /**
- * Rangkai Direct-API Smoke Verification Script
+ * Rangkai Release Smoke Verification Procedure
+ *
  * Validates process health, asset routing, Better Auth, RBAC,
  * document/photo validation, cleanup workflow, waste records, and public aggregates.
  *
+ * Architecture:
+ * - Part 1: Isolated In-Process Boundary Checks (Hono app.request in Node with in-memory mock R2)
+ *   Verifies route matching, public anonymity, authentication rejection, and dependency degradation.
+ * - Part 2: Guarded Workerd Runtime Integration Suite (Vite Preview Server + workerd + local R2)
+ *   Reuses tests/integration/health.test.ts to verify real workerd execution: SPA HTML fallback,
+ *   transport header preservation, HttpOnly session cookies, CSRF protection, real R2 upload/download,
+ *   unverified road rejection, cleanup task lifecycle, evidence photos, waste records, and public summary.
+ *
  * Safe-by-design:
- * - Fails closed if executed against unconfirmed environments.
- * - Local mutations run in an isolated test transaction/namespace on authorized dev database.
+ * - Fails closed if executed against unconfirmed environments (requires authorized dev Neon branch).
+ * - No arbitrary production mutation target. No fake SMOKE_BASE_URL claims.
  * - Exits nonzero on any assertion failure.
  */
 
+import cp from "node:child_process";
 import * as dotenv from "dotenv";
 import { assertDevBranch, AUTHORIZED_DEV_BRANCH } from "../src/db/guard";
 import app from "../src/worker/index";
@@ -17,18 +27,25 @@ import type { Env } from "../src/worker/types";
 dotenv.config({ path: ".dev.vars" });
 
 async function main() {
-	console.log("=== Rangkai Direct-API Smoke Test ===");
+	console.log("=== Rangkai Guarded Release Smoke Verification ===");
 
 	// 1. Target Environment & Database Preflight
-	console.log("[1/6] Preflight environment verification...");
+	console.log("\n[Preflight] Verifying environment and database guard...");
 	const { branchId, pinnedUrl } = await assertDevBranch();
 	if (branchId !== AUTHORIZED_DEV_BRANCH) {
 		console.error(`[FATAL] Unauthorized branch: ${branchId}`);
 		process.exit(1);
 	}
-	console.log(`[✓] Verified target database: Neon branch '${branchId}'`);
+	console.log(`[✓] Target database guard verified: Neon development branch '${branchId}'`);
 
-	// In-memory mock R2 bucket for isolated smoke test
+	// =========================================================================
+	// PART 1: Isolated In-Process Boundary Probes (Node + Hono + Mock R2)
+	// =========================================================================
+	console.log("\n=======================================================");
+	console.log("PART 1: Isolated In-Process Boundary Probes (Hono app.request)");
+	console.log("=======================================================");
+
+	// In-memory mock R2 bucket for isolated in-process smoke probes
 	const storage = new Map<string, { bytes: Uint8Array; contentType?: string }>();
 	const smokeR2: R2Bucket = {
 		async put(key: string, value: unknown, options?: { httpMetadata?: { contentType?: string } }) {
@@ -64,22 +81,22 @@ async function main() {
 		GEMINI_API_KEY: process.env.GEMINI_API_KEY,
 	};
 
-	let passed = 0;
-	let failed = 0;
+	let inProcessPassed = 0;
+	let inProcessFailed = 0;
 
 	async function assertStep(name: string, fn: () => Promise<void>) {
 		try {
 			await fn();
 			console.log(`  [PASS] ${name}`);
-			passed++;
+			inProcessPassed++;
 		} catch (err: unknown) {
 			console.error(`  [FAIL] ${name}:`, err instanceof Error ? err.message : String(err));
-			failed++;
+			inProcessFailed++;
 		}
 	}
 
-	// 2. Health & Asset Routing Checks
-	console.log("\n[2/6] Process health and API routing...");
+	// 1.1 Process Health and API Routing
+	console.log("\n[1.1] Process health and API routing...");
 	await assertStep("GET /api/health returns 200 with service: rangkai", async () => {
 		const res = await app.request("http://localhost:5173/api/health", { method: "GET" }, smokeEnv);
 		if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
@@ -104,8 +121,8 @@ async function main() {
 		}
 	});
 
-	// 3. Anonymous Public API Checks
-	console.log("\n[3/6] Anonymous public API and information isolation...");
+	// 1.2 Anonymous Public API Checks
+	console.log("\n[1.2] Anonymous public API and information isolation...");
 	await assertStep("GET /api/public/events lists published events without credentials", async () => {
 		const res = await app.request("http://localhost:5173/api/public/events", { method: "GET" }, smokeEnv);
 		if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
@@ -123,8 +140,8 @@ async function main() {
 		if (res.status !== 404) throw new Error(`Expected 404, got ${res.status}`);
 	});
 
-	// 4. Authentication & Security Bounds
-	console.log("\n[4/6] Authentication and RBAC boundaries...");
+	// 1.3 Authentication & Security Bounds
+	console.log("\n[1.3] Authentication and RBAC boundaries...");
 	await assertStep("POST /api/auth/sign-in/email rejects invalid credentials with 401", async () => {
 		const res = await app.request(
 			"http://localhost:5173/api/auth/sign-in/email",
@@ -145,8 +162,8 @@ async function main() {
 		if (res.status !== 401) throw new Error(`Expected 401, got ${res.status}`);
 	});
 
-	// 5. Cleanup Evidence & Waste Boundary Checks
-	console.log("\n[5/6] Upload, cleanup, and waste boundaries...");
+	// 1.4 Cleanup Evidence & Waste Boundary Checks
+	console.log("\n[1.4] Upload, cleanup, and waste boundaries...");
 	await assertStep("Unauthenticated POST /api/cleanup-tasks/00000000-0000-0000-0000-000000000001/evidence is rejected (401)", async () => {
 		const form = new FormData();
 		form.append("stage", "before");
@@ -168,18 +185,16 @@ async function main() {
 		if (res.status !== 401) throw new Error(`Expected 401, got ${res.status}`);
 	});
 
-	// 6. Upstream Dependency Handling
-	console.log("\n[6/6] Upstream dependency error handling...");
+	// 1.5 Upstream Dependency Handling
+	console.log("\n[1.5] Upstream dependency error handling...");
 	await assertStep("Service handles missing database configuration gracefully with 503", async () => {
 		const degradedEnv: Env = {
 			...smokeEnv,
 			DATABASE_URL: "",
 		};
 		const res = await app.request("http://localhost:5173/api/health", { method: "GET" }, degradedEnv);
-		// /api/health succeeds independently as process liveness check
 		if (res.status !== 200) throw new Error(`Expected 200 for health liveness, got ${res.status}`);
 
-		// Unauthenticated public route requiring database returns 503 when DB missing
 		const dbRes = await app.request("http://localhost:5173/api/public/events", { method: "GET" }, degradedEnv);
 		if (dbRes.status !== 503) {
 			throw new Error(`Expected 503 DEPENDENCY_UNAVAILABLE, got ${dbRes.status}`);
@@ -190,16 +205,35 @@ async function main() {
 		}
 	});
 
-	console.log("\n=== Smoke Summary ===");
-	console.log(`Passed: ${passed}`);
-	console.log(`Failed: ${failed}`);
-
-	if (failed > 0) {
-		console.error("\n[✗] Smoke test failed.");
+	console.log(`\nPart 1 In-Process Results: ${inProcessPassed} passed, ${inProcessFailed} failed.`);
+	if (inProcessFailed > 0) {
+		console.error("[✗] In-process smoke probes failed.");
 		process.exit(1);
 	}
 
-	console.log("\n[✓] All smoke checks passed successfully.");
+	// =========================================================================
+	// PART 2: Workerd Runtime Integration Suite (Preview Server + Assets + R2)
+	// =========================================================================
+	console.log("\n=======================================================");
+	console.log("PART 2: Workerd Runtime Integration Suite (Preview Server)");
+	console.log("=======================================================");
+	console.log("Reusing tests/integration/health.test.ts against local workerd preview server...");
+
+	const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+	const vitestResult = cp.spawnSync(
+		pnpmCmd,
+		["exec", "vitest", "run", "tests/integration/health.test.ts"],
+		{ stdio: "inherit", shell: true },
+	);
+
+	if (vitestResult.status !== 0) {
+		console.error(`\n[✗] Workerd runtime smoke checks failed with exit code ${vitestResult.status}`);
+		process.exit(vitestResult.status ?? 1);
+	}
+
+	console.log("\n=======================================================");
+	console.log("[✓] All in-process boundary probes and workerd runtime smoke checks passed successfully.");
+	console.log("=======================================================");
 }
 
 main().catch((err: unknown) => {

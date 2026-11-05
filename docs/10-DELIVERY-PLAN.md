@@ -289,36 +289,110 @@ Update this log when architectural decisions change.
 
 ## 15. Release Runbook & Operational Verification (ROADMAP A10)
 
-### 15.1 Release Prerequisites & Required Secrets
-Production deployment requires explicitly provisioned remote Cloudflare and Neon resources.
+### 15.1 Release Prerequisites & Pending Production Inputs
+Production deployment requires explicitly provisioned remote Cloudflare and Neon resources, accompanied by verified secret readiness and formal authorization.
 Never commit secrets to git or pass secret values directly in CLI flags.
 
-| Resource / Setting | Requirement | Supply Mechanism |
-|---|---|---|
-| `DATABASE_URL` | Production Neon PostgreSQL connection string (with PostGIS enabled, unpooled for migrations) | `pnpm exec wrangler secret put DATABASE_URL --env production` |
-| `BETTER_AUTH_SECRET` | Cryptographically secure random secret (>= 32 characters) | `pnpm exec wrangler secret put BETTER_AUTH_SECRET --env production` |
-| `GEMINI_API_KEY` | Google Gemini API key with access to `gemini-3.5-flash-lite` | `pnpm exec wrangler secret put GEMINI_API_KEY --env production` |
-| `BETTER_AUTH_URL` | Canonical production HTTPS custom domain (e.g. `https://rangkai.id`) | Configured in `wrangler.json` `env.production.vars` or production secret |
-| Production R2 Bucket | Bucket `rangkai-documents-prod` created in Cloudflare R2 | `pnpm exec wrangler r2 bucket create rangkai-documents-prod` |
-| Production Neon Branch | Dedicated production database branch (separate from `br-wandering-paper-aogdxs48`) | Created in Neon console; production migration authorization required |
+| Resource / Setting | Requirement | Status | Supply Mechanism |
+|---|---|---|---|
+| Cloudflare Account ID | Dedicated production Cloudflare account | **UNRESOLVED** | Account provisioned in Cloudflare dashboard |
+| Production Worker | Worker `rangkai-production` configured | **PREPARED** | Defined in `wrangler.json` (`env.production`) |
+| Production Domain (`BETTER_AUTH_URL`) | Canonical HTTPS custom domain (e.g. `https://rangkai.id`) | **UNRESOLVED** | DNS & custom domain configured in Cloudflare |
+| Production R2 Bucket | Bucket `rangkai-documents-prod` created in Cloudflare R2 | **UNPROVISIONED** | `pnpm exec wrangler r2 bucket create rangkai-documents-prod` |
+| Production Neon Database | Dedicated production database branch (separate from `br-wandering-paper-aogdxs48`) | **UNRESOLVED** | Created in Neon console; PostGIS enabled |
+| `DATABASE_URL` Secret | Production Neon PostgreSQL connection string (unpooled, with PostGIS) | **PENDING** | `pnpm exec wrangler secret put DATABASE_URL --env production` |
+| `BETTER_AUTH_SECRET` Secret | Cryptographically secure random secret (>= 32 characters) | **PENDING** | `pnpm exec wrangler secret put BETTER_AUTH_SECRET --env production` |
+| `GEMINI_API_KEY` Secret | Google Gemini API key with access to `gemini-3.5-flash-lite` | **PENDING** | `pnpm exec wrangler secret put GEMINI_API_KEY --env production` |
+| Production Migration Authorization | Formal approval with assigned migration owner and backup checkpoint | **WITHHELD** | Coordinator approval; see Section 15.3 |
+| Production Deployment Authorization | Formal authorization to execute live production deployment | **WITHHELD** | Coordinator approval |
 
-### 15.2 Verification Commands
-Prior to any production deployment, execute the local quality gates:
-1. Full test suite: `pnpm test` (`vitest run`).
-2. Typecheck: `pnpm exec tsc -b`.
-3. Linter: `pnpm lint`.
-4. Production bundle build: `pnpm build`.
-5. Direct-API smoke: `pnpm smoke`.
-6. Safe Cloudflare deployment dry-run: `pnpm exec wrangler deploy --dry-run --env production`.
+### 15.2 Environment Isolation, Build-Time Selection & Artifact Inspection (Finding F1)
+Cloudflare Workers Vite plugin requires environment selection at **build time** (`CLOUDFLARE_ENV=production`) so that environment-specific names and bindings (Worker name `rangkai-production`, R2 bucket `rangkai-documents-prod`) are correctly flattened into `dist/rangkai/wrangler.json`.
 
-### 15.3 Deployment & Rollback Runbook
+> [!WARNING]
+> Running `wrangler deploy --dry-run --env production` against a default development build is a dangerous anti-pattern: the deploy-time `--env` flag **cannot** alter the already flattened Vite configuration, resulting in packaging and deploying the development artifact (`rangkai-documents-dev`). Build-time environment selection must be asserted before packaging.
+
+**Build and Packaging Commands:**
+1. **Development Build (Default):**
+   ```bash
+   pnpm build
+   ```
+   *Generates development artifact with Worker `rangkai` and R2 bucket `rangkai-documents-dev`.*
+
+2. **Production Build (Build-Time Selection):**
+   - Cross-platform npm script:
+     ```bash
+     pnpm run build:prod
+     ```
+   - Valid PowerShell syntax:
+     ```powershell
+     $env:CLOUDFLARE_ENV = "production"
+     pnpm build
+     Remove-Item Env:\CLOUDFLARE_ENV
+     ```
+   - Valid POSIX / Bash syntax:
+     ```bash
+     CLOUDFLARE_ENV=production pnpm build
+     ```
+
+3. **Artifact Configuration Inspection (Fail-Closed Gate):**
+   ```bash
+   pnpm exec tsx scripts/release-validator.ts --check-artifact production
+   ```
+   *Inspects `dist/rangkai/wrangler.json` and asserts `name === "rangkai-production"` and `r2_buckets` contains `rangkai-documents-prod`. Fails closed with exit code 1 if a development artifact is detected.*
+
+4. **Safe Packaging Dry-Run:**
+   ```bash
+   pnpm exec wrangler deploy --dry-run --env production
+   ```
+   *Validates bundle packaging and verifies access to `env.rangkai_documents_dev (rangkai-documents-prod)` without provisioning or deploying resources.*
+
+### 15.3 Database Migration Preparation, Backup Checkpoint & Disaster Recovery (Finding F3)
+Database migrations and application deployments must be decoupled. The application runtime guard (`src/db/guard.ts`) intentionally restricts local migration commands (`pnpm db:migrate`) to the development Neon branch `br-wandering-paper-aogdxs48` to prevent accidental developer runs against production.
+
+**Production Migration Prerequisites:**
+1. **Designated Migration Owner:** A named release engineer/DBA responsible for the migration run.
+2. **Pre-Migration Neon Backup Checkpoint:**
+   - Before executing any DDL schema change on production, create a Neon point-in-time snapshot / restore branch.
+   - Record the snapshot ID (`backupCheckpointId`) and timestamp in the release manifest.
+3. **Recovery Rehearsal:**
+   - Verify that the snapshot can be successfully branched and schema validated (`pnpm db:verify`) on a temporary branch prior to live migration.
+4. **Distinction Between Worker Rollback and Database Restore:**
+   - `wrangler rollback <VERSION_ID>` **only** reverts the Cloudflare Worker script and static client assets.
+   - Worker rollback **does not restore database state, tables, or columns**.
+   - If a breaking schema issue occurs, database recovery must be executed via Neon point-in-time branch restore.
+5. **Release Manifest Validation:**
+   ```bash
+   pnpm run validate:release
+   ```
+   *Evaluates `release-manifest.json` against all required production inputs, backup checkpoints, and authorization flags. Fails closed with `BLOCKED` status until all prerequisites are fulfilled.*
+
+### 15.4 Guarded Release Smoke Verification (Finding F2)
+The release smoke procedure verifies process health, asset routing, authentication, RBAC boundaries, document/photo R2 storage, cleanup workflow, waste records, and public aggregates.
+
+```bash
+pnpm smoke
+```
+
+The smoke procedure executes two distinct, honestly labelled phases:
+1. **Part 1: Isolated In-Process Boundary Probes:**
+   - Direct Hono `app.request` invocations in Node with an in-memory mock R2 bucket.
+   - Verifies `/api/health`, structured error envelopes on unhandled `/api/*`, public event anonymity, 401 unauthenticated rejections, and graceful 503 handling when database configuration is absent.
+2. **Part 2: Guarded Workerd Runtime Integration Suite:**
+   - Reuses `tests/integration/health.test.ts` against the actual Vite workerd preview server.
+   - Verifies same-origin SPA HTML fallback (`/` and `/dashboard`), transport headers (`Sec-Fetch-Mode: navigate`), HttpOnly session cookies via Better Auth, CSRF protection (403), real workerd local R2 document and cleanup photo upload/download (`rangkai_documents_dev`), unverified road segment attachment/publication rejection (422), cleanup task lifecycle (in_progress -> submitted -> verified), waste recording, public cleanup summary aggregates, session revocation on sign-out, and headless Chrome browser execution via CDP.
+   - **Safety Boundary:** All mutations run in isolated synthetic namespaces on the verified development database branch (`br-wandering-paper-aogdxs48`) and local preview server. No mutation is ever directed at generic or unverified production URLs.
+
+### 15.5 Deployment & Rollback Runbook (Authorized Execution Only)
+Execution of deployment commands requires explicit written authorization from the project coordinator following verification of all prerequisites in Sections 15.1–15.4.
+
 - **Deploy:** `pnpm exec wrangler deploy --env production` (requires explicit production authorization).
-- **Inspect Logs:** `pnpm exec wrangler tail --env production`.
+- **Inspect Live Logs:** `pnpm exec wrangler tail --env production`.
 - **Version List:** `pnpm exec wrangler versions list --env production`.
-- **Rollback:** `pnpm exec wrangler rollback <VERSION_ID> --env production`.
+- **Worker Script Rollback:** `pnpm exec wrangler rollback <VERSION_ID> --env production` *(Note: does not restore database schema or data)*.
 
-### 15.4 Release Gates Status
-- **Backend Software Preparation (A10 Backend):** **PASS** — Configured isolated environments, validated same-origin asset/API routing, dry-run executable, and standalone direct-API smoke suite verified.
-- **Production Deployment (A10 Production):** **BLOCKED** — Cloudflare Worker `rangkai` has not been deployed, production R2 bucket is unprovisioned, and production deployment authorization is withheld.
+### 15.6 Release Gates Status
+- **Backend Software Preparation (A10 Backend):** **PASS** — Build-time production environment selection verified, generated artifact validated (`rangkai-production`, `rangkai-documents-prod`), fail-closed release manifest validator implemented, guarded workerd runtime smoke suite verified, and safe dry-run executable.
+- **Production Deployment (A10 Production):** **BLOCKED** — Cloudflare account unresolved, production domain unconfigured, production R2 bucket unprovisioned, dedicated production Neon branch unprovisioned, production secrets unconfigured, and production deployment authorization withheld.
 - **Frontend Delivery (B09):** **PENDING** — Remote frontend repository contains only the starter template (Roadmap B01-B03 discrepancy); full browser UI release is blocked pending B09.
 - **Teammate Regression (C09):** **PENDING** — Teammate independent QA results remain unexecuted.

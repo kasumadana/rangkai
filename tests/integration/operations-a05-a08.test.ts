@@ -2369,7 +2369,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 					document: { id: string };
 				};
 
-				let extRes = await app.request(
+				const extRes = await app.request(
 					`http://localhost:5173/api/events/${draftEventId}/extractions`,
 					{
 						method: "POST",
@@ -2386,7 +2386,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 				);
 
 				expect(extRes.status).toBe(200);
-				let extBody = (await extRes.json()) as {
+				const extBody = (await extRes.json()) as {
 					extraction: {
 						id: string;
 						status: "completed" | "failed";
@@ -2400,7 +2400,6 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 					manualFallbackAvailable: boolean;
 				};
 
-				if (extBody.extraction.status === "failed" && extBody.extraction.errorCode === "PROVIDER_ERROR") { await new Promise((r) => setTimeout(r, 2500)); resetExtractionRateLimits(); extRes = await app.request(`http://localhost:5173/api/events/${draftEventId}/extractions`, { method: "POST", headers: { Cookie: organizerACookie, "Content-Type": "application/json" }, body: JSON.stringify({ documentId: uploadBody.document.id, processingConsent: true }) }, testEnv); extBody = (await extRes.json()) as typeof extBody; }
 				expect(extBody.extraction.status).toBe("completed");
 				expect(extBody.extraction.errorCode).toBeNull();
 				expect(extBody.extraction.modelName).toBe(GEMINI_MODEL_NAME);
