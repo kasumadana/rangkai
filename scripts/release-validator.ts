@@ -6,10 +6,15 @@
  *    accidentally packaging or deploying development configurations to production.
  * 2. Release manifests (unresolved production account, domain, Neon database branch,
  *    R2 bucket provisioning, secret readiness, backup checkpoints, and authorization).
+ * 3. Independent candidate commit and expected resource identity binding (verifying
+ *    candidate SHA against an independently supplied approved pin and explicit expected
+ *    identities; never inferring approval from the manifest being validated itself).
  *
  * Security:
  * - Rejects any manifest containing secret tokens or credentials.
  * - Non-mutating: does not provision resources or execute migrations.
+ * - Enforcing exits: fails closed (exit code 1) by default on missing/development artifacts,
+ *   absent manifests, unresolved prerequisites, or candidate/resource mismatches.
  */
 
 import fs from "node:fs";
@@ -39,6 +44,24 @@ export interface GeneratedWranglerConfig {
 		binding: string;
 	}>;
 	[key: string]: unknown;
+}
+
+export interface ExpectedReleaseResources {
+	accountId?: string | null;
+	workerName?: string | null;
+	productionDomain?: string | null;
+	r2Bucket?: string | null;
+	targetBranch?: string | null;
+}
+
+export interface ReleaseValidationOptions {
+	approvedCommitPin?: string | null;
+	expectedResources?: ExpectedReleaseResources | null;
+	artifactSummary?: {
+		name: string;
+		targetEnvironment: string;
+		r2Bucket: string;
+	} | null;
 }
 
 /**
@@ -136,15 +159,17 @@ function assertNoSecrets(value: unknown, fieldPath = "manifest"): void {
 	}
 }
 
+const FULL_HEX_SHA_REGEX = /^[0-9a-f]{40}$/i;
+
 export const ReleaseManifestSchema = z.object({
 	version: z.string(),
-	candidateCommit: z.string().min(7),
+	candidateCommit: z.string().nullable().optional(),
 	environment: z.literal("production"),
 	cloudflare: z.object({
 		accountId: z.string().nullable(),
-		workerName: z.literal("rangkai-production"),
+		workerName: z.string().nullable().optional(),
 		productionDomain: z.string().nullable(),
-		r2Bucket: z.literal("rangkai-documents-prod"),
+		r2Bucket: z.string().nullable().optional(),
 		r2Provisioned: z.boolean(),
 	}),
 	database: z.object({
@@ -186,9 +211,11 @@ export interface ManifestValidationResult {
 
 /**
  * Validates a release manifest and determines if production prerequisites are satisfied.
+ * Enforces independent binding to an approved commit pin and expected production resources.
  */
 export function validateReleaseManifest(
 	manifestData: unknown,
+	options?: ReleaseValidationOptions,
 ): ManifestValidationResult {
 	assertNoSecrets(manifestData);
 
@@ -202,22 +229,116 @@ export function validateReleaseManifest(
 	const manifest = parsed.data;
 	const pendingItems: string[] = [];
 
-	// 1. Cloudflare Account & Domain
-	if (!manifest.cloudflare.accountId || manifest.cloudflare.accountId.trim() === "") {
-		pendingItems.push("Cloudflare Account ID: Unresolved (no production Cloudflare account provisioned)");
-	}
-	if (!manifest.cloudflare.productionDomain || !manifest.cloudflare.productionDomain.startsWith("https://")) {
-		pendingItems.push("Production Domain: Unresolved (canonical HTTPS domain e.g. https://rangkai.id required)");
-	}
-	if (!manifest.cloudflare.r2Provisioned) {
-		pendingItems.push("Production R2: Unprovisioned (bucket 'rangkai-documents-prod' has not been created)");
+	// 1. Candidate Commit Identity & Independent Pin Binding
+	const hasValidCandidateSha =
+		typeof manifest.candidateCommit === "string" &&
+		FULL_HEX_SHA_REGEX.test(manifest.candidateCommit);
+
+	if (!hasValidCandidateSha) {
+		pendingItems.push(
+			"Candidate Commit SHA: Unresolved or invalid (must be a valid 40-character hex commit SHA)",
+		);
 	}
 
-	// 2. Database & Migration Preparation
+	if (!options?.approvedCommitPin) {
+		pendingItems.push(
+			"Approved Commit Pin: No independent approved commit pin supplied to release gate (candidate approval withheld)",
+		);
+	} else if (!FULL_HEX_SHA_REGEX.test(options.approvedCommitPin)) {
+		pendingItems.push(
+			`Approved Commit Pin: Invalid format for supplied pin '${options.approvedCommitPin}' (must be a valid 40-character hex commit SHA)`,
+		);
+	} else if (
+		!hasValidCandidateSha ||
+		manifest.candidateCommit!.toLowerCase() !== options.approvedCommitPin.toLowerCase()
+	) {
+		pendingItems.push(
+			`Approved Commit Pin Mismatch: manifest candidate '${manifest.candidateCommit ?? "unresolved"}' does not match independent approved pin '${options.approvedCommitPin}'`,
+		);
+	}
+
+	// 2. Expected Production Resources Binding
+	if (!options?.expectedResources) {
+		pendingItems.push(
+			"Expected Production Resources: No independent expected resource identities supplied to release gate",
+		);
+	} else {
+		const exp = options.expectedResources;
+		if (!exp.accountId) {
+			pendingItems.push("Expected Cloudflare Account: Absent from expected resource specification");
+		} else if (manifest.cloudflare.accountId !== exp.accountId) {
+			pendingItems.push(
+				`Cloudflare Account Mismatch: manifest has '${manifest.cloudflare.accountId ?? "unresolved"}', expected '${exp.accountId}'`,
+			);
+		}
+
+		if (!exp.workerName) {
+			pendingItems.push("Expected Worker Name: Absent from expected resource specification");
+		} else if (manifest.cloudflare.workerName !== exp.workerName) {
+			pendingItems.push(
+				`Worker Name Mismatch: manifest has '${manifest.cloudflare.workerName ?? "unresolved"}', expected '${exp.workerName}'`,
+			);
+		}
+
+		if (!exp.productionDomain) {
+			pendingItems.push("Expected Production Domain: Absent from expected resource specification");
+		} else if (manifest.cloudflare.productionDomain !== exp.productionDomain) {
+			pendingItems.push(
+				`Production Domain Mismatch: manifest has '${manifest.cloudflare.productionDomain ?? "unresolved"}', expected '${exp.productionDomain}'`,
+			);
+		}
+
+		if (!exp.r2Bucket) {
+			pendingItems.push("Expected R2 Bucket: Absent from expected resource specification");
+		} else if (manifest.cloudflare.r2Bucket !== exp.r2Bucket) {
+			pendingItems.push(
+				`R2 Bucket Mismatch: manifest has '${manifest.cloudflare.r2Bucket ?? "unresolved"}', expected '${exp.r2Bucket}'`,
+			);
+		}
+
+		if (!exp.targetBranch) {
+			pendingItems.push("Expected Database Branch: Absent from expected resource specification");
+		} else if (manifest.database.targetBranch !== exp.targetBranch) {
+			pendingItems.push(
+				`Database Branch Mismatch: manifest has '${manifest.database.targetBranch ?? "unresolved"}', expected '${exp.targetBranch}'`,
+			);
+		}
+	}
+
+	// 3. Cloudflare Account & Domain Identity Validation
+	if (!manifest.cloudflare.accountId || manifest.cloudflare.accountId.trim() === "") {
+		pendingItems.push(
+			"Cloudflare Account ID: Unresolved (no production Cloudflare account provisioned)",
+		);
+	}
+	if (manifest.cloudflare.workerName !== "rangkai-production") {
+		pendingItems.push(
+			`Production Worker Name: Expected 'rangkai-production', found '${manifest.cloudflare.workerName ?? "unresolved"}'`,
+		);
+	}
+	if (!manifest.cloudflare.productionDomain || !manifest.cloudflare.productionDomain.startsWith("https://")) {
+		pendingItems.push(
+			"Production Domain: Unresolved (canonical HTTPS domain e.g. https://rangkai.id required)",
+		);
+	}
+	if (manifest.cloudflare.r2Bucket !== "rangkai-documents-prod") {
+		pendingItems.push(
+			`Production R2 Bucket: Expected 'rangkai-documents-prod', found '${manifest.cloudflare.r2Bucket ?? "unresolved"}'`,
+		);
+	}
+	if (!manifest.cloudflare.r2Provisioned) {
+		pendingItems.push(
+			"Production R2: Unprovisioned (bucket 'rangkai-documents-prod' has not been created)",
+		);
+	}
+
+	// 4. Database & Migration Preparation
 	if (!manifest.database.targetBranch || manifest.database.targetBranch.trim() === "") {
 		pendingItems.push("Production Neon Branch: Unresolved (dedicated production branch required)");
 	} else if (manifest.database.targetBranch === AUTHORIZED_DEV_BRANCH) {
-		pendingItems.push(`Production Neon Branch: Invalid (must not use development branch '${AUTHORIZED_DEV_BRANCH}')`);
+		pendingItems.push(
+			`Production Neon Branch: Invalid (must not use development branch '${AUTHORIZED_DEV_BRANCH}')`,
+		);
 	}
 
 	if (manifest.database.postgisEnabled !== true) {
@@ -238,14 +359,14 @@ export function validateReleaseManifest(
 		pendingItems.push("Database Recovery Rehearsal: Incomplete (checkpoint restore not verified)");
 	}
 
-	// 3. Secrets Readiness
+	// 5. Secrets Readiness
 	const secrets = manifest.secretsReadiness;
 	if (!secrets.DATABASE_URL) pendingItems.push("Secret DATABASE_URL: Unconfigured in production");
 	if (!secrets.BETTER_AUTH_SECRET) pendingItems.push("Secret BETTER_AUTH_SECRET: Unconfigured in production");
 	if (!secrets.GEMINI_API_KEY) pendingItems.push("Secret GEMINI_API_KEY: Unconfigured in production");
 	if (!secrets.BETTER_AUTH_URL) pendingItems.push("Secret BETTER_AUTH_URL: Unconfigured in production");
 
-	// 4. Authorizations
+	// 6. Authorizations
 	if (!manifest.authorizations.productionMigrationApproved) {
 		pendingItems.push("Authorization: Production migration approval withheld");
 	}
@@ -256,13 +377,32 @@ export function validateReleaseManifest(
 		pendingItems.push("Approver: No formal approver recorded");
 	}
 
+	// 7. Context Binding to Generated Build Artifact (if present in options)
+	if (options?.artifactSummary) {
+		if (options.artifactSummary.targetEnvironment !== "production") {
+			pendingItems.push(
+				`Artifact Environment Mismatch: generated artifact was built for environment '${options.artifactSummary.targetEnvironment}', NOT 'production'`,
+			);
+		}
+		if (options.artifactSummary.name !== (manifest.cloudflare.workerName ?? "rangkai-production")) {
+			pendingItems.push(
+				`Artifact Worker Mismatch: generated artifact Worker is '${options.artifactSummary.name}', expected '${manifest.cloudflare.workerName}'`,
+			);
+		}
+		if (options.artifactSummary.r2Bucket !== (manifest.cloudflare.r2Bucket ?? "rangkai-documents-prod")) {
+			pendingItems.push(
+				`Artifact R2 Mismatch: generated artifact R2 bucket is '${options.artifactSummary.r2Bucket}', expected '${manifest.cloudflare.r2Bucket}'`,
+			);
+		}
+	}
+
 	const ready = pendingItems.length === 0 && manifest.status === "READY";
 
 	return {
 		ready,
 		pendingItems,
 		summary: {
-			candidateCommit: manifest.candidateCommit,
+			candidateCommit: manifest.candidateCommit ?? "unresolved",
 			status: ready ? "READY" : "BLOCKED",
 			unresolvedCount: pendingItems.length,
 		},
@@ -271,6 +411,7 @@ export function validateReleaseManifest(
 
 export function loadAndValidateManifest(
 	manifestPath?: string,
+	options?: ReleaseValidationOptions,
 ): ManifestValidationResult {
 	const resolvedPath =
 		manifestPath ?? path.resolve(process.cwd(), "release-manifest.json");
@@ -280,8 +421,23 @@ export function loadAndValidateManifest(
 		);
 	}
 	const raw = fs.readFileSync(resolvedPath, "utf8");
-	const data = JSON.parse(raw);
-	return validateReleaseManifest(data);
+	let data: unknown;
+	try {
+		data = JSON.parse(raw);
+	} catch (err) {
+		throw new ArtifactValidationError(
+			`Failed to parse release manifest JSON at ${resolvedPath}: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	}
+	return validateReleaseManifest(data, options);
+}
+
+function getArgValue(args: string[], flag: string): string | undefined {
+	const idx = args.indexOf(flag);
+	if (idx !== -1 && idx + 1 < args.length && !args[idx + 1].startsWith("--")) {
+		return args[idx + 1];
+	}
+	return undefined;
 }
 
 // CLI runner
@@ -290,34 +446,81 @@ async function main() {
 	const checkArtifactIdx = args.indexOf("--check-artifact");
 	const checkManifestIdx = args.indexOf("--check-manifest");
 	const assertReady = args.includes("--assert-ready");
+	const reportOnly = args.includes("--report-only");
 
 	console.log("=== Rangkai Release Preparation & Manifest Validator ===");
 
 	let artifactPassed = true;
+	let artifactSummary: { name: string; targetEnvironment: string; r2Bucket: string } | null = null;
+
 	if (checkArtifactIdx !== -1) {
-		const env = (args[checkArtifactIdx + 1] || "production") as
+		const envArg = args[checkArtifactIdx + 1];
+		const env = (envArg && !envArg.startsWith("--") ? envArg : "production") as
 			| "production"
 			| "development";
+		const customConfigPath = getArgValue(args, "--artifact-config");
 		console.log(`\n[1] Checking generated build artifact for environment: '${env}'...`);
 		try {
-			const res = validateArtifactConfig({ env });
-			console.log(`[✓] Artifact verified: Worker '${res.summary.name}', R2 '${res.summary.r2Bucket}', targetEnvironment '${res.summary.targetEnvironment}'`);
+			const res = validateArtifactConfig({ env, configPath: customConfigPath });
+			artifactSummary = res.summary;
+			console.log(
+				`[✓] Artifact verified: Worker '${res.summary.name}', R2 '${res.summary.r2Bucket}', targetEnvironment '${res.summary.targetEnvironment}'`,
+			);
 		} catch (err) {
-			console.error(`[✗] ${err instanceof Error ? err.message : String(err)}`);
+			console.error(`[✗] Artifact validation error: ${err instanceof Error ? err.message : String(err)}`);
 			artifactPassed = false;
 		}
 	}
 
+	// Artifact checking errors return nonzero independently of readiness flags
+	if (checkArtifactIdx !== -1 && !artifactPassed) {
+		console.error("\n[!] Artifact check failed: generated artifact is missing or mismatched.");
+		process.exit(1);
+	}
+
 	let manifestResult: ManifestValidationResult | null = null;
-	const shouldCheckManifest = checkManifestIdx !== -1 || checkArtifactIdx === -1 || assertReady;
+	const shouldCheckManifest =
+		checkManifestIdx !== -1 || checkArtifactIdx === -1 || assertReady || reportOnly;
 
 	if (shouldCheckManifest) {
-		const customPath = checkManifestIdx !== -1 ? args[checkManifestIdx + 1] : undefined;
-		console.log(`\n[2] Checking release manifest (${customPath || "release-manifest.json"})...`);
+		const customPath =
+			getArgValue(args, "--check-manifest") ??
+			(checkManifestIdx !== -1 && args[checkManifestIdx + 1] && !args[checkManifestIdx + 1].startsWith("--")
+				? args[checkManifestIdx + 1]
+				: undefined);
+		const manifestFile = customPath ?? "release-manifest.json";
+
+		const approvedPin =
+			getArgValue(args, "--approved-pin") ?? process.env.APPROVED_RELEASE_COMMIT ?? null;
+		const expectedAccount = getArgValue(args, "--expected-account") ?? null;
+		const expectedWorker = getArgValue(args, "--expected-worker") ?? null;
+		const expectedDomain = getArgValue(args, "--expected-domain") ?? null;
+		const expectedR2 = getArgValue(args, "--expected-r2") ?? null;
+		const expectedNeonBranch = getArgValue(args, "--expected-neon-branch") ?? null;
+
+		const expectedResources: ExpectedReleaseResources | null =
+			expectedAccount || expectedWorker || expectedDomain || expectedR2 || expectedNeonBranch
+				? {
+						accountId: expectedAccount,
+						workerName: expectedWorker,
+						productionDomain: expectedDomain,
+						r2Bucket: expectedR2,
+						targetBranch: expectedNeonBranch,
+				  }
+				: null;
+
+		console.log(`\n[2] Checking release manifest (${manifestFile})...`);
 		try {
-			manifestResult = loadAndValidateManifest(customPath);
+			manifestResult = loadAndValidateManifest(manifestFile, {
+				approvedCommitPin: approvedPin,
+				expectedResources,
+				artifactSummary,
+			});
+
 			console.log(`Manifest Candidate: ${manifestResult.summary.candidateCommit}`);
-			console.log(`Status: ${manifestResult.summary.status} (${manifestResult.summary.unresolvedCount} unresolved items)`);
+			console.log(
+				`Status: ${manifestResult.summary.status} (${manifestResult.summary.unresolvedCount} unresolved items)`,
+			);
 
 			if (manifestResult.pendingItems.length > 0) {
 				console.log("\nPending Prerequisites:");
@@ -326,10 +529,11 @@ async function main() {
 				}
 			}
 		} catch (err) {
-			console.error(`[✗] ${err instanceof Error ? err.message : String(err)}`);
+			const errMsg = err instanceof Error ? err.message : String(err);
+			console.error(`[✗] Manifest error: ${errMsg}`);
 			manifestResult = {
 				ready: false,
-				pendingItems: [err instanceof Error ? err.message : String(err)],
+				pendingItems: [errMsg],
 				summary: { candidateCommit: "unknown", status: "BLOCKED", unresolvedCount: 1 },
 			};
 		}
@@ -343,8 +547,11 @@ async function main() {
 		process.exit(0);
 	} else {
 		console.log("[!] Release readiness: BLOCKED");
-		console.log("Software preparation verified, but production deployment is withheld pending external prerequisites.");
-		if (assertReady) {
+		if (reportOnly) {
+			console.log("[REPORT-ONLY] Release readiness report generated. Readiness is BLOCKED.");
+			process.exit(0);
+		} else {
+			console.error("[!] Release gate failed closed: unresolved release prerequisites, unapproved candidate, or missing manifest.");
 			process.exit(1);
 		}
 	}

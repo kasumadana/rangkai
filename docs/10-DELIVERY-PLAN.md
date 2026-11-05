@@ -339,7 +339,7 @@ Cloudflare Workers Vite plugin requires environment selection at **build time** 
    ```bash
    pnpm exec tsx scripts/release-validator.ts --check-artifact production
    ```
-   *Inspects `dist/rangkai/wrangler.json` and asserts `name === "rangkai-production"` and `r2_buckets` contains `rangkai-documents-prod`. Fails closed with exit code 1 if a development artifact is detected.*
+   *Inspects `dist/rangkai/wrangler.json` and asserts `name === "rangkai-production"` and `r2_buckets` contains `rangkai-documents-prod`. Fails closed with exit code 1 independently of readiness flags if a development artifact is detected or if artifact config is missing.*
 
 4. **Safe Packaging Dry-Run:**
    ```bash
@@ -348,24 +348,38 @@ Cloudflare Workers Vite plugin requires environment selection at **build time** 
    *Validates bundle packaging and verifies access to `env.rangkai_documents_dev (rangkai-documents-prod)` without provisioning or deploying resources.*
 
 ### 15.3 Database Migration Preparation, Backup Checkpoint & Disaster Recovery (Finding F3)
-Database migrations and application deployments must be decoupled. The application runtime guard (`src/db/guard.ts`) intentionally restricts local migration commands (`pnpm db:migrate`) to the development Neon branch `br-wandering-paper-aogdxs48` to prevent accidental developer runs against production.
+Database migrations and application deployments must be decoupled. The application runtime guard (`src/db/guard.ts`) intentionally restricts local migration commands (`pnpm db:migrate`) and local verification (`pnpm db:verify`) to the development Neon branch `br-wandering-paper-aogdxs48` to prevent accidental developer runs against production.
 
-**Production Migration Prerequisites:**
+**Production Migration Prerequisites & Independent Binding:**
 1. **Designated Migration Owner:** A named release engineer/DBA responsible for the migration run.
 2. **Pre-Migration Neon Backup Checkpoint:**
    - Before executing any DDL schema change on production, create a Neon point-in-time snapshot / restore branch.
-   - Record the snapshot ID (`backupCheckpointId`) and timestamp in the release manifest.
-3. **Recovery Rehearsal:**
-   - Verify that the snapshot can be successfully branched and schema validated (`pnpm db:verify`) on a temporary branch prior to live migration.
+   - Record the snapshot ID (`backupCheckpointId`) and timestamp in the release audit ledger.
+3. **Recovery Rehearsal & Target-Bound Read-Only Verification:**
+   - The local verification command (`pnpm db:verify`) is strictly guarded to the authorized development branch (`br-wandering-paper-aogdxs48`) and must **not** be represented as working on an arbitrary restore branch. The dev guard remains intact and is never bypassed.
+   - For production recovery rehearsal, a separately authorized, target-bound read-only procedure must be executed:
+     a. An isolated restore branch is created from the pre-migration Neon snapshot.
+     b. An authorized migration owner executes direct read-only catalog assertions (querying `information_schema.tables`, column definitions, PostGIS extension status, and the `__drizzle_migrations` schema tracking table) against the restore branch.
+     c. Verified catalog assertion output, owner identity, snapshot ID, and timestamp are preserved as recovery evidence.
 4. **Distinction Between Worker Rollback and Database Restore:**
    - `wrangler rollback <VERSION_ID>` **only** reverts the Cloudflare Worker script and static client assets.
    - Worker rollback **does not restore database state, tables, or columns**.
    - If a breaking schema issue occurs, database recovery must be executed via Neon point-in-time branch restore.
-5. **Release Manifest Validation:**
-   ```bash
-   pnpm run validate:release
-   ```
-   *Evaluates `release-manifest.json` against all required production inputs, backup checkpoints, and authorization flags. Fails closed with `BLOCKED` status until all prerequisites are fulfilled.*
+5. **Release Manifest Validation & Independent Binding Gate:**
+   - **Enforcing Release Gate (Fails closed by default with exit code 1):**
+     ```bash
+     pnpm run validate:release
+     ```
+     *Evaluates release readiness. Fails closed with exit code 1 if the manifest is missing, invalid, contains unresolved prerequisites, or if candidate SHA / expected resource identities mismatch.*
+   - **Optional Report-Only Mode (Exits code 0 while reporting pending items):**
+     ```bash
+     pnpm run validate:release:report
+     # or: pnpm exec tsx scripts/release-validator.ts --check-manifest release-manifest.template.json --report-only
+     ```
+   - **Candidate & Expected Resource Binding:**
+     Candidate commit must be a valid 40-character hex commit SHA. The release validator strictly compares the candidate commit against an independently supplied approved pin (`--approved-pin <SHA>`) and explicit expected production identities (`--expected-account`, `--expected-worker`, `--expected-domain`, `--expected-r2`, `--expected-neon-branch`). Approval is never inferred from the manifest being validated itself.
+   - **Template & Circular SHA Elimination:**
+     `release-manifest.template.json` is committed as an unresolved template with `candidateCommit: null`. Post-freeze local manifests (`release-manifest.json`) are gitignored to eliminate circular commit SHA changes. Production readiness remains strictly BLOCKED until all external prerequisites are fulfilled.
 
 ### 15.4 Guarded Release Smoke Verification (Finding F2)
 The release smoke procedure verifies process health, asset routing, authentication, RBAC boundaries, document/photo R2 storage, cleanup workflow, waste records, and public aggregates.
@@ -376,11 +390,12 @@ pnpm smoke
 
 The smoke procedure executes two distinct, honestly labelled phases:
 1. **Part 1: Isolated In-Process Boundary Probes:**
-   - Direct Hono `app.request` invocations in Node with an in-memory mock R2 bucket.
+   - Direct Hono `app.request` invocations in Node with an in-memory mock R2 bucket (9 probes).
    - Verifies `/api/health`, structured error envelopes on unhandled `/api/*`, public event anonymity, 401 unauthenticated rejections, and graceful 503 handling when database configuration is absent.
 2. **Part 2: Guarded Workerd Runtime Integration Suite:**
-   - Reuses `tests/integration/health.test.ts` against the actual Vite workerd preview server.
+   - Reuses `tests/integration/health.test.ts` (17 tests total: 2 Node helper/liveness tests + 15 workerd preview transport/browser tests) against the actual Vite workerd preview server.
    - Verifies same-origin SPA HTML fallback (`/` and `/dashboard`), transport headers (`Sec-Fetch-Mode: navigate`), HttpOnly session cookies via Better Auth, CSRF protection (403), real workerd local R2 document and cleanup photo upload/download (`rangkai_documents_dev`), unverified road segment attachment/publication rejection (422), cleanup task lifecycle (in_progress -> submitted -> verified), waste recording, public cleanup summary aggregates, session revocation on sign-out, and headless Chrome browser execution via CDP.
+   - **Total Smoke Verification:** 26 checks (11 Node checks + 15 workerd runtime checks).
    - **Safety Boundary:** All mutations run in isolated synthetic namespaces on the verified development database branch (`br-wandering-paper-aogdxs48`) and local preview server. No mutation is ever directed at generic or unverified production URLs.
 
 ### 15.5 Deployment & Rollback Runbook (Authorized Execution Only)
@@ -392,7 +407,7 @@ Execution of deployment commands requires explicit written authorization from th
 - **Worker Script Rollback:** `pnpm exec wrangler rollback <VERSION_ID> --env production` *(Note: does not restore database schema or data)*.
 
 ### 15.6 Release Gates Status
-- **Backend Software Preparation (A10 Backend):** **PASS** — Build-time production environment selection verified, generated artifact validated (`rangkai-production`, `rangkai-documents-prod`), fail-closed release manifest validator implemented, guarded workerd runtime smoke suite verified, and safe dry-run executable.
+- **Backend Software Preparation (A10 Backend):** **PASS** — Build-time production environment selection verified, generated artifact validated (`rangkai-production`, `rangkai-documents-prod`), enforcing fail-closed release manifest validator implemented with independent pin/resource binding, guarded workerd runtime smoke suite verified (26 checks), and safe dry-run executable.
 - **Production Deployment (A10 Production):** **BLOCKED** — Cloudflare account unresolved, production domain unconfigured, production R2 bucket unprovisioned, dedicated production Neon branch unprovisioned, production secrets unconfigured, and production deployment authorization withheld.
 - **Frontend Delivery (B09):** **PENDING** — Remote frontend repository contains only the starter template (Roadmap B01-B03 discrepancy); full browser UI release is blocked pending B09.
 - **Teammate Regression (C09):** **PENDING** — Teammate independent QA results remain unexecuted.

@@ -45,6 +45,7 @@
 		"build": "tsc -b && vite build",
 		"build:prod": "tsc -b && tsx scripts/build-prod.ts",
 		"validate:release": "tsx scripts/release-validator.ts",
+		"validate:release:report": "tsx scripts/release-validator.ts --report-only",
 		"cf-typegen": "wrangler types",
 		"check": "tsc -b && vite build && wrangler deploy --dry-run",
 		"db:generate": "drizzle-kit generate",

@@ -1,6 +1,6 @@
 {
 	"version": "1.0.0",
-	"candidateCommit": "d8627000b5156a925383048f15c37eddcf10c177",
+	"candidateCommit": null,
 	"environment": "production",
 	"cloudflare": {
 		"accountId": null,
