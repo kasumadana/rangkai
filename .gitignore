@@ -202,3 +202,9 @@ dist
 # Release manifest post-freeze output
 release-manifest.json
 .scratch
+
+# Playwright test artifacts
+test-results/
+playwright-report/
+.auth/
+

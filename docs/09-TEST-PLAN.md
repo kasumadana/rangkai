@@ -410,6 +410,16 @@ For dates, evaluate exact normalized datetime match.
 Do not claim a performance threshold is achieved
 before measuring it.
 
+### 4.1 Executed AI Evaluation Evidence (Roadmap C07 — QA Gate `T09` & `T10`)
+
+- **Execution Command:** `pnpm run eval:ai` (`scripts/evaluate-ai.ts`)
+- **Unit Test Suite:** `pnpm exec vitest run tests/unit/ai-evaluation.test.ts` (10/10 passed)
+- **Raw & Aggregated Output Artifact:** `tests/fixtures/eval-dataset/evaluation-results.json`
+- **Detailed Field-Level Tables:** Documented in `docs/05-AI-SPEC.md` §15.
+- **Summary of Verified Gates:**
+  - **QA Gate `T09` (Unseen Documents Extracted by Gemini):** **PASS (API/Model Layer)** — 4/4 unseen test documents (`DOC-04`, `DOC-06`, `DOC-07`, `DOC-09`) passed Zod schema validation (`100%`), achieved `4/4 (100%)` start/end datetime accuracy, and reached **96.0% Micro F1** (`TP=24, FP=2, FN=0`) on road name extraction with `100%` `needs_review: true` compliance.
+  - **QA Gate `T10` / `TC-005` (Missing End Time Remains `null` + `needs_review: true`):** **PASS (API/Model Layer)** — Verified across `SYNTH_AI_002`, `SYNTH_AI_004`, `DOC-02`, and `DOC-05` (`100%` null detection correctness; zero hallucinated end times).
+
 ## 5. Usability Validation
 
 Target participants:

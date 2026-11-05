@@ -32,6 +32,12 @@ export const SIMULATED_DATA = {
 			email: "officer.simulated@rangkai.local",
 			emailVerified: true,
 		},
+		unassignedOfficer: {
+			id: "usr_simulated_unassigned_01",
+			name: "Simulated Unassigned Officer",
+			email: "unassigned.simulated@rangkai.local",
+			emailVerified: true,
+		},
 	},
 	organization: {
 		id: "11111111-1111-4111-8111-111111111111",
@@ -89,20 +95,29 @@ export async function seedDatabase(databaseUrl?: string) {
 				email: SIMULATED_DATA.users.officer.email,
 				emailVerified: SIMULATED_DATA.users.officer.emailVerified,
 			},
+			{
+				id: SIMULATED_DATA.users.unassignedOfficer.id,
+				name: SIMULATED_DATA.users.unassignedOfficer.name,
+				email: SIMULATED_DATA.users.unassignedOfficer.email,
+				emailVerified: SIMULATED_DATA.users.unassignedOfficer.emailVerified,
+			},
 		])
 		.onConflictDoUpdate({
 			target: user.id,
 			set: { name: sql`EXCLUDED.name` },
 		});
 
-	// Seed Better Auth accounts for credential authentication using separate caller-supplied or ephemeral secure credentials
+	// Seed Better Auth accounts with deterministic default passwords matching E2E test fixtures
 	const organizerPassword =
-		process.env.SEED_ORGANIZER_PASSWORD || crypto.randomUUID() + "!DevOrg1";
+		process.env.SEED_ORGANIZER_PASSWORD || "SimulatedOrganizer123!";
 	const officerPassword =
-		process.env.SEED_OFFICER_PASSWORD || crypto.randomUUID() + "!DevOff1";
+		process.env.SEED_OFFICER_PASSWORD || "SimulatedOfficer123!";
+	const unassignedPassword =
+		process.env.SEED_UNASSIGNED_PASSWORD || "SimulatedUnassigned123!";
 
 	const hashedOrganizerPassword = await hashPassword(organizerPassword);
 	const hashedOfficerPassword = await hashPassword(officerPassword);
+	const hashedUnassignedPassword = await hashPassword(unassignedPassword);
 
 	await db
 		.insert(account)
@@ -120,6 +135,13 @@ export async function seedDatabase(databaseUrl?: string) {
 				providerId: "credential",
 				userId: SIMULATED_DATA.users.officer.id,
 				password: hashedOfficerPassword,
+			},
+			{
+				id: "acc_simulated_unassigned_01",
+				accountId: SIMULATED_DATA.users.unassignedOfficer.id,
+				providerId: "credential",
+				userId: SIMULATED_DATA.users.unassignedOfficer.id,
+				password: hashedUnassignedPassword,
 			},
 		])
 		.onConflictDoNothing();
@@ -150,6 +172,11 @@ export async function seedDatabase(databaseUrl?: string) {
 			{
 				organizationId: SIMULATED_DATA.organization.id,
 				userId: SIMULATED_DATA.users.officer.id,
+				role: "officer",
+			},
+			{
+				organizationId: SIMULATED_DATA.organization.id,
+				userId: SIMULATED_DATA.users.unassignedOfficer.id,
 				role: "officer",
 			},
 		])
