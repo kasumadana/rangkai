@@ -176,7 +176,7 @@ describe("Release Preparation & Manifest Validator (ROADMAP A10 / Findings F1 & 
 			authorizations: {
 				productionMigrationApproved: true,
 				productionDeploymentApproved: true,
-				approvedBy: "Coordinator (task_3dc92db6bfe3)",
+				approvedBy: "Coordinator (task_524cc291fd10)",
 			},
 			status: "READY",
 		};
@@ -387,6 +387,38 @@ describe("Release Preparation & Manifest Validator (ROADMAP A10 / Findings F1 & 
 			}
 		}
 
+		it("succeeds (exit code 0) for a valid production artifact check alone without claiming deployment readiness", () => {
+			const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "artifact-cli-prod-ok-"));
+			const configPath = path.join(tmpDir, "wrangler.json");
+			fs.writeFileSync(
+				configPath,
+				JSON.stringify({
+					name: "rangkai-production",
+					targetEnvironment: "production",
+					r2_buckets: [
+						{
+							bucket_name: "rangkai-documents-prod",
+							binding: "rangkai_documents_dev",
+						},
+					],
+				}),
+				"utf8",
+			);
+
+			const res = runValidatorCLI([
+				"--check-artifact",
+				"production",
+				"--artifact-config",
+				configPath,
+			]);
+			expect(res.exitCode).toBe(0);
+			expect(res.stdout).toContain("Artifact verification: PASSED");
+			expect(res.stdout).not.toContain("Release readiness: READY");
+			expect(res.stdout).not.toContain("BLOCKED");
+
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		});
+
 		it("fails closed (exit code 1) when checking non-existent artifact", () => {
 			const res = runValidatorCLI([
 				"--check-artifact",
@@ -396,6 +428,78 @@ describe("Release Preparation & Manifest Validator (ROADMAP A10 / Findings F1 & 
 			]);
 			expect(res.exitCode).toBe(1);
 			expect(res.stdout + res.stderr).toContain("Artifact validation error");
+		});
+
+		it("fails closed (exit code 1) when development artifact is supplied for production check", () => {
+			const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "artifact-cli-dev-fail-"));
+			const configPath = path.join(tmpDir, "wrangler.json");
+			fs.writeFileSync(
+				configPath,
+				JSON.stringify({
+					name: "rangkai",
+					targetEnvironment: "default",
+					r2_buckets: [
+						{
+							bucket_name: "rangkai-documents-dev",
+							binding: "rangkai_documents_dev",
+						},
+					],
+				}),
+				"utf8",
+			);
+
+			const res = runValidatorCLI([
+				"--check-artifact",
+				"production",
+				"--artifact-config",
+				configPath,
+			]);
+			expect(res.exitCode).toBe(1);
+			expect(res.stdout + res.stderr).toContain("Artifact mismatch");
+
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		});
+
+		it("fails closed (exit code 1) when wrong worker/bucket artifact is supplied", () => {
+			const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "artifact-cli-wrong-fail-"));
+			const configPath = path.join(tmpDir, "wrangler.json");
+			fs.writeFileSync(
+				configPath,
+				JSON.stringify({
+					name: "rangkai-wrong",
+					targetEnvironment: "production",
+					r2_buckets: [
+						{
+							bucket_name: "wrong-bucket",
+							binding: "rangkai_documents_dev",
+						},
+					],
+				}),
+				"utf8",
+			);
+
+			const res = runValidatorCLI([
+				"--check-artifact",
+				"production",
+				"--artifact-config",
+				configPath,
+			]);
+			expect(res.exitCode).toBe(1);
+			expect(res.stdout + res.stderr).toContain("Artifact mismatch");
+
+			fs.rmSync(tmpDir, { recursive: true, force: true });
+		});
+
+		it("fails closed (exit code 1) even with --report-only if artifact check fails", () => {
+			const res = runValidatorCLI([
+				"--check-artifact",
+				"production",
+				"--artifact-config",
+				"/non/existent/wrangler.json",
+				"--report-only",
+			]);
+			expect(res.exitCode).toBe(1);
+			expect(res.stdout + res.stderr).toContain("Artifact check failed");
 		});
 
 		it("fails closed (exit code 1) when checking missing manifest", () => {
@@ -428,16 +532,71 @@ describe("Release Preparation & Manifest Validator (ROADMAP A10 / Findings F1 & 
 			expect(res.stdout + res.stderr).toContain("[REPORT-ONLY]");
 		});
 
-		it("fails closed (exit code 1) even with --report-only if artifact check fails", () => {
+		it("succeeds (exit code 0) for a fully approved synthetic manifest with matching pin and expected resources", () => {
+			const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "manifest-cli-synth-ok-"));
+			const manifestPath = path.join(tmpDir, "ready-manifest.json");
+			const validSha = "1111111111111111111111111111111111111111";
+
+			fs.writeFileSync(
+				manifestPath,
+				JSON.stringify({
+					version: "1.0.0",
+					candidateCommit: validSha,
+					environment: "production",
+					cloudflare: {
+						accountId: "synth_cf_account_12345",
+						workerName: "rangkai-production",
+						productionDomain: "https://rangkai.id",
+						r2Bucket: "rangkai-documents-prod",
+						r2Provisioned: true,
+					},
+					database: {
+						targetBranch: "br-production-verified",
+						postgisEnabled: true,
+						migrationPreparation: {
+							migrationOwner: "lead-engineer@rangkai.id",
+							approvedTargetBranch: "br-production-verified",
+							backupCheckpointCreated: true,
+							backupCheckpointId: "snap-20261105-pre-migration-01",
+							recoveryRehearsalCompleted: true,
+						},
+					},
+					secretsReadiness: {
+						DATABASE_URL: true,
+						BETTER_AUTH_SECRET: true,
+						GEMINI_API_KEY: true,
+						BETTER_AUTH_URL: true,
+					},
+					authorizations: {
+						productionMigrationApproved: true,
+						productionDeploymentApproved: true,
+						approvedBy: "Coordinator (task_524cc291fd10)",
+					},
+					status: "READY",
+				}),
+				"utf8",
+			);
+
 			const res = runValidatorCLI([
-				"--check-artifact",
-				"production",
-				"--artifact-config",
-				"/non/existent/wrangler.json",
-				"--report-only",
+				"--check-manifest",
+				manifestPath,
+				"--approved-pin",
+				validSha,
+				"--expected-account",
+				"synth_cf_account_12345",
+				"--expected-worker",
+				"rangkai-production",
+				"--expected-domain",
+				"https://rangkai.id",
+				"--expected-r2",
+				"rangkai-documents-prod",
+				"--expected-neon-branch",
+				"br-production-verified",
 			]);
-			expect(res.exitCode).toBe(1);
-			expect(res.stdout + res.stderr).toContain("Artifact check failed");
+			expect(res.exitCode).toBe(0);
+			expect(res.stdout).toContain("Release readiness: READY for authorized deployment.");
+
+			fs.rmSync(tmpDir, { recursive: true, force: true });
 		});
 	});
 });

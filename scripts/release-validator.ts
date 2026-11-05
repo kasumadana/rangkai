@@ -478,6 +478,13 @@ async function main() {
 		process.exit(1);
 	}
 
+	// If only artifact check was requested (documented packaging gate)
+	if (checkArtifactIdx !== -1 && checkManifestIdx === -1 && !assertReady) {
+		console.log("\n=======================================================");
+		console.log("[✓] Artifact verification: PASSED (Worker and R2 build artifact verified).");
+		process.exit(0);
+	}
+
 	let manifestResult: ManifestValidationResult | null = null;
 	const shouldCheckManifest =
 		checkManifestIdx !== -1 || checkArtifactIdx === -1 || assertReady || reportOnly;

@@ -345,7 +345,7 @@ Cloudflare Workers Vite plugin requires environment selection at **build time** 
    ```bash
    pnpm exec wrangler deploy --dry-run --env production
    ```
-   *Validates bundle packaging and verifies access to `env.rangkai_documents_dev (rangkai-documents-prod)` without provisioning or deploying resources.*
+   *Validates bundle packaging and verifies configuration of intended production binding `env.rangkai_documents_dev (rangkai-documents-prod)` without provisioning resources; does NOT verify remote bucket existence, authorization, or access.*
 
 ### 15.3 Database Migration Preparation, Backup Checkpoint & Disaster Recovery (Finding F3)
 Database migrations and application deployments must be decoupled. The application runtime guard (`src/db/guard.ts`) intentionally restricts local migration commands (`pnpm db:migrate`) and local verification (`pnpm db:verify`) to the development Neon branch `br-wandering-paper-aogdxs48` to prevent accidental developer runs against production.
@@ -407,7 +407,7 @@ Execution of deployment commands requires explicit written authorization from th
 - **Worker Script Rollback:** `pnpm exec wrangler rollback <VERSION_ID> --env production` *(Note: does not restore database schema or data)*.
 
 ### 15.6 Release Gates Status
-- **Backend Software Preparation (A10 Backend):** **PASS** — Build-time production environment selection verified, generated artifact validated (`rangkai-production`, `rangkai-documents-prod`), enforcing fail-closed release manifest validator implemented with independent pin/resource binding, guarded workerd runtime smoke suite verified (26 checks), and safe dry-run executable.
+- **Backend Software Preparation (A10 Backend):** **PENDING INDEPENDENT ACCEPTANCE** — Build-time production environment selection verified, generated artifact validated (`rangkai-production`, `rangkai-documents-prod`), enforcing fail-closed release manifest validator implemented with independent pin/resource binding, guarded workerd runtime smoke suite verified (26 checks), and safe dry-run executable.
 - **Production Deployment (A10 Production):** **BLOCKED** — Cloudflare account unresolved, production domain unconfigured, production R2 bucket unprovisioned, dedicated production Neon branch unprovisioned, production secrets unconfigured, and production deployment authorization withheld.
 - **Frontend Delivery (B09):** **PENDING** — Remote frontend repository contains only the starter template (Roadmap B01-B03 discrepancy); full browser UI release is blocked pending B09.
 - **Teammate Regression (C09):** **PENDING** — Teammate independent QA results remain unexecuted.
