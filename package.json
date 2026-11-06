@@ -27,6 +27,7 @@
 		"@astryxdesign/cli": "^0.7.7",
 		"@cloudflare/vite-plugin": "1.52.1",
 		"@eslint/js": "9.39.1",
+		"@playwright/test": "^1.64.1",
 		"@types/node": "24.10.1",
 		"@types/react": "19.2.7",
 		"@types/react-dom": "19.2.3",
@@ -58,10 +59,13 @@
 		"db:verify": "tsx src/db/verify.ts",
 		"deploy": "wrangler deploy",
 		"dev": "vite",
+		"eval:ai": "tsx scripts/evaluate-ai.ts",
 		"lint": "eslint .",
 		"preview": "pnpm build && vite preview",
 		"smoke": "tsx scripts/smoke.ts",
-		"test": "vitest run"
+		"test": "vitest run",
+		"test:e2e": "playwright test",
+		"test:e2e:ui": "playwright test --ui"
 	},
 	"type": "module"
 }

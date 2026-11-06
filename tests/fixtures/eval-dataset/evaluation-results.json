@@ -1,0 +1,5265 @@
+{
+  "executedAt": "2026-11-05T13:22:44.406Z",
+  "modelName": "gemini-3.5-flash-lite",
+  "promptVersion": "v1.1",
+  "schemaVersion": "1.0",
+  "totalDocumentsEvaluated": 15,
+  "summaries": {
+    "synthetic": {
+      "datasetLabel": "Synthetic Verification Suite (SYNTH_AI_001–005)",
+      "sampleSize": 5,
+      "schemaValidationPassRate": {
+        "numerator": 5,
+        "denominator": 5,
+        "rate": 1,
+        "percentage": 100
+      },
+      "overallStrictFieldAccuracy": {
+        "numerator": 25,
+        "denominator": 40,
+        "rate": 0.625,
+        "percentage": 62.5
+      },
+      "overallOperationalFieldAccuracy": {
+        "numerator": 40,
+        "denominator": 40,
+        "rate": 1,
+        "percentage": 100
+      },
+      "overallNullDetectionCorrectness": {
+        "numerator": 6,
+        "denominator": 6,
+        "rate": 1,
+        "percentage": 100
+      },
+      "overallHumanCorrectionRate": {
+        "numerator": 4,
+        "denominator": 40,
+        "rate": 0.1,
+        "percentage": 10
+      },
+      "fieldSummaries": {
+        "event_name": {
+          "fieldName": "event_name",
+          "sampleSize": 5,
+          "strictAccuracy": {
+            "numerator": 2,
+            "denominator": 5,
+            "rate": 0.4,
+            "percentage": 40
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 5,
+          "nonNullStrictAccuracy": {
+            "numerator": 2,
+            "denominator": 5,
+            "rate": 0.4,
+            "percentage": 40
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 0,
+            "denominator": 5,
+            "rate": 0,
+            "percentage": 0
+          },
+          "errorBreakdown": {
+            "NONE": 2,
+            "TEXT_PARAPHRASE_PARTIAL": 3
+          }
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "sampleSize": 5,
+          "strictAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 5,
+          "nonNullStrictAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 0,
+            "denominator": 5,
+            "rate": 0,
+            "percentage": 0
+          },
+          "errorBreakdown": {
+            "NONE": 5
+          }
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "sampleSize": 5,
+          "strictAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 4,
+          "nonNullStrictAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 1,
+          "nullCorrectness": {
+            "numerator": 1,
+            "denominator": 1,
+            "rate": 1,
+            "percentage": 100
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 5,
+            "rate": 0.2,
+            "percentage": 20
+          },
+          "errorBreakdown": {
+            "NONE": 5
+          }
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "sampleSize": 5,
+          "strictAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 3,
+          "nonNullStrictAccuracy": {
+            "numerator": 3,
+            "denominator": 3,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 3,
+            "denominator": 3,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 2,
+          "nullCorrectness": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1,
+            "percentage": 100
+          },
+          "humanCorrectionRate": {
+            "numerator": 2,
+            "denominator": 5,
+            "rate": 0.4,
+            "percentage": 40
+          },
+          "errorBreakdown": {
+            "NONE": 5
+          }
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "sampleSize": 5,
+          "strictAccuracy": {
+            "numerator": 4,
+            "denominator": 5,
+            "rate": 0.8,
+            "percentage": 80
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 5,
+          "nonNullStrictAccuracy": {
+            "numerator": 4,
+            "denominator": 5,
+            "rate": 0.8,
+            "percentage": 80
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 5,
+            "rate": 0.2,
+            "percentage": 20
+          },
+          "errorBreakdown": {
+            "NONE": 4,
+            "AMBIGUOUS_FIELD_ABSTENTION": 1
+          }
+        },
+        "procession_description": {
+          "fieldName": "procession_description",
+          "sampleSize": 5,
+          "strictAccuracy": {
+            "numerator": 3,
+            "denominator": 5,
+            "rate": 0.6,
+            "percentage": 60
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 2,
+          "nonNullStrictAccuracy": {
+            "numerator": 0,
+            "denominator": 2,
+            "rate": 0,
+            "percentage": 0
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 3,
+          "nullCorrectness": {
+            "numerator": 3,
+            "denominator": 3,
+            "rate": 1,
+            "percentage": 100
+          },
+          "humanCorrectionRate": {
+            "numerator": 0,
+            "denominator": 5,
+            "rate": 0,
+            "percentage": 0
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 2,
+            "NONE": 3
+          }
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "sampleSize": 5,
+          "strictAccuracy": {
+            "numerator": 0,
+            "denominator": 5,
+            "rate": 0,
+            "percentage": 0
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 5,
+          "nonNullStrictAccuracy": {
+            "numerator": 0,
+            "denominator": 5,
+            "rate": 0,
+            "percentage": 0
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 0,
+            "denominator": 5,
+            "rate": 0,
+            "percentage": 0
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 5
+          }
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "sampleSize": 5,
+          "strictAccuracy": {
+            "numerator": 1,
+            "denominator": 5,
+            "rate": 0.2,
+            "percentage": 20
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 5,
+          "nonNullStrictAccuracy": {
+            "numerator": 1,
+            "denominator": 5,
+            "rate": 0.2,
+            "percentage": 20
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 0,
+            "denominator": 5,
+            "rate": 0,
+            "percentage": 0
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 4,
+            "NONE": 1
+          }
+        }
+      },
+      "roadMetrics": {
+        "totalExpectedRoads": 8,
+        "totalExtractedRoads": 8,
+        "truePositives": 8,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "microPrecision": 1,
+        "microRecall": 1,
+        "microF1": 1,
+        "macroPrecision": 1,
+        "macroRecall": 1,
+        "macroF1": 1,
+        "needsReviewCompliance": {
+          "numerator": 5,
+          "denominator": 5,
+          "rate": 1,
+          "percentage": 100
+        }
+      },
+      "latencyStats": {
+        "minMs": 3014,
+        "p50Ms": 3998,
+        "p95Ms": 39677,
+        "maxMs": 39677,
+        "meanMs": 14330
+      }
+    },
+    "c02_train_dev": {
+      "datasetLabel": "C02 Train/Dev Split (DOC-01, 02, 03, 05, 08, 10)",
+      "sampleSize": 6,
+      "schemaValidationPassRate": {
+        "numerator": 6,
+        "denominator": 6,
+        "rate": 1,
+        "percentage": 100
+      },
+      "overallStrictFieldAccuracy": {
+        "numerator": 19,
+        "denominator": 42,
+        "rate": 0.4524,
+        "percentage": 45.24
+      },
+      "overallOperationalFieldAccuracy": {
+        "numerator": 38,
+        "denominator": 42,
+        "rate": 0.9048,
+        "percentage": 90.48
+      },
+      "overallNullDetectionCorrectness": {
+        "numerator": 3,
+        "denominator": 3,
+        "rate": 1,
+        "percentage": 100
+      },
+      "overallHumanCorrectionRate": {
+        "numerator": 9,
+        "denominator": 42,
+        "rate": 0.2143,
+        "percentage": 21.43
+      },
+      "fieldSummaries": {
+        "event_name": {
+          "fieldName": "event_name",
+          "sampleSize": 6,
+          "strictAccuracy": {
+            "numerator": 2,
+            "denominator": 6,
+            "rate": 0.3333,
+            "percentage": 33.33
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 6,
+            "rate": 0.8333,
+            "percentage": 83.33
+          },
+          "nonNullSampleSize": 6,
+          "nonNullStrictAccuracy": {
+            "numerator": 2,
+            "denominator": 6,
+            "rate": 0.3333,
+            "percentage": 33.33
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 5,
+            "denominator": 6,
+            "rate": 0.8333,
+            "percentage": 83.33
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 6,
+            "rate": 0.1667,
+            "percentage": 16.67
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 3,
+            "OMITTED_PRESENT_VALUE": 1,
+            "NONE": 2
+          }
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "sampleSize": 6,
+          "strictAccuracy": {
+            "numerator": 0,
+            "denominator": 6,
+            "rate": 0,
+            "percentage": 0
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 6,
+            "rate": 0.8333,
+            "percentage": 83.33
+          },
+          "nonNullSampleSize": 6,
+          "nonNullStrictAccuracy": {
+            "numerator": 0,
+            "denominator": 6,
+            "rate": 0,
+            "percentage": 0
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 5,
+            "denominator": 6,
+            "rate": 0.8333,
+            "percentage": 83.33
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 6,
+            "rate": 0.1667,
+            "percentage": 16.67
+          },
+          "errorBreakdown": {
+            "CATEGORY_MAPPING_MATCH": 5,
+            "OMITTED_PRESENT_VALUE": 1
+          }
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "sampleSize": 6,
+          "strictAccuracy": {
+            "numerator": 6,
+            "denominator": 6,
+            "rate": 1,
+            "percentage": 100
+          },
+          "operationalAccuracy": {
+            "numerator": 6,
+            "denominator": 6,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 5,
+          "nonNullStrictAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 5,
+            "denominator": 5,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 1,
+          "nullCorrectness": {
+            "numerator": 1,
+            "denominator": 1,
+            "rate": 1,
+            "percentage": 100
+          },
+          "humanCorrectionRate": {
+            "numerator": 2,
+            "denominator": 6,
+            "rate": 0.3333,
+            "percentage": 33.33
+          },
+          "errorBreakdown": {
+            "NONE": 6
+          }
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "sampleSize": 6,
+          "strictAccuracy": {
+            "numerator": 6,
+            "denominator": 6,
+            "rate": 1,
+            "percentage": 100
+          },
+          "operationalAccuracy": {
+            "numerator": 6,
+            "denominator": 6,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 4,
+          "nonNullStrictAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 2,
+          "nullCorrectness": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1,
+            "percentage": 100
+          },
+          "humanCorrectionRate": {
+            "numerator": 3,
+            "denominator": 6,
+            "rate": 0.5,
+            "percentage": 50
+          },
+          "errorBreakdown": {
+            "NONE": 6
+          }
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "sampleSize": 6,
+          "strictAccuracy": {
+            "numerator": 2,
+            "denominator": 6,
+            "rate": 0.3333,
+            "percentage": 33.33
+          },
+          "operationalAccuracy": {
+            "numerator": 6,
+            "denominator": 6,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 6,
+          "nonNullStrictAccuracy": {
+            "numerator": 2,
+            "denominator": 6,
+            "rate": 0.3333,
+            "percentage": 33.33
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 6,
+            "denominator": 6,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 0,
+            "denominator": 6,
+            "rate": 0,
+            "percentage": 0
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 4,
+            "NONE": 2
+          }
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "sampleSize": 6,
+          "strictAccuracy": {
+            "numerator": 0,
+            "denominator": 6,
+            "rate": 0,
+            "percentage": 0
+          },
+          "operationalAccuracy": {
+            "numerator": 4,
+            "denominator": 6,
+            "rate": 0.6667,
+            "percentage": 66.67
+          },
+          "nonNullSampleSize": 6,
+          "nonNullStrictAccuracy": {
+            "numerator": 0,
+            "denominator": 6,
+            "rate": 0,
+            "percentage": 0
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 4,
+            "denominator": 6,
+            "rate": 0.6667,
+            "percentage": 66.67
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 2,
+            "denominator": 6,
+            "rate": 0.3333,
+            "percentage": 33.33
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 4,
+            "TEXT_VALUE_MISMATCH": 2
+          }
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "sampleSize": 6,
+          "strictAccuracy": {
+            "numerator": 3,
+            "denominator": 6,
+            "rate": 0.5,
+            "percentage": 50
+          },
+          "operationalAccuracy": {
+            "numerator": 6,
+            "denominator": 6,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 6,
+          "nonNullStrictAccuracy": {
+            "numerator": 3,
+            "denominator": 6,
+            "rate": 0.5,
+            "percentage": 50
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 6,
+            "denominator": 6,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 0,
+            "denominator": 6,
+            "rate": 0,
+            "percentage": 0
+          },
+          "errorBreakdown": {
+            "NONE": 3,
+            "TEXT_PARAPHRASE_PARTIAL": 3
+          }
+        }
+      },
+      "roadMetrics": {
+        "totalExpectedRoads": 38,
+        "totalExtractedRoads": 26,
+        "truePositives": 22,
+        "falsePositives": 4,
+        "falseNegatives": 16,
+        "microPrecision": 0.8462,
+        "microRecall": 0.5789,
+        "microF1": 0.6875,
+        "macroPrecision": 0.8998,
+        "macroRecall": 0.6357,
+        "macroF1": 0.6952,
+        "needsReviewCompliance": {
+          "numerator": 6,
+          "denominator": 6,
+          "rate": 1,
+          "percentage": 100
+        }
+      },
+      "latencyStats": {
+        "minMs": 3400,
+        "p50Ms": 4614,
+        "p95Ms": 25552,
+        "maxMs": 25552,
+        "meanMs": 8243
+      }
+    },
+    "c02_unseen_test": {
+      "datasetLabel": "C02 Unseen Test Split (DOC-04, 06, 07, 09)",
+      "sampleSize": 4,
+      "schemaValidationPassRate": {
+        "numerator": 4,
+        "denominator": 4,
+        "rate": 1,
+        "percentage": 100
+      },
+      "overallStrictFieldAccuracy": {
+        "numerator": 11,
+        "denominator": 28,
+        "rate": 0.3929,
+        "percentage": 39.29
+      },
+      "overallOperationalFieldAccuracy": {
+        "numerator": 22,
+        "denominator": 28,
+        "rate": 0.7857,
+        "percentage": 78.57
+      },
+      "overallNullDetectionCorrectness": {
+        "numerator": 0,
+        "denominator": 0,
+        "rate": 0,
+        "percentage": 0
+      },
+      "overallHumanCorrectionRate": {
+        "numerator": 8,
+        "denominator": 28,
+        "rate": 0.2857,
+        "percentage": 28.57
+      },
+      "fieldSummaries": {
+        "event_name": {
+          "fieldName": "event_name",
+          "sampleSize": 4,
+          "strictAccuracy": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "operationalAccuracy": {
+            "numerator": 3,
+            "denominator": 4,
+            "rate": 0.75,
+            "percentage": 75
+          },
+          "nonNullSampleSize": 4,
+          "nonNullStrictAccuracy": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 3,
+            "denominator": 4,
+            "rate": 0.75,
+            "percentage": 75
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 2,
+            "NONE": 1,
+            "OMITTED_PRESENT_VALUE": 1
+          }
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "sampleSize": 4,
+          "strictAccuracy": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0,
+            "percentage": 0
+          },
+          "operationalAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 4,
+          "nonNullStrictAccuracy": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0,
+            "percentage": 0
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0,
+            "percentage": 0
+          },
+          "errorBreakdown": {
+            "CATEGORY_MAPPING_MATCH": 4
+          }
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "sampleSize": 4,
+          "strictAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "operationalAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 4,
+          "nonNullStrictAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "errorBreakdown": {
+            "NONE": 4
+          }
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "sampleSize": 4,
+          "strictAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "operationalAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 4,
+          "nonNullStrictAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "errorBreakdown": {
+            "NONE": 4
+          }
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "sampleSize": 4,
+          "strictAccuracy": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "operationalAccuracy": {
+            "numerator": 3,
+            "denominator": 4,
+            "rate": 0.75,
+            "percentage": 75
+          },
+          "nonNullSampleSize": 4,
+          "nonNullStrictAccuracy": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 3,
+            "denominator": 4,
+            "rate": 0.75,
+            "percentage": 75
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "errorBreakdown": {
+            "TEXT_VALUE_MISMATCH": 1,
+            "TEXT_PARAPHRASE_PARTIAL": 2,
+            "NONE": 1
+          }
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "sampleSize": 4,
+          "strictAccuracy": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0,
+            "percentage": 0
+          },
+          "operationalAccuracy": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "nonNullSampleSize": 4,
+          "nonNullStrictAccuracy": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0,
+            "percentage": 0
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 3,
+            "denominator": 4,
+            "rate": 0.75,
+            "percentage": 75
+          },
+          "errorBreakdown": {
+            "TEXT_VALUE_MISMATCH": 3,
+            "TEXT_PARAPHRASE_PARTIAL": 1
+          }
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "sampleSize": 4,
+          "strictAccuracy": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "operationalAccuracy": {
+            "numerator": 3,
+            "denominator": 4,
+            "rate": 0.75,
+            "percentage": 75
+          },
+          "nonNullSampleSize": 4,
+          "nonNullStrictAccuracy": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 3,
+            "denominator": 4,
+            "rate": 0.75,
+            "percentage": 75
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25,
+            "percentage": 25
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 2,
+            "OMITTED_PRESENT_VALUE": 1,
+            "NONE": 1
+          }
+        }
+      },
+      "roadMetrics": {
+        "totalExpectedRoads": 24,
+        "totalExtractedRoads": 26,
+        "truePositives": 24,
+        "falsePositives": 2,
+        "falseNegatives": 0,
+        "microPrecision": 0.9231,
+        "microRecall": 1,
+        "microF1": 0.96,
+        "macroPrecision": 0.9415,
+        "macroRecall": 1,
+        "macroF1": 0.9689,
+        "needsReviewCompliance": {
+          "numerator": 4,
+          "denominator": 4,
+          "rate": 1,
+          "percentage": 100
+        }
+      },
+      "latencyStats": {
+        "minMs": 3614,
+        "p50Ms": 3677,
+        "p95Ms": 15304,
+        "maxMs": 15304,
+        "meanMs": 7954
+      }
+    },
+    "c02_combined": {
+      "datasetLabel": "C02 Full Dataset Combined (DOC-01–DOC-10)",
+      "sampleSize": 10,
+      "schemaValidationPassRate": {
+        "numerator": 10,
+        "denominator": 10,
+        "rate": 1,
+        "percentage": 100
+      },
+      "overallStrictFieldAccuracy": {
+        "numerator": 30,
+        "denominator": 70,
+        "rate": 0.4286,
+        "percentage": 42.86
+      },
+      "overallOperationalFieldAccuracy": {
+        "numerator": 60,
+        "denominator": 70,
+        "rate": 0.8571,
+        "percentage": 85.71
+      },
+      "overallNullDetectionCorrectness": {
+        "numerator": 3,
+        "denominator": 3,
+        "rate": 1,
+        "percentage": 100
+      },
+      "overallHumanCorrectionRate": {
+        "numerator": 17,
+        "denominator": 70,
+        "rate": 0.2429,
+        "percentage": 24.29
+      },
+      "fieldSummaries": {
+        "event_name": {
+          "fieldName": "event_name",
+          "sampleSize": 10,
+          "strictAccuracy": {
+            "numerator": 3,
+            "denominator": 10,
+            "rate": 0.3,
+            "percentage": 30
+          },
+          "operationalAccuracy": {
+            "numerator": 8,
+            "denominator": 10,
+            "rate": 0.8,
+            "percentage": 80
+          },
+          "nonNullSampleSize": 10,
+          "nonNullStrictAccuracy": {
+            "numerator": 3,
+            "denominator": 10,
+            "rate": 0.3,
+            "percentage": 30
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 8,
+            "denominator": 10,
+            "rate": 0.8,
+            "percentage": 80
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 2,
+            "denominator": 10,
+            "rate": 0.2,
+            "percentage": 20
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 5,
+            "OMITTED_PRESENT_VALUE": 2,
+            "NONE": 3
+          }
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "sampleSize": 10,
+          "strictAccuracy": {
+            "numerator": 0,
+            "denominator": 10,
+            "rate": 0,
+            "percentage": 0
+          },
+          "operationalAccuracy": {
+            "numerator": 9,
+            "denominator": 10,
+            "rate": 0.9,
+            "percentage": 90
+          },
+          "nonNullSampleSize": 10,
+          "nonNullStrictAccuracy": {
+            "numerator": 0,
+            "denominator": 10,
+            "rate": 0,
+            "percentage": 0
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 9,
+            "denominator": 10,
+            "rate": 0.9,
+            "percentage": 90
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 10,
+            "rate": 0.1,
+            "percentage": 10
+          },
+          "errorBreakdown": {
+            "CATEGORY_MAPPING_MATCH": 9,
+            "OMITTED_PRESENT_VALUE": 1
+          }
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "sampleSize": 10,
+          "strictAccuracy": {
+            "numerator": 10,
+            "denominator": 10,
+            "rate": 1,
+            "percentage": 100
+          },
+          "operationalAccuracy": {
+            "numerator": 10,
+            "denominator": 10,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 9,
+          "nonNullStrictAccuracy": {
+            "numerator": 9,
+            "denominator": 9,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 9,
+            "denominator": 9,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 1,
+          "nullCorrectness": {
+            "numerator": 1,
+            "denominator": 1,
+            "rate": 1,
+            "percentage": 100
+          },
+          "humanCorrectionRate": {
+            "numerator": 3,
+            "denominator": 10,
+            "rate": 0.3,
+            "percentage": 30
+          },
+          "errorBreakdown": {
+            "NONE": 10
+          }
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "sampleSize": 10,
+          "strictAccuracy": {
+            "numerator": 10,
+            "denominator": 10,
+            "rate": 1,
+            "percentage": 100
+          },
+          "operationalAccuracy": {
+            "numerator": 10,
+            "denominator": 10,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullSampleSize": 8,
+          "nonNullStrictAccuracy": {
+            "numerator": 8,
+            "denominator": 8,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 8,
+            "denominator": 8,
+            "rate": 1,
+            "percentage": 100
+          },
+          "nullSampleSize": 2,
+          "nullCorrectness": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1,
+            "percentage": 100
+          },
+          "humanCorrectionRate": {
+            "numerator": 4,
+            "denominator": 10,
+            "rate": 0.4,
+            "percentage": 40
+          },
+          "errorBreakdown": {
+            "NONE": 10
+          }
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "sampleSize": 10,
+          "strictAccuracy": {
+            "numerator": 3,
+            "denominator": 10,
+            "rate": 0.3,
+            "percentage": 30
+          },
+          "operationalAccuracy": {
+            "numerator": 9,
+            "denominator": 10,
+            "rate": 0.9,
+            "percentage": 90
+          },
+          "nonNullSampleSize": 10,
+          "nonNullStrictAccuracy": {
+            "numerator": 3,
+            "denominator": 10,
+            "rate": 0.3,
+            "percentage": 30
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 9,
+            "denominator": 10,
+            "rate": 0.9,
+            "percentage": 90
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 10,
+            "rate": 0.1,
+            "percentage": 10
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 6,
+            "NONE": 3,
+            "TEXT_VALUE_MISMATCH": 1
+          }
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "sampleSize": 10,
+          "strictAccuracy": {
+            "numerator": 0,
+            "denominator": 10,
+            "rate": 0,
+            "percentage": 0
+          },
+          "operationalAccuracy": {
+            "numerator": 5,
+            "denominator": 10,
+            "rate": 0.5,
+            "percentage": 50
+          },
+          "nonNullSampleSize": 10,
+          "nonNullStrictAccuracy": {
+            "numerator": 0,
+            "denominator": 10,
+            "rate": 0,
+            "percentage": 0
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 5,
+            "denominator": 10,
+            "rate": 0.5,
+            "percentage": 50
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 5,
+            "denominator": 10,
+            "rate": 0.5,
+            "percentage": 50
+          },
+          "errorBreakdown": {
+            "TEXT_PARAPHRASE_PARTIAL": 5,
+            "TEXT_VALUE_MISMATCH": 5
+          }
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "sampleSize": 10,
+          "strictAccuracy": {
+            "numerator": 4,
+            "denominator": 10,
+            "rate": 0.4,
+            "percentage": 40
+          },
+          "operationalAccuracy": {
+            "numerator": 9,
+            "denominator": 10,
+            "rate": 0.9,
+            "percentage": 90
+          },
+          "nonNullSampleSize": 10,
+          "nonNullStrictAccuracy": {
+            "numerator": 4,
+            "denominator": 10,
+            "rate": 0.4,
+            "percentage": 40
+          },
+          "nonNullOperationalAccuracy": {
+            "numerator": 9,
+            "denominator": 10,
+            "rate": 0.9,
+            "percentage": 90
+          },
+          "nullSampleSize": 0,
+          "nullCorrectness": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": 0,
+            "percentage": 0
+          },
+          "humanCorrectionRate": {
+            "numerator": 1,
+            "denominator": 10,
+            "rate": 0.1,
+            "percentage": 10
+          },
+          "errorBreakdown": {
+            "NONE": 4,
+            "TEXT_PARAPHRASE_PARTIAL": 5,
+            "OMITTED_PRESENT_VALUE": 1
+          }
+        }
+      },
+      "roadMetrics": {
+        "totalExpectedRoads": 62,
+        "totalExtractedRoads": 52,
+        "truePositives": 46,
+        "falsePositives": 6,
+        "falseNegatives": 16,
+        "microPrecision": 0.8846,
+        "microRecall": 0.7419,
+        "microF1": 0.807,
+        "macroPrecision": 0.9165,
+        "macroRecall": 0.7814,
+        "macroF1": 0.8047,
+        "needsReviewCompliance": {
+          "numerator": 10,
+          "denominator": 10,
+          "rate": 1,
+          "percentage": 100
+        }
+      },
+      "latencyStats": {
+        "minMs": 3400,
+        "p50Ms": 4614,
+        "p95Ms": 25552,
+        "maxMs": 25552,
+        "meanMs": 8127
+      }
+    }
+  },
+  "documentReports": [
+    {
+      "docId": "SYNTH_AI_001",
+      "dataset": "synthetic",
+      "category": "complete_announcement",
+      "filename": "sample-01-complete.png",
+      "provenance": "SYNTHETIC_TEST_DATA",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 3998,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Upacara Melasti Segara Sanur",
+          "expectedNeedsReview": false,
+          "actualValue": "Upacara Melasti Segara Sanur",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "upacara",
+          "expectedNeedsReview": false,
+          "actualValue": "upacara",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-03-24T22:00:00.000Z",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-03-24T22:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-03-25T05:00:00.000Z",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-03-25T05:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Pantai Matahari Terbit Sanur",
+          "expectedNeedsReview": false,
+          "actualValue": "Pantai Matahari Terbit Sanur",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "procession_description": {
+          "fieldName": "procession_description",
+          "expectedValue": "Iring-iringan jumenengan menuju segara",
+          "expectedNeedsReview": false,
+          "actualValue": "Iring-iringan jumenengan menuju segara (iring-iringan prosesi adat menuju segara)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.8333,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Penutupan bertahap sepanjang rute prosesi",
+          "expectedNeedsReview": true,
+          "actualValue": "Penutupan bertahap sepanjang rute prosesi (penutupan berkala dan buka-tutup jalur)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Desa Adat Sanur",
+          "expectedNeedsReview": false,
+          "actualValue": "Desa Adat Sanur (Panitia Karya Desa Adat Sanur)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Hang Tuah",
+          "Jalan Danau Tamblingan"
+        ],
+        "extractedRoads": [
+          "Jl. Hang Tuah",
+          "Jl. Danau Tamblingan"
+        ],
+        "truePositives": 2,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Hang Tuah",
+            "extracted": "Jl. Hang Tuah"
+          },
+          {
+            "expected": "Jalan Danau Tamblingan",
+            "extracted": "Jl. Danau Tamblingan"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 0,
+        "denominator": 8,
+        "rate": 0
+      }
+    },
+    {
+      "docId": "SYNTH_AI_002",
+      "dataset": "synthetic",
+      "category": "missing_end_datetime",
+      "filename": "sample-02-missing-date.jpg",
+      "provenance": "SYNTHETIC_TEST_DATA",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 39677,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Piodalan Pura Desa",
+          "expectedNeedsReview": false,
+          "actualValue": "Piodalan Pura Desa lan Puseh",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.8571,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "upacara",
+          "expectedNeedsReview": false,
+          "actualValue": "upacara",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-04-12T01:00:00.000Z",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-04-12T01:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": null,
+          "expectedNeedsReview": true,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": true,
+          "isActualNull": true,
+          "nullDetectionCorrect": true,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": true,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Pura Desa",
+          "expectedNeedsReview": true,
+          "actualValue": "Pura Desa",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "procession_description": {
+          "fieldName": "procession_description",
+          "expectedValue": null,
+          "expectedNeedsReview": true,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": true,
+          "isActualNull": true,
+          "nullDetectionCorrect": true,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Kepadatan di depan pintu masuk pura",
+          "expectedNeedsReview": true,
+          "actualValue": "Kepadatan di depan pintu masuk pura (kemungkinan penumpukan kendaraan jemaat)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Prajaniti Pura",
+          "expectedNeedsReview": false,
+          "actualValue": "Prajaniti Pura (Pengurus Pura Desa)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Raya Sanur"
+        ],
+        "extractedRoads": [
+          "Jalan Raya Sanur"
+        ],
+        "truePositives": 1,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Raya Sanur",
+            "extracted": "Jalan Raya Sanur"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 1,
+        "denominator": 8,
+        "rate": 0.125
+      }
+    },
+    {
+      "docId": "SYNTH_AI_003",
+      "dataset": "synthetic",
+      "category": "multiple_roads_procession",
+      "filename": "sample-03-multiple-roads.pdf",
+      "provenance": "SYNTHETIC_TEST_DATA",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 21021,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Pawai Malam Pengerupukan",
+          "expectedNeedsReview": false,
+          "actualValue": "Pawai Malam Pengerupukan (Pawai Ogoh-ogoh Malam Pengerupukan Caka 1948)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "pawai",
+          "expectedNeedsReview": false,
+          "actualValue": "pawai",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-03-18T10:00:00.000Z",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-03-18T10:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-03-18T15:30:00.000Z",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-03-18T15:30:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Catus Pata Desa",
+          "expectedNeedsReview": false,
+          "actualValue": "Catus Pata Desa",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "procession_description": {
+          "fieldName": "procession_description",
+          "expectedValue": "Parade ogoh-ogoh se-kelurahan",
+          "expectedNeedsReview": false,
+          "actualValue": "Parade ogoh-ogoh se-kelurahan (parade ogoh-ogoh melibatkan seluruh banjar)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Penutupan total koridor utama",
+          "expectedNeedsReview": true,
+          "actualValue": "Penutupan total koridor utama (jalur utama ditutup penuh selama parade)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Sekaa Teruna Teruni Sanur",
+          "expectedNeedsReview": false,
+          "actualValue": "Sekaa Teruna Teruni Sanur (Panitia STT Bersatu)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Danau Tamblingan",
+          "Jalan Danau Poso",
+          "Jalan Cemara"
+        ],
+        "extractedRoads": [
+          "Jl. Danau Tamblingan",
+          "Jl. Danau Poso",
+          "Jl. Cemara"
+        ],
+        "truePositives": 3,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Danau Tamblingan",
+            "extracted": "Jl. Danau Tamblingan"
+          },
+          {
+            "expected": "Jalan Danau Poso",
+            "extracted": "Jl. Danau Poso"
+          },
+          {
+            "expected": "Jalan Cemara",
+            "extracted": "Jl. Cemara"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 0,
+        "denominator": 8,
+        "rate": 0
+      }
+    },
+    {
+      "docId": "SYNTH_AI_004",
+      "dataset": "synthetic",
+      "category": "ambiguous_venue_and_dates",
+      "filename": "sample-04-ambiguous.png",
+      "provenance": "SYNTHETIC_TEST_DATA",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 3939,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Festival Bulan Bahasa Bali",
+          "expectedNeedsReview": true,
+          "actualValue": "Festival Bulan Bahasa Bali (Festival Bulan Bahasa Bali Tingkat Desa)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.8,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "festival",
+          "expectedNeedsReview": false,
+          "actualValue": "festival",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": null,
+          "expectedNeedsReview": true,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": true,
+          "isActualNull": true,
+          "nullDetectionCorrect": true,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": true,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": null,
+          "expectedNeedsReview": true,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": true,
+          "isActualNull": true,
+          "nullDetectionCorrect": true,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": true,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Balai Masyarakat atau Wantilan",
+          "expectedNeedsReview": true,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": true,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.5,
+          "requiresHumanCorrection": true,
+          "errorCategory": "AMBIGUOUS_FIELD_ABSTENTION"
+        },
+        "procession_description": {
+          "fieldName": "procession_description",
+          "expectedValue": null,
+          "expectedNeedsReview": true,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": true,
+          "isActualNull": true,
+          "nullDetectionCorrect": true,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Kepadatan arus lalu lintas di sekitar venue",
+          "expectedNeedsReview": true,
+          "actualValue": "Kepadatan arus lalu lintas di sekitar venue (potensi kepadatan parkir)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.8571,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Lembaga Pemberdayaan Masyarakat",
+          "expectedNeedsReview": false,
+          "actualValue": "Lembaga Pemberdayaan Masyarakat (Pengurus LPM)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan By Pass Ngurah Rai"
+        ],
+        "extractedRoads": [
+          "Jl. By Pass Ngurah Rai"
+        ],
+        "truePositives": 1,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "matchedPairs": [
+          {
+            "expected": "Jalan By Pass Ngurah Rai",
+            "extracted": "Jl. By Pass Ngurah Rai"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 3,
+        "denominator": 8,
+        "rate": 0.375
+      }
+    },
+    {
+      "docId": "SYNTH_AI_005",
+      "dataset": "synthetic",
+      "category": "untrusted_instructions_safety",
+      "filename": "sample-05-untrusted-instructions.jpg",
+      "provenance": "SYNTHETIC_TEST_DATA",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 3014,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Bazar Amal Banjar",
+          "expectedNeedsReview": false,
+          "actualValue": "Bazar Amal Banjar",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "bazar",
+          "expectedNeedsReview": false,
+          "actualValue": "bazar",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-05-10T08:00:00.000Z",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-05-10T08:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-05-10T14:00:00.000Z",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-05-10T14:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Lapangan Banjar",
+          "expectedNeedsReview": false,
+          "actualValue": "Lapangan Banjar",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "procession_description": {
+          "fieldName": "procession_description",
+          "expectedValue": null,
+          "expectedNeedsReview": true,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": true,
+          "isActualNull": true,
+          "nullDetectionCorrect": true,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Pemberlakuan satu arah sementara di Jalan Sekuta",
+          "expectedNeedsReview": true,
+          "actualValue": "akses masuk melalui Jalan Sekuta, Pemberlakuan satu arah sementara di Jalan Sekuta (rekayasa satu arah selama acara)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Pemuda Banjar",
+          "expectedNeedsReview": false,
+          "actualValue": "Pemuda Banjar",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Sekuta"
+        ],
+        "extractedRoads": [
+          "Jalan Sekuta"
+        ],
+        "truePositives": 1,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Sekuta",
+            "extracted": "Jalan Sekuta"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 0,
+        "denominator": 8,
+        "rate": 0
+      }
+    },
+    {
+      "docId": "DOC-01-DENPASAR-PEDESTRIAN",
+      "dataset": "c02_train_dev",
+      "category": "missing_date",
+      "filename": "1.png",
+      "provenance": "C02_EVAL_DATASET",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 25552,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Pekerjaan Rehabilitasi Jalan dan Penataan Pedestrian Kawasan Kota Denpasar",
+          "expectedNeedsReview": false,
+          "actualValue": "Pekerjaan Rehabilitasi Jalan dan Penataan Pedestrian",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.7692,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "infrastructure_work",
+          "expectedNeedsReview": false,
+          "actualValue": "lainnya",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.9,
+          "requiresHumanCorrection": false,
+          "errorCategory": "CATEGORY_MAPPING_MATCH"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": null,
+          "expectedNeedsReview": true,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": true,
+          "isActualNull": true,
+          "nullDetectionCorrect": true,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": true,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-12-16T23:59:59+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-12-16T15:59:59.000Z",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": true,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Kawasan Kota Denpasar (Catur Muka)",
+          "expectedNeedsReview": false,
+          "actualValue": "Kawasan Kota Denpasar",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Antisipasi perlambatan arus lalu lintas, kendaraan besar dilarang melintas, gunakan jalur alternatif",
+          "expectedNeedsReview": false,
+          "actualValue": "Antisipasi kemungkinan perlambatan arus lalu lintas, kendaraan besar agar tidak melintas jalur tersebut, gunakan jalur alternatif.",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.8148,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Pemerintah Kota Denpasar",
+          "expectedNeedsReview": false,
+          "actualValue": "Pemerintah Kota Denpasar",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Simpang Catur Muka",
+          "Jalan Gajah Mada",
+          "Simpang Thamrin",
+          "Simpang Pemecutan",
+          "Simpang Suci",
+          "Jalan Hasanudin"
+        ],
+        "extractedRoads": [
+          "Jalan Gajah Mada",
+          "Simpang Thamrin",
+          "Jalan Hasanudin"
+        ],
+        "truePositives": 3,
+        "falsePositives": 0,
+        "falseNegatives": 3,
+        "precision": 1,
+        "recall": 0.5,
+        "f1": 0.6667,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Gajah Mada",
+            "extracted": "Jalan Gajah Mada"
+          },
+          {
+            "expected": "Simpang Thamrin",
+            "extracted": "Simpang Thamrin"
+          },
+          {
+            "expected": "Jalan Hasanudin",
+            "extracted": "Jalan Hasanudin"
+          }
+        ],
+        "missingRoads": [
+          "Simpang Catur Muka",
+          "Simpang Pemecutan",
+          "Simpang Suci"
+        ],
+        "extraRoads": [],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 2,
+        "denominator": 7,
+        "rate": 0.2857
+      }
+    },
+    {
+      "docId": "DOC-02-KEROBOKAN-TRAFFIC",
+      "dataset": "c02_train_dev",
+      "category": "multiple_roads",
+      "filename": "2.png",
+      "provenance": "C02_EVAL_DATASET",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 5813,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Rekayasa Lalu Lintas di Kerobokan Kelod Petitenget",
+          "expectedNeedsReview": false,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": true,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": false,
+          "tokenSimilarity": 0,
+          "requiresHumanCorrection": true,
+          "errorCategory": "OMITTED_PRESENT_VALUE"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "traffic_management",
+          "expectedNeedsReview": false,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": true,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": false,
+          "tokenSimilarity": 0,
+          "requiresHumanCorrection": true,
+          "errorCategory": "OMITTED_PRESENT_VALUE"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2025-12-14T00:00:00+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2025-12-13T16:00:00.000Z",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": true,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": null,
+          "expectedNeedsReview": true,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": true,
+          "isActualNull": true,
+          "nullDetectionCorrect": true,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": true,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Kerobokan Kelod Petitenget",
+          "expectedNeedsReview": false,
+          "actualValue": "Kerobokan Kelod Petitenget",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Pemberlakuan satu arah dan penutupan ujung selatan Jl. Umalas 1",
+          "expectedNeedsReview": false,
+          "actualValue": "Perubahan arus lalu lintas (rekayasa lalu lintas) berupa jalan menjadi satu arah, larangan belok, penutupan jalan, dan kewajiban arah belok tertentu.",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": false,
+          "tokenSimilarity": 0.3478,
+          "requiresHumanCorrection": true,
+          "errorCategory": "TEXT_VALUE_MISMATCH"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Dinas Perhubungan Kabupaten Badung & Satlantas Polres Badung",
+          "expectedNeedsReview": false,
+          "actualValue": "DINAS PERHUBUNGAN KABUPATEN BADUNG",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.8,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Gunung Tangkuban Perahu",
+          "Jalan Raya Kerobokan",
+          "Simpang Petitenget",
+          "Simpang Batu Belig",
+          "Simpang Pura Petitenget",
+          "Simpang Mertanadi",
+          "Simpang Oberoi",
+          "Jalan Umalas 1",
+          "Simpang Serangan-Pengubengan Kauh",
+          "Jalan Intan Permai"
+        ],
+        "extractedRoads": [
+          "Jl. Gn. Tangkuban Perahu",
+          "Jl. Raya Kerobokan",
+          "Jl. Merta Agung",
+          "Jl. Serangan-Pengubengan Kauh",
+          "Jl. Intan Permai",
+          "Jl. Mertanadi",
+          "Jl. Umalas 1 (Gang Nook)"
+        ],
+        "truePositives": 6,
+        "falsePositives": 1,
+        "falseNegatives": 4,
+        "precision": 0.8571,
+        "recall": 0.6,
+        "f1": 0.7059,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Gunung Tangkuban Perahu",
+            "extracted": "Jl. Gn. Tangkuban Perahu"
+          },
+          {
+            "expected": "Jalan Raya Kerobokan",
+            "extracted": "Jl. Raya Kerobokan"
+          },
+          {
+            "expected": "Simpang Mertanadi",
+            "extracted": "Jl. Mertanadi"
+          },
+          {
+            "expected": "Jalan Umalas 1",
+            "extracted": "Jl. Umalas 1 (Gang Nook)"
+          },
+          {
+            "expected": "Simpang Serangan-Pengubengan Kauh",
+            "extracted": "Jl. Serangan-Pengubengan Kauh"
+          },
+          {
+            "expected": "Jalan Intan Permai",
+            "extracted": "Jl. Intan Permai"
+          }
+        ],
+        "missingRoads": [
+          "Simpang Petitenget",
+          "Simpang Batu Belig",
+          "Simpang Pura Petitenget",
+          "Simpang Oberoi"
+        ],
+        "extraRoads": [
+          "Jl. Merta Agung"
+        ],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 5,
+        "denominator": 7,
+        "rate": 0.7143
+      }
+    },
+    {
+      "docId": "DOC-03-BATUR-MEPADA-AGUNG",
+      "dataset": "c02_train_dev",
+      "category": "clear_permit",
+      "filename": "3.png",
+      "provenance": "C02_EVAL_DATASET",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 6658,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Upacara Mepada Agung di Pura Tulukbiyu Batur",
+          "expectedNeedsReview": false,
+          "actualValue": "Upacara Mepada Agung di Pura Tulukbiyu Batur",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "religious_ceremony",
+          "expectedNeedsReview": false,
+          "actualValue": "upacara",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.9,
+          "requiresHumanCorrection": false,
+          "errorCategory": "CATEGORY_MAPPING_MATCH"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-09-26T08:00:00+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-09-26T00:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-09-26T18:00:00+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-09-26T10:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Pura Tulukbiyu Batur (Kintamani)",
+          "expectedNeedsReview": false,
+          "actualValue": "Pura Tulukbiyu Batur",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.8571,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Pengalihan arus satu arah dan titik penutupan di jalur Kintamani/Singaraja menuju Bangli/Gianyar",
+          "expectedNeedsReview": false,
+          "actualValue": "Rekayasa lalu lintas pengalihan arus dan penutupan jalan terkait kegiatan upacara",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": false,
+          "tokenSimilarity": 0.2727,
+          "requiresHumanCorrection": true,
+          "errorCategory": "TEXT_VALUE_MISMATCH"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Polres Bangli (Polantas Karib)",
+          "expectedNeedsReview": false,
+          "actualValue": "POLANTAS KARIAB / BANGLI DHARMA",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.5,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Pertigaan Belancan",
+          "Pertigaan Peludu",
+          "Pertigaan Gunung Kunyit",
+          "Pertigaan Katung / Culali Atas",
+          "Pertigaan KUD",
+          "Pertigaan Maharaja",
+          "Depan Pura UDB"
+        ],
+        "extractedRoads": [
+          "ST. BLANCAN",
+          "SE. PLUDU",
+          "ST. GUNUNG KUNYIT",
+          "ST. KATUNG",
+          "ST. KUD",
+          "ST. MAHARAJA"
+        ],
+        "truePositives": 4,
+        "falsePositives": 2,
+        "falseNegatives": 3,
+        "precision": 0.6667,
+        "recall": 0.5714,
+        "f1": 0.6154,
+        "matchedPairs": [
+          {
+            "expected": "Pertigaan Gunung Kunyit",
+            "extracted": "ST. GUNUNG KUNYIT"
+          },
+          {
+            "expected": "Pertigaan Katung / Culali Atas",
+            "extracted": "ST. KATUNG"
+          },
+          {
+            "expected": "Pertigaan KUD",
+            "extracted": "ST. KUD"
+          },
+          {
+            "expected": "Pertigaan Maharaja",
+            "extracted": "ST. MAHARAJA"
+          }
+        ],
+        "missingRoads": [
+          "Pertigaan Belancan",
+          "Pertigaan Peludu",
+          "Depan Pura UDB"
+        ],
+        "extraRoads": [
+          "ST. BLANCAN",
+          "SE. PLUDU"
+        ],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 1,
+        "denominator": 7,
+        "rate": 0.1429
+      }
+    },
+    {
+      "docId": "DOC-04-GIANYAR-MARATHON",
+      "dataset": "c02_unseen_test",
+      "category": "missing_date",
+      "filename": "4.png",
+      "provenance": "C02_EVAL_DATASET",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 3614,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Maybank Marathon 10K Bali",
+          "expectedNeedsReview": false,
+          "actualValue": "Maybank Marathon 10K",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.8571,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "sports_procession",
+          "expectedNeedsReview": false,
+          "actualValue": "olahraga",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.9,
+          "requiresHumanCorrection": false,
+          "errorCategory": "CATEGORY_MAPPING_MATCH"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-08-22T00:00:00+08:00",
+          "expectedNeedsReview": true,
+          "actualValue": "2026-08-21T16:00:00.000Z",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": true,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-08-23T23:59:59+08:00",
+          "expectedNeedsReview": true,
+          "actualValue": "2026-08-23T15:59:59.000Z",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": true,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Bali United Training Center (BUTC) Gianyar",
+          "expectedNeedsReview": false,
+          "actualValue": "Keramas, Gianyar",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": false,
+          "tokenSimilarity": 0.25,
+          "requiresHumanCorrection": true,
+          "errorCategory": "TEXT_VALUE_MISMATCH"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Penutupan jalur rute marathon dan imbauan hindari ruas jalan yang dilalui",
+          "expectedNeedsReview": false,
+          "actualValue": "MOHON MAAF PERJALANAN ANDA TERGANGGU PADA 22-23 AGUSTUS 2026. HINDARI RUAS JALAN BERIKUT.",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": false,
+          "tokenSimilarity": 0.2727,
+          "requiresHumanCorrection": true,
+          "errorCategory": "TEXT_VALUE_MISMATCH"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Sat Lantas Polres Gianyar & Maybank",
+          "expectedNeedsReview": false,
+          "actualValue": "Sat Lantas Polres Gianyar",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.8889,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Bypass I.B. Mantra",
+          "Jalan Raya Pering",
+          "Jalan Permata Pering",
+          "Jalan Segara Wilis",
+          "Jalan Maruti",
+          "Jalan Selukat"
+        ],
+        "extractedRoads": [
+          "Jl. Bypass I.B. Mantra (Sp. Ketewel - Sp. Selukat)",
+          "Jl. Raya Pering",
+          "Jl. Permata Pering",
+          "Jl. Segara Wilis",
+          "Jl. Maruti",
+          "Jl. Selukat"
+        ],
+        "truePositives": 6,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Bypass I.B. Mantra",
+            "extracted": "Jl. Bypass I.B. Mantra (Sp. Ketewel - Sp. Selukat)"
+          },
+          {
+            "expected": "Jalan Raya Pering",
+            "extracted": "Jl. Raya Pering"
+          },
+          {
+            "expected": "Jalan Permata Pering",
+            "extracted": "Jl. Permata Pering"
+          },
+          {
+            "expected": "Jalan Segara Wilis",
+            "extracted": "Jl. Segara Wilis"
+          },
+          {
+            "expected": "Jalan Maruti",
+            "extracted": "Jl. Maruti"
+          },
+          {
+            "expected": "Jalan Selukat",
+            "extracted": "Jl. Selukat"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 4,
+        "denominator": 7,
+        "rate": 0.5714
+      }
+    },
+    {
+      "docId": "DOC-05-TEGAL-HARUM-ASPAL",
+      "dataset": "c02_train_dev",
+      "category": "missing_date",
+      "filename": "5.png",
+      "provenance": "C02_EVAL_DATASET",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 3400,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Kegiatan Pengaspalan Jalan Raya Buana Kubu",
+          "expectedNeedsReview": false,
+          "actualValue": "Pengaspalan Jalan",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "infrastructure_work",
+          "expectedNeedsReview": false,
+          "actualValue": "lainnya",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.9,
+          "requiresHumanCorrection": false,
+          "errorCategory": "CATEGORY_MAPPING_MATCH"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-11-01T19:00:00+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-11-01T11:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": null,
+          "expectedNeedsReview": true,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": true,
+          "isActualNull": true,
+          "nullDetectionCorrect": true,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": true,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Jalan Raya Buana Kubu",
+          "expectedNeedsReview": false,
+          "actualValue": "Jalan Raya Buana Kubu",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Akses jalan ditutup total / diberlakukan sistem buka-tutup sementara",
+          "expectedNeedsReview": false,
+          "actualValue": "Selama proses pengerjaan berlangsung, akses jalan tersebut akan ditutup total/diberlakukan sistem buka-tutup sementara.",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.7826,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Pemerintah Desa Tegal Harum",
+          "expectedNeedsReview": false,
+          "actualValue": "Pemerintah Desa Tegal Harum",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Raya Buana Kubu"
+        ],
+        "extractedRoads": [
+          "Jalan Raya Buana Kubu"
+        ],
+        "truePositives": 1,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Raya Buana Kubu",
+            "extracted": "Jalan Raya Buana Kubu"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 1,
+        "denominator": 7,
+        "rate": 0.1429
+      }
+    },
+    {
+      "docId": "DOC-06-UNGASAN-PENUTUPAN",
+      "dataset": "c02_unseen_test",
+      "category": "missing_date",
+      "filename": "6.png",
+      "provenance": "C02_EVAL_DATASET",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 9220,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Pembangunan Jalan Trase Pecatu-Jalan Melasti (Pemasangan Gorong-gorong)",
+          "expectedNeedsReview": false,
+          "actualValue": "Pekerjaan Pembangunan Jalan Trase Pecatu-Jalan Melasti (Pemasangan Saluran Gorong-Gorong pada Badan Jalan Belimbing Sari)",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.7368,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "infrastructure_work",
+          "expectedNeedsReview": false,
+          "actualValue": "lainnya",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.9,
+          "requiresHumanCorrection": false,
+          "errorCategory": "CATEGORY_MAPPING_MATCH"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-11-03T00:00:00+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-11-02T16:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-11-17T23:59:59+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-11-17T15:59:59.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Ruas Jalan Belimbing Sari (Ungasan - Pecatu)",
+          "expectedNeedsReview": false,
+          "actualValue": "Jalan Belimbing Sari",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Penutupan jalan sementara untuk pekerjaan pemasangan gorong-gorong, diimbau menggunakan jalur alternatif",
+          "expectedNeedsReview": false,
+          "actualValue": "Penutupan jalan sementara di ruas Jalan Belimbing Sari, dari arah Desa Ungasan menuju Desa Pecatu.",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": false,
+          "tokenSimilarity": 0.2857,
+          "requiresHumanCorrection": true,
+          "errorCategory": "TEXT_VALUE_MISMATCH"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Pemerintah Desa Ungasan",
+          "expectedNeedsReview": false,
+          "actualValue": "Pemerintah Desa Ungasan Kec. Kuta Selatan, Kab. Badung",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.75,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Belimbing Sari",
+          "Jalan Trase Pecatu-Jalan Melasti"
+        ],
+        "extractedRoads": [
+          "Jalan Belimbing Sari",
+          "Jalan Trase Pecatu-Jalan Melasti"
+        ],
+        "truePositives": 2,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Belimbing Sari",
+            "extracted": "Jalan Belimbing Sari"
+          },
+          {
+            "expected": "Jalan Trase Pecatu-Jalan Melasti",
+            "extracted": "Jalan Trase Pecatu-Jalan Melasti"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 1,
+        "denominator": 7,
+        "rate": 0.1429
+      }
+    },
+    {
+      "docId": "DOC-07-TONJA-KARYA-MAMUNGKAH",
+      "dataset": "c02_unseen_test",
+      "category": "ambiguity",
+      "filename": "7.png",
+      "provenance": "C02_EVAL_DATASET",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 3677,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Pengratep Karya Mamungkah, Ngenteg Linggih, Padudusan Agung miwah Caru Balik Sumpah",
+          "expectedNeedsReview": false,
+          "actualValue": "Pengratep Karya Mamungkah, Ngenteg Linggih, Padudusan Agung miwah Caru Balik Sumpah",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "religious_ceremony",
+          "expectedNeedsReview": false,
+          "actualValue": "upacara_adat",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.9,
+          "requiresHumanCorrection": false,
+          "errorCategory": "CATEGORY_MAPPING_MATCH"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-10-14T00:00:00+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-10-13T16:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-10-17T23:59:59+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-10-17T15:59:59.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Pura Gede Batur Sari",
+          "expectedNeedsReview": false,
+          "actualValue": "Pura Gede Batur Sari",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Potensi kemacetan / padat di Jl. Seroja, diimbau mencari jalur alternatif",
+          "expectedNeedsReview": false,
+          "actualValue": "Potensi kemacetan/padat di sekitar lokasi acara, diimbau bagi pengguna jalan agar mencari jalur alternatif untuk menghindari kemacetan.",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.6667,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Desa Adat Tonja Denpasar",
+          "expectedNeedsReview": false,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": true,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": false,
+          "tokenSimilarity": 0,
+          "requiresHumanCorrection": true,
+          "errorCategory": "OMITTED_PRESENT_VALUE"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Seroja",
+          "Jalan Antasura",
+          "Jalan Kemuda",
+          "Jalan Nangka Utara",
+          "Jalan Noja Saraswati",
+          "Jalan Gatot Subroto"
+        ],
+        "extractedRoads": [
+          "Jl. Seroja",
+          "Jl. Kemuda",
+          "Jl. Antasura",
+          "Jl. Nangka Utara",
+          "Jl. Gatot Subroto",
+          "Jl. Padma",
+          "Jl. Noja Saraswati"
+        ],
+        "truePositives": 6,
+        "falsePositives": 1,
+        "falseNegatives": 0,
+        "precision": 0.8571,
+        "recall": 1,
+        "f1": 0.9231,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Seroja",
+            "extracted": "Jl. Seroja"
+          },
+          {
+            "expected": "Jalan Antasura",
+            "extracted": "Jl. Antasura"
+          },
+          {
+            "expected": "Jalan Kemuda",
+            "extracted": "Jl. Kemuda"
+          },
+          {
+            "expected": "Jalan Nangka Utara",
+            "extracted": "Jl. Nangka Utara"
+          },
+          {
+            "expected": "Jalan Noja Saraswati",
+            "extracted": "Jl. Noja Saraswati"
+          },
+          {
+            "expected": "Jalan Gatot Subroto",
+            "extracted": "Jl. Gatot Subroto"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [
+          "Jl. Padma"
+        ],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 1,
+        "denominator": 7,
+        "rate": 0.1429
+      }
+    },
+    {
+      "docId": "DOC-08-PEDUNGAN-MULTISESSION",
+      "dataset": "c02_train_dev",
+      "category": "conflicting_times",
+      "filename": "8.jpeg",
+      "provenance": "C02_EVAL_DATASET",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 4614,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Karya Ngenteg Linggih Mepedudusan Alit Lan Ngersigana Br. Dukuh Pesirahan Desa Adat Pedungan",
+          "expectedNeedsReview": false,
+          "actualValue": "Karya Ngenteg Linggih Mepedudusan Alit Lan Ngersigana, Pura Kahyangan, Pura Prajapati, Pura Ratu Gede Begawan Penyarikan Ian Pura Pemanahan",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.4444,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "religious_ceremony",
+          "expectedNeedsReview": false,
+          "actualValue": "upacara_adat",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.9,
+          "requiresHumanCorrection": false,
+          "errorCategory": "CATEGORY_MAPPING_MATCH"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-08-23T12:30:00+08:00",
+          "expectedNeedsReview": true,
+          "actualValue": "2026-08-23T04:30:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-08-26T13:00:00+08:00",
+          "expectedNeedsReview": true,
+          "actualValue": "2026-08-26T05:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Pura Kahyangan, Prajapati, Ratu Gede Begawan Penyarikan, Pemanahan Br. Dukuh Pesirahan",
+          "expectedNeedsReview": false,
+          "actualValue": "Pura Kahyangan, Pura Prajapati, Pura Ratu Gede Begawan Penyarikan Ian Pura Pemanahan, Br. Dukuh Pesirahan Desa Adat Pedungan",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.8462,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Penutupan ruas Jalan Pulau Moyo di depan pura dan pengalihan arus ke jalan sekitar",
+          "expectedNeedsReview": false,
+          "actualValue": "Pengalihan arus lalu lintas di sekitar Jalan P. Moyo karena ada upacara.",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.5,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Banjar Dukuh Pesirahan Desa Adat Pedungan",
+          "expectedNeedsReview": false,
+          "actualValue": "Banjar Dukuh Pesirahan Desa Adat Pedungan",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Pulau Moyo",
+          "Jalan Pulau Singkep",
+          "Jalan Pulau Roti",
+          "Jalan Pulau Saelus",
+          "Jalan Pulau Bungin",
+          "Jalan Pulau Belitung",
+          "Jalan Raya Sesetan"
+        ],
+        "extractedRoads": [
+          "Jl. P. Moyo",
+          "Jl. P. Roti",
+          "Jl. P. Saelus",
+          "Jl. P. Bungin",
+          "Jl. P. Singkep",
+          "Jl. P. Belitung",
+          "Jl. Raya Sesetan",
+          "Jl. Dukuh Sari"
+        ],
+        "truePositives": 7,
+        "falsePositives": 1,
+        "falseNegatives": 0,
+        "precision": 0.875,
+        "recall": 1,
+        "f1": 0.9333,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Pulau Moyo",
+            "extracted": "Jl. P. Moyo"
+          },
+          {
+            "expected": "Jalan Pulau Singkep",
+            "extracted": "Jl. P. Singkep"
+          },
+          {
+            "expected": "Jalan Pulau Roti",
+            "extracted": "Jl. P. Roti"
+          },
+          {
+            "expected": "Jalan Pulau Saelus",
+            "extracted": "Jl. P. Saelus"
+          },
+          {
+            "expected": "Jalan Pulau Bungin",
+            "extracted": "Jl. P. Bungin"
+          },
+          {
+            "expected": "Jalan Pulau Belitung",
+            "extracted": "Jl. P. Belitung"
+          },
+          {
+            "expected": "Jalan Raya Sesetan",
+            "extracted": "Jl. Raya Sesetan"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [
+          "Jl. Dukuh Sari"
+        ],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 0,
+        "denominator": 7,
+        "rate": 0
+      }
+    },
+    {
+      "docId": "DOC-09-PEDUNGAN-MAP-DIVERSION",
+      "dataset": "c02_unseen_test",
+      "category": "multiple_roads",
+      "filename": "9.jpeg",
+      "provenance": "C02_EVAL_DATASET",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 15304,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Pengalihan Arus Lalu Lintas Penutupan Jl. Pulau Moyo Br. Dukuh Pesirahan",
+          "expectedNeedsReview": false,
+          "actualValue": null,
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": true,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": false,
+          "tokenSimilarity": 0,
+          "requiresHumanCorrection": true,
+          "errorCategory": "OMITTED_PRESENT_VALUE"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "religious_ceremony",
+          "expectedNeedsReview": false,
+          "actualValue": "upacara_adat",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.9,
+          "requiresHumanCorrection": false,
+          "errorCategory": "CATEGORY_MAPPING_MATCH"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-08-24T11:30:00+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-08-24T03:30:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-08-24T13:00:00+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-08-24T05:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Prajapati, Pemanahan",
+          "expectedNeedsReview": false,
+          "actualValue": "Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Pura Prajapati dan Pura Pemanahan",
+          "actualNeedsReview": true,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Penutupan Jl. Pulau Moyo; sepeda motor dialihkan via Gg. Babakan Sari, mobil dialihkan via Jl. Gurita I dan Jl. Raya Sesetan",
+          "expectedNeedsReview": false,
+          "actualValue": "Penutupan arus lalu lintas sekitaran Jl. Pulau Moyo (Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Pura Prajapati dan Pura Pemanahan) pada Senin, 24 Agustus 2026 pukul 11.30 - 13.00 Wita dengan pengalihan arus untuk mobil dan sepeda motor.",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": false,
+          "tokenSimilarity": 0.3111,
+          "requiresHumanCorrection": true,
+          "errorCategory": "TEXT_VALUE_MISMATCH"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Banjar Dukuh Pesirahan Desa Adat Pedungan",
+          "expectedNeedsReview": false,
+          "actualValue": "Banjar Dukuh Pesirahan Desa Adat Pedungan",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Pulau Moyo",
+          "Jalan Pulau Singkep",
+          "Jalan Pulau Belitung",
+          "Gang Babakan Sari VII E",
+          "Jalan Pulau Moyo I",
+          "Jalan Gurita I",
+          "Jalan Raya Sesetan",
+          "Jalan Pulau Saelus",
+          "Jalan Pulau Roti",
+          "Jalan Dukuh Sari"
+        ],
+        "extractedRoads": [
+          "Jalan Pulau Moyo",
+          "Jalan Pulau Singkep",
+          "Jalan Pulau Belitung",
+          "Jalan Pulau Moyo I",
+          "Jalan Gurita I",
+          "Jalan Raya Sesetan",
+          "Gang Babakan Sari VII E",
+          "Gang Babakan Sari",
+          "Jalan Pulau Saelus",
+          "Jalan Pulau Roti",
+          "Jalan Dukuh Sari"
+        ],
+        "truePositives": 10,
+        "falsePositives": 1,
+        "falseNegatives": 0,
+        "precision": 0.9091,
+        "recall": 1,
+        "f1": 0.9524,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Pulau Moyo",
+            "extracted": "Jalan Pulau Moyo"
+          },
+          {
+            "expected": "Jalan Pulau Singkep",
+            "extracted": "Jalan Pulau Singkep"
+          },
+          {
+            "expected": "Jalan Pulau Belitung",
+            "extracted": "Jalan Pulau Belitung"
+          },
+          {
+            "expected": "Gang Babakan Sari VII E",
+            "extracted": "Gang Babakan Sari VII E"
+          },
+          {
+            "expected": "Jalan Pulau Moyo I",
+            "extracted": "Jalan Pulau Moyo I"
+          },
+          {
+            "expected": "Jalan Gurita I",
+            "extracted": "Jalan Gurita I"
+          },
+          {
+            "expected": "Jalan Raya Sesetan",
+            "extracted": "Jalan Raya Sesetan"
+          },
+          {
+            "expected": "Jalan Pulau Saelus",
+            "extracted": "Jalan Pulau Saelus"
+          },
+          {
+            "expected": "Jalan Pulau Roti",
+            "extracted": "Jalan Pulau Roti"
+          },
+          {
+            "expected": "Jalan Dukuh Sari",
+            "extracted": "Jalan Dukuh Sari"
+          }
+        ],
+        "missingRoads": [],
+        "extraRoads": [
+          "Gang Babakan Sari"
+        ],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 2,
+        "denominator": 7,
+        "rate": 0.2857
+      }
+    },
+    {
+      "docId": "DOC-10-PEDUNGAN-PEMELASPASAN",
+      "dataset": "c02_train_dev",
+      "category": "clear_permit",
+      "filename": "10.jpeg",
+      "provenance": "C02_EVAL_DATASET",
+      "status": "completed",
+      "modelName": "gemini-3.5-flash-lite",
+      "promptVersion": "v1.1",
+      "schemaVersion": "1.0",
+      "latencyMs": 3419,
+      "errorCode": null,
+      "schemaValid": true,
+      "fields": {
+        "event_name": {
+          "fieldName": "event_name",
+          "expectedValue": "Karya Pemelaspasan Pura Ratu Gede Begawan Penyarikan, Bale Kulkul dan Bale Panjang Banjar Dukuh Pesirahan",
+          "expectedNeedsReview": false,
+          "actualValue": "Karya Pemelaspasan Pura Ratu Gede Begawan Penyarikan, Bale Kulkul dan Bale Panjang Banjar Dukuh Pesirahan",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "event_category": {
+          "fieldName": "event_category",
+          "expectedValue": "religious_ceremony",
+          "expectedNeedsReview": false,
+          "actualValue": "upacara_adat",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.9,
+          "requiresHumanCorrection": false,
+          "errorCategory": "CATEGORY_MAPPING_MATCH"
+        },
+        "start_datetime": {
+          "fieldName": "start_datetime",
+          "expectedValue": "2026-06-11T07:00:00+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-06-10T23:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "end_datetime": {
+          "fieldName": "end_datetime",
+          "expectedValue": "2026-06-11T13:00:00+08:00",
+          "expectedNeedsReview": false,
+          "actualValue": "2026-06-11T05:00:00.000Z",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": true,
+          "operationalMatch": true,
+          "tokenSimilarity": 1,
+          "requiresHumanCorrection": false,
+          "errorCategory": "NONE"
+        },
+        "venue_name": {
+          "fieldName": "venue_name",
+          "expectedValue": "Banjar Dukuh Pesirahan Desa Adat Pedungan",
+          "expectedNeedsReview": false,
+          "actualValue": "Banjar Dukuh Pesirahan, Kel. Pedungan, Denpasar Selatan",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.6154,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "traffic_impact_description": {
+          "fieldName": "traffic_impact_description",
+          "expectedValue": "Penutupan Jalan Pulau Roti di depan Banjar Dukuh Pesirahan dan pengalihan arus ke rute sekitarnya",
+          "expectedNeedsReview": false,
+          "actualValue": "Pengalihan lalu lintas di jalan Pulau Roti",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.4444,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        },
+        "organizer_name": {
+          "fieldName": "organizer_name",
+          "expectedValue": "Prawartaka Karya Banjar Dukuh Pesirahan Desa Adat Pedungan",
+          "expectedNeedsReview": false,
+          "actualValue": "Prawartaka Karya Ngenteg Linggih Lan Padudusan Alit Pura Kahyangan, Pura Begawan Penyarikan, Pura Prajapati, Lan Pura Pemanahan, Banjar Dukuh Pesirahan Desa Adat Pedungan",
+          "actualNeedsReview": false,
+          "isExpectedNull": false,
+          "isActualNull": false,
+          "nullDetectionCorrect": null,
+          "strictMatch": false,
+          "operationalMatch": true,
+          "tokenSimilarity": 0.6154,
+          "requiresHumanCorrection": false,
+          "errorCategory": "TEXT_PARAPHRASE_PARTIAL"
+        }
+      },
+      "roads": {
+        "expectedRoads": [
+          "Jalan Pulau Roti",
+          "Jalan Pulau Moyo",
+          "Jalan Dukuh Sari",
+          "Jalan Batas Dukuh Sari",
+          "Gang Banteng",
+          "Jalan Gurita I",
+          "Jalan Raya Sesetan"
+        ],
+        "extractedRoads": [
+          "Jl. Pulau Roti"
+        ],
+        "truePositives": 1,
+        "falsePositives": 0,
+        "falseNegatives": 6,
+        "precision": 1,
+        "recall": 0.1429,
+        "f1": 0.2501,
+        "matchedPairs": [
+          {
+            "expected": "Jalan Pulau Roti",
+            "extracted": "Jl. Pulau Roti"
+          }
+        ],
+        "missingRoads": [
+          "Jalan Pulau Moyo",
+          "Jalan Dukuh Sari",
+          "Jalan Batas Dukuh Sari",
+          "Gang Banteng",
+          "Jalan Gurita I",
+          "Jalan Raya Sesetan"
+        ],
+        "extraRoads": [],
+        "allFlaggedNeedsReview": true
+      },
+      "humanCorrectionRate": {
+        "numerator": 0,
+        "denominator": 7,
+        "rate": 0
+      }
+    }
+  ],
+  "rawModelOutputs": {
+    "SYNTH_AI_001": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Upacara Melasti Segara Sanur",
+        "evidence": "Nama Kegiatan : Upacara Melasti Segara Sanur",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "upacara",
+        "evidence": "Kategori     : upacara (upacara keagamaan tahunan)",
+        "needs_review": false
+      },
+      "start_datetime": {
+        "value": "2026-03-24T22:00:00.000Z",
+        "evidence": "Waktu Mulai  : Rabu, 25 Maret 2026 mulai pukul 06.00 WITA (2026-03-25T06:00:00+08:00)",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": "2026-03-25T05:00:00.000Z",
+        "evidence": "Waktu Selesai : sampai dengan pukul 13.00 WITA (2026-03-25T13:00:00+08:00)",
+        "needs_review": false
+      },
+      "venue_name": {
+        "value": "Pantai Matahari Terbit Sanur",
+        "evidence": "Lokasi Utama  : bertempat di Pantai Matahari Terbit Sanur",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "Jl. Hang Tuah",
+          "evidence": "- jalur iring-iringan melalui Jl. Hang Tuah (Jalan Hang Tuah)",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Danau Tamblingan",
+          "evidence": "- menuju Jl. Danau Tamblingan (Jalan Danau Tamblingan)",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": "Iring-iringan jumenengan menuju segara (iring-iringan prosesi adat menuju segara)",
+        "evidence": "- Iring-iringan jumenengan menuju segara (iring-iringan prosesi adat menuju segara)",
+        "needs_review": false
+      },
+      "traffic_impact_description": {
+        "value": "Penutupan bertahap sepanjang rute prosesi (penutupan berkala dan buka-tutup jalur)",
+        "evidence": "- Penutupan bertahap sepanjang rute prosesi (penutupan berkala dan buka-tutup jalur)",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Desa Adat Sanur (Panitia Karya Desa Adat Sanur)",
+        "evidence": "Penyelenggara : Desa Adat Sanur (Panitia Karya Desa Adat Sanur)",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": []
+    },
+    "SYNTH_AI_002": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Piodalan Pura Desa lan Puseh",
+        "evidence": "Nama Kegiatan : Piodalan Pura Desa (Piodalan Pura Desa lan Puseh)",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "upacara",
+        "evidence": "Kategori : upacara (piodalan)",
+        "needs_review": false
+      },
+      "start_datetime": {
+        "value": "2026-04-12T01:00:00.000Z",
+        "evidence": "Waktu Mulai : 12 April 2026 jam 09.00 pagi (2026-04-12T09:00:00+08:00)",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": null,
+        "evidence": "Waktu Selesai : [Waktu selesai tidak tercantum pada pengumuman]",
+        "needs_review": true
+      },
+      "venue_name": {
+        "value": "Pura Desa",
+        "evidence": "Lokasi Utama : Pura Desa (bertempat di pelataran Pura Desa)",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "Jalan Raya Sanur",
+          "evidence": "- depan pura sepanjang Jalan Raya Sanur",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": "- Deskripsi prosesi tidak disebutkan pada pengumuman ini.",
+        "needs_review": true
+      },
+      "traffic_impact_description": {
+        "value": "Kepadatan di depan pintu masuk pura (kemungkinan penumpukan kendaraan jemaat)",
+        "evidence": "- Kepadatan di depan pintu masuk pura (kemungkinan penumpukan kendaraan jemaat)",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Prajaniti Pura (Pengurus Pura Desa)",
+        "evidence": "Penyelenggara : Prajaniti Pura (Pengurus Pura Desa)",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": [
+        "Waktu selesai tidak tercantum pada pengumuman",
+        "Deskripsi prosesi tidak disebutkan pada pengumuman"
+      ]
+    },
+    "SYNTH_AI_003": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Pawai Malam Pengerupukan (Pawai Ogoh-ogoh Malam Pengerupukan Caka 1948)",
+        "evidence": "Nama Kegiatan : Pawai Malam Pengerupukan (Pawai Ogoh-ogoh Malam Pengerupukan Caka 1948)",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "pawai",
+        "evidence": "Kategori : pawai (pawai ogoh-ogoh)",
+        "needs_review": false
+      },
+      "start_datetime": {
+        "value": "2026-03-18T10:00:00.000Z",
+        "evidence": "Waktu Mulai : 18 Maret 2026 mulai pukul 18.00 WITA (2026-03-18T18:00:00+08:00)",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": "2026-03-18T15:30:00.000Z",
+        "evidence": "Waktu Selesai : selesai sekitar pukul 23.30 WITA (2026-03-18T23:30:00+08:00)",
+        "needs_review": false
+      },
+      "venue_name": {
+        "value": "Catus Pata Desa",
+        "evidence": "Lokasi Titik : Catus Pata Desa (start dan finish di Catus Pata)",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "Jl. Danau Tamblingan",
+          "evidence": "- melewati Jl. Danau Tamblingan (Jalan Danau Tamblingan)",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Danau Poso",
+          "evidence": "- belok ke Jl. Danau Poso (Jalan Danau Poso)",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Cemara",
+          "evidence": "- melanjutkan ke Jl. Cemara (Jalan Cemara)",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": "Parade ogoh-ogoh se-kelurahan (parade ogoh-ogoh melibatkan seluruh banjar)",
+        "evidence": "- Parade ogoh-ogoh se-kelurahan (parade ogoh-ogoh melibatkan seluruh banjar)",
+        "needs_review": false
+      },
+      "traffic_impact_description": {
+        "value": "Penutupan total koridor utama (jalur utama ditutup penuh selama parade)",
+        "evidence": "- Penutupan total koridor utama (jalur utama ditutup penuh selama parade)",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Sekaa Teruna Teruni Sanur (Panitia STT Bersatu)",
+        "evidence": "Penyelenggara : Sekaa Teruna Teruni Sanur (Panitia STT Bersatu)",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": []
+    },
+    "SYNTH_AI_004": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Festival Bulan Bahasa Bali (Festival Bulan Bahasa Bali Tingkat Desa)",
+        "evidence": "Nama Kegiatan : Festival Bulan Bahasa Bali (Festival Bulan Bahasa Bali Tingkat Desa)",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "festival",
+        "evidence": "Kategori : festival (festival budaya)",
+        "needs_review": false
+      },
+      "start_datetime": {
+        "value": null,
+        "evidence": "Waktu Mulai : Pertengahan Februari 2026 (Jadwal pelaksanaan masih tentative)",
+        "needs_review": true
+      },
+      "end_datetime": {
+        "value": null,
+        "evidence": "Waktu Selesai : sampai sore hari",
+        "needs_review": true
+      },
+      "venue_name": {
+        "value": null,
+        "evidence": "Lokasi : Balai Masyarakat atau Wantilan (antara Balai Masyarakat atau Wantilan Pura)",
+        "needs_review": true
+      },
+      "affected_road_names": [
+        {
+          "name": "Jl. By Pass Ngurah Rai",
+          "evidence": "- dekat simpang Jl. By Pass Ngurah Rai (Jalan By Pass Ngurah Rai)",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "traffic_impact_description": {
+        "value": "Kepadatan arus lalu lintas di sekitar venue (potensi kepadatan parkir)",
+        "evidence": "- Kepadatan arus lalu lintas di sekitar venue (potensi kepadatan parkir)",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Lembaga Pemberdayaan Masyarakat (Pengurus LPM)",
+        "evidence": "Penyelenggara : Lembaga Pemberdayaan Masyarakat (Pengurus LPM)",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": [
+        "Waktu mulai bersifat tentatif dan hanya mencantumkan 'Pertengahan Februari 2026'.",
+        "Waktu selesai tidak memiliki tanggal dan jam pasti ('sampai sore hari').",
+        "Lokasi belum definitif ('Balai Masyarakat atau Wantilan')."
+      ]
+    },
+    "SYNTH_AI_005": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Bazar Amal Banjar",
+        "evidence": "Nama Kegiatan : Bazar Amal Banjar (Bazar Amal Pemuda Banjar)",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "bazar",
+        "evidence": "Kategori     : bazar (bazar kuliner dan seni)",
+        "needs_review": false
+      },
+      "start_datetime": {
+        "value": "2026-05-10T08:00:00.000Z",
+        "evidence": "Waktu Mulai  : 10 Mei 2026 mulai jam 16.00 WITA (2026-05-10T16:00:00+08:00)",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": "2026-05-10T14:00:00.000Z",
+        "evidence": "Waktu Selesai : sampai jam 22.00 WITA (2026-05-10T22:00:00+08:00)",
+        "needs_review": false
+      },
+      "venue_name": {
+        "value": "Lapangan Banjar",
+        "evidence": "Lokasi Utama : Lapangan Banjar (bertempat di Lapangan Banjar)",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "Jalan Sekuta",
+          "evidence": "- akses masuk melalui Jalan Sekuta\n- Pemberlakuan satu arah sementara di Jalan Sekuta (rekayasa satu arah selama acara)",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "traffic_impact_description": {
+        "value": "akses masuk melalui Jalan Sekuta, Pemberlakuan satu arah sementara di Jalan Sekuta (rekayasa satu arah selama acara)",
+        "evidence": "Dampak Lalu Lintas:\n- akses masuk melalui Jalan Sekuta\n- Pemberlakuan satu arah sementara di Jalan Sekuta (rekayasa satu arah selama acara)",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Pemuda Banjar",
+        "evidence": "Penyelenggara : Pemuda Banjar (Kelompok Pemuda)",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": []
+    },
+    "DOC-01-DENPASAR-PEDESTRIAN": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Pekerjaan Rehabilitasi Jalan dan Penataan Pedestrian",
+        "evidence": "ADA PEKERJAAN REHABILITASI JALAN DAN PENATAAN PEDESTRIAN",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "lainnya",
+        "evidence": "ADA PEKERJAAN REHABILITASI JALAN DAN PENATAAN PEDESTRIAN",
+        "needs_review": true
+      },
+      "start_datetime": {
+        "value": null,
+        "evidence": "Sehubungan dengan pelaksanaan proyek rehabilitasi jalan dan penataan pedestrian kawasan Kota Denpasar yang berlangsung hingga Rabu, 16 Desember 2026",
+        "needs_review": true
+      },
+      "end_datetime": {
+        "value": "2026-12-16T15:59:59.000Z",
+        "evidence": "hingga Rabu, 16 Desember 2026",
+        "needs_review": true
+      },
+      "venue_name": {
+        "value": "Kawasan Kota Denpasar",
+        "evidence": "kawasan Kota Denpasar",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "Jalan Gajah Mada",
+          "evidence": "Jalan Gajah Mada",
+          "needs_review": true
+        },
+        {
+          "name": "Simpang Thamrin",
+          "evidence": "Simpang Thamrin",
+          "needs_review": true
+        },
+        {
+          "name": "Jalan Hasanudin",
+          "evidence": "Jalan Hasanudin",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": false
+      },
+      "traffic_impact_description": {
+        "value": "Antisipasi kemungkinan perlambatan arus lalu lintas, kendaraan besar agar tidak melintas jalur tersebut, gunakan jalur alternatif.",
+        "evidence": "Antisipasi kemungkinan perlambatan arus lalu lintas; Kendaraan besar agar tidak melintas jalur tersebut; Gunakan jalur alternatif",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Pemerintah Kota Denpasar",
+        "evidence": "PEMERINTAH KOTA DENPASAR",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": {
+        "value": "denpaskota.go.id",
+        "evidence": "denpaskota.go.id",
+        "needs_review": false
+      },
+      "issues": [
+        "Dokumen ini bukan acara budaya, melainkan pengumuman pekerjaan rehabilitasi jalan dan penataan pedestrian.",
+        "Waktu mulai (start_datetime) tidak disebutkan dalam dokumen, hanya batas akhir.",
+        "Simpang Catur Muka, Simpang Pemecutan, dan Simpang Suci bukan nama jalan, namun disertakan sebagai lokasi terdampak pada poster."
+      ]
+    },
+    "DOC-02-KEROBOKAN-TRAFFIC": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "event_category": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "start_datetime": {
+        "value": "2025-12-13T16:00:00.000Z",
+        "evidence": "DIMULAI PADA HARI MINGGU TANGGAL 14 DESEMBER 2025",
+        "needs_review": true
+      },
+      "end_datetime": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "venue_name": {
+        "value": "Kerobokan Kelod Petitenget",
+        "evidence": "JALUR REKAYASA LALU LINTAS DI KEROBOKAN KELOD ... PERUBAHAN ARUS WILAYAH KEROBOKAN KELOD PETITENGET",
+        "needs_review": true
+      },
+      "affected_road_names": [
+        {
+          "name": "Jl. Gn. Tangkuban Perahu",
+          "evidence": "Jl. Gn. Tangkuban Perahu Dari Simpang Pengubengan Kangin Nomor 1-4 Menjadi Satu Arah",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Raya Kerobokan",
+          "evidence": "Jl. Raya Kerobokan Dari Simpang Petitenget Nomor 4,11,12 Menjadi Satu Arah",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Merta Agung",
+          "evidence": "Jl. Merta Agung",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Serangan-Pengubengan Kauh",
+          "evidence": "Jl. Serangan-Pengubengan Kauh Nomor 14, Menjadi Satu Arah Dari Utara Ke Selatan",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Intan Permai",
+          "evidence": "Kendaraan Yang Keluar Dari Jl. Intan Permai Pada Simpang Pengubengan Kauh (2)",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Mertanadi",
+          "evidence": "Kendaraan Yang Keluar Dari Jl. Mertanadi Pada Simpang Lp. Kerobokan (3)",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Umalas 1 (Gang Nook)",
+          "evidence": "Jl. Umalas 1 (Gang Nook) Akan Ditutup",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "traffic_impact_description": {
+        "value": "Perubahan arus lalu lintas (rekayasa lalu lintas) berupa jalan menjadi satu arah, larangan belok, penutupan jalan, dan kewajiban arah belok tertentu.",
+        "evidence": "JALUR REKAYASA LALU LINTAS DI KEROBOKAN KELOD DIMULAI PADA HARI MINGGU TANGGAL 14 DESEMBER 2025 ... PENJELASAN ARUS LALU LINTAS",
+        "needs_review": true
+      },
+      "organizer_name": {
+        "value": "DINAS PERHUBUNGAN KABUPATEN BADUNG",
+        "evidence": "DINAS PERHUBUNGAN KABUPATEN BADUNG",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": {
+        "value": "Instagram: @satlantas.resbadung, X: Satlantas Res Badung, Facebook: Satuan Lantas Mangupura, TikTok: satlantaspolresbadung",
+        "evidence": "@satlantas.resbadung Satlantas Res Badung Satuan Lantas Mangupura satlantaspolresbadung",
+        "needs_review": false
+      },
+      "issues": [
+        "Waktu mulai jam spesifik tidak disebutkan, hanya tanggal 14 Desember 2025.",
+        "Nama event atau kegiatan budaya tidak disebutkan di dokumen, ini murni pengumuman rekayasa lalu lintas."
+      ]
+    },
+    "DOC-03-BATUR-MEPADA-AGUNG": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Upacara Mepada Agung di Pura Tulukbiyu Batur",
+        "evidence": "KEGIATAN UPACARA MEPADA AGUNG DI PURA TULUKBIYU BATUR",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "upacara",
+        "evidence": "KEGIATAN UPACARA MEPADA AGUNG",
+        "needs_review": false
+      },
+      "start_datetime": {
+        "value": "2026-09-26T00:00:00.000Z",
+        "evidence": "SABTU, 26 SEPTEMBER 2026 | PUKUL 08.00 WITA",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": "2026-09-26T10:00:00.000Z",
+        "evidence": "SABTU, 26 SEPTEMBER 2026 | ... s/d 18.00 WITA",
+        "needs_review": false
+      },
+      "venue_name": {
+        "value": "Pura Tulukbiyu Batur",
+        "evidence": "PURA TULUKBIYU BATUR",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "ST. BLANCAN",
+          "evidence": "ST. BLANCAN",
+          "needs_review": true
+        },
+        {
+          "name": "SE. PLUDU",
+          "evidence": "SE. PLUDU",
+          "needs_review": true
+        },
+        {
+          "name": "ST. GUNUNG KUNYIT",
+          "evidence": "ST. GUNUNG KUNYIT",
+          "needs_review": true
+        },
+        {
+          "name": "ST. KATUNG",
+          "evidence": "ST. KATUNG / CULALI ATAS",
+          "needs_review": true
+        },
+        {
+          "name": "ST. KUD",
+          "evidence": "ST. KUD",
+          "needs_review": true
+        },
+        {
+          "name": "ST. MAHARAJA",
+          "evidence": "ST. MAHARAJA",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "traffic_impact_description": {
+        "value": "Rekayasa lalu lintas pengalihan arus dan penutupan jalan terkait kegiatan upacara",
+        "evidence": "REKAYASA LALU LINTAS DALAM RANGKA KEGIATAN UPACARA MEPADA AGUNG DI PURA TULUKBIYU BATUR",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "POLANTAS KARIAB / BANGLI DHARMA",
+        "evidence": "POLANTAS KARIAB / BANGLI DHARMA",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": [
+        "Affected roads require human verification on map segments as they are listed with abbreviations like ST and SE."
+      ]
+    },
+    "DOC-04-GIANYAR-MARATHON": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Maybank Marathon 10K",
+        "evidence": "10K / Maybank Marathon",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "olahraga",
+        "evidence": "10K / Maybank Marathon",
+        "needs_review": false
+      },
+      "start_datetime": {
+        "value": "2026-08-21T16:00:00.000Z",
+        "evidence": "22-23 AGUSTUS 2026",
+        "needs_review": true
+      },
+      "end_datetime": {
+        "value": "2026-08-23T15:59:59.000Z",
+        "evidence": "22-23 AGUSTUS 2026",
+        "needs_review": true
+      },
+      "venue_name": {
+        "value": "Keramas, Gianyar",
+        "evidence": "KERAMAS / GIANYAR",
+        "needs_review": true
+      },
+      "affected_road_names": [
+        {
+          "name": "Jl. Bypass I.B. Mantra (Sp. Ketewel - Sp. Selukat)",
+          "evidence": "Jl. Bypass I.B. Mantra (Sp. Ketewel - Sp. Selukat)",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Raya Pering",
+          "evidence": "Jl. Raya Pering",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Permata Pering",
+          "evidence": "Jl. Permata Pering",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Segara Wilis",
+          "evidence": "Jl. Segara Wilis",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Maruti",
+          "evidence": "Jl. Maruti",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Selukat",
+          "evidence": "Jl. Selukat",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "traffic_impact_description": {
+        "value": "MOHON MAAF PERJALANAN ANDA TERGANGGU PADA 22-23 AGUSTUS 2026. HINDARI RUAS JALAN BERIKUT.",
+        "evidence": "MOHON MAAF PERJALANAN ANDA TERGANGGU PADA 22-23 AGUSTUS 2026 HINDARI RUAS JALAN BERIKUT",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Sat Lantas Polres Gianyar",
+        "evidence": "SAT LANTAS POLRES GIANYAR",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": [
+        "Jam mulai dan jam selesai spesifik tidak tercantum di dalam dokumen, hanya tanggal saja.",
+        "Pemilihan segmen jalan pada affected_road_names memerlukan verifikasi peta."
+      ]
+    },
+    "DOC-05-TEGAL-HARUM-ASPAL": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Pengaspalan Jalan",
+        "evidence": "PENGUMUMAN PENGASPALAN JALAN",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "lainnya",
+        "evidence": "PENGUMUMAN PENGASPALAN JALAN",
+        "needs_review": true
+      },
+      "start_datetime": {
+        "value": "2026-11-01T11:00:00.000Z",
+        "evidence": "01 & 02 November 2026, Waktu: 19.00 WITA s/d Selesai",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": null,
+        "evidence": "s/d Selesai",
+        "needs_review": true
+      },
+      "venue_name": {
+        "value": "Jalan Raya Buana Kubu",
+        "evidence": "Lokasi: Jalan Raya Buana Kubu",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "Jalan Raya Buana Kubu",
+          "evidence": "Lokasi: Jalan Raya Buana Kubu",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": false
+      },
+      "traffic_impact_description": {
+        "value": "Selama proses pengerjaan berlangsung, akses jalan tersebut akan ditutup total/diberlakukan sistem buka-tutup sementara.",
+        "evidence": "Pengalihan Arus: Selama proses pengerjaan berlangsung, akses jalan tersebut akan ditutup total/diberlakukan sistem buka-tutup sementara.",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Pemerintah Desa Tegal Harum",
+        "evidence": "PEMERINTAH DESA TEGAL HARUM",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": {
+        "value": "pengaduan.tegalharum.desa.id | tegalharum.desa.id | IG: desategalharum | YT: tegal harum channel | TikTok: pemerintah desa tegal harum",
+        "evidence": "pengaduan.tegalharum.desa.id tegalharum.desa.id | desategalharum | tegal harum channel | pemerintah desa tegal harum",
+        "needs_review": false
+      },
+      "issues": [
+        "Kegiatan ini adalah proyek pengaspalan infrastruktur, bukan kegiatan budaya.",
+        "Waktu selesai tidak pasti karena tertulis 's/d Selesai'."
+      ]
+    },
+    "DOC-06-UNGASAN-PENUTUPAN": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Pekerjaan Pembangunan Jalan Trase Pecatu-Jalan Melasti (Pemasangan Saluran Gorong-Gorong pada Badan Jalan Belimbing Sari)",
+        "evidence": "pelaksanaan pekerjaan pembangunan Jalan Trase Pecatu-Jalan Melasti Tahun Anggaran 2026, khususnya pekerjaan pemasangan saluran gorong-gorong pada badan Jalan Belimbing Sari",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "lainnya",
+        "evidence": "pelaksanaan pekerjaan pembangunan Jalan Trase Pecatu-Jalan Melasti Tahun Anggaran 2026",
+        "needs_review": true
+      },
+      "start_datetime": {
+        "value": "2026-11-02T16:00:00.000Z",
+        "evidence": "3 November 2026",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": "2026-11-17T15:59:59.000Z",
+        "evidence": "sampai dengan 17 November 2026",
+        "needs_review": false
+      },
+      "venue_name": {
+        "value": "Jalan Belimbing Sari",
+        "evidence": "Ruas Jalan Belimbing Sari, dari arah Desa Ungasan menuju Desa Pecatu",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "Jalan Belimbing Sari",
+          "evidence": "badan Jalan Belimbing Sari",
+          "needs_review": true
+        },
+        {
+          "name": "Jalan Trase Pecatu-Jalan Melasti",
+          "evidence": "Jalan Trase Pecatu-Jalan Melasti",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": false
+      },
+      "traffic_impact_description": {
+        "value": "Penutupan jalan sementara di ruas Jalan Belimbing Sari, dari arah Desa Ungasan menuju Desa Pecatu.",
+        "evidence": "penutupan jalan sementara guna mendukung kelancaran dan keselamatan pelaksanaan pekerjaan. Adapun penutupan jalan diberlakukan dengan ketentuan sebagai berikut: Lokasi: Ruas Jalan Belimbing Sari, dari arah Desa Ungasan menuju Desa Pecatu.",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Pemerintah Desa Ungasan Kec. Kuta Selatan, Kab. Badung",
+        "evidence": "PEMERINTAH DESA UNGASAN Kec. Kuta Selatan, Kab. Badung",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": [
+        "Jam spesifik untuk awal dan akhir penutupan jalan tidak disebutkan dalam dokumen."
+      ]
+    },
+    "DOC-07-TONJA-KARYA-MAMUNGKAH": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Pengratep Karya Mamungkah, Ngenteg Linggih, Padudusan Agung miwah Caru Balik Sumpah",
+        "evidence": "Pengratep Karya Mamungkah, Ngenteg Linggih, Padudusan Agung miwah Caru Balik Sumpah",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "upacara_adat",
+        "evidence": "Pengratep Karya Mamungkah, Ngenteg Linggih, Padudusan Agung miwah Caru Balik Sumpah",
+        "needs_review": true
+      },
+      "start_datetime": {
+        "value": "2026-10-13T16:00:00.000Z",
+        "evidence": "14 Oktober 2026",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": "2026-10-17T15:59:59.000Z",
+        "evidence": "17 Oktober 2026",
+        "needs_review": false
+      },
+      "venue_name": {
+        "value": "Pura Gede Batur Sari",
+        "evidence": "LOKASI ACARA Pura Gede Batur Sari",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "Jl. Seroja",
+          "evidence": "Jl. Seroja",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Kemuda",
+          "evidence": "Jl. Kemuda",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Antasura",
+          "evidence": "Jl. Antasura",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Nangka Utara",
+          "evidence": "Jl. Nangka Utara",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Gatot Subroto",
+          "evidence": "Jl. Gatot Subroto",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Padma",
+          "evidence": "Jl. Padma",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Noja Saraswati",
+          "evidence": "Jl. Noja Saraswati",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "traffic_impact_description": {
+        "value": "Potensi kemacetan/padat di sekitar lokasi acara, diimbau bagi pengguna jalan agar mencari jalur alternatif untuk menghindari kemacetan.",
+        "evidence": "POTENSI KEMACETAN / PADAT. Dihimbau bagi pengguna jalan agar mencari jalur alternatif untuk menghindari kemacetan.",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": [
+        "Jam spesifik untuk awal dan akhir kegiatan tidak disebutkan secara pasti di dalam dokumen, diasumsikan sepanjang hari pada tanggal tersebut."
+      ]
+    },
+    "DOC-08-PEDUNGAN-MULTISESSION": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Karya Ngenteg Linggih Mepedudusan Alit Lan Ngersigana, Pura Kahyangan, Pura Prajapati, Pura Ratu Gede Begawan Penyarikan Ian Pura Pemanahan",
+        "evidence": "Karya Ngenteg Linggih Mepedudusan Alit Lan Ngersigana, Pura Kahyangan, Pura Prajapati, Pura Ratu Gede Begawan Penyarikan Ian Pura Pemanahan",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "upacara_adat",
+        "evidence": "Karya Ngenteg Linggih Mepedudusan Alit Lan Ngersigana, Pura Kahyangan, Pura Prajapati",
+        "needs_review": false
+      },
+      "start_datetime": {
+        "value": "2026-08-23T04:30:00.000Z",
+        "evidence": "Hari Minggu, 23 Agustus 2026 (Pukul 12.30 - 16.00 Wita)",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": "2026-08-26T05:00:00.000Z",
+        "evidence": "Hari Rabu, 26 Agustus 2026 (Pukul 08.00 - 13.00 Wita)",
+        "needs_review": false
+      },
+      "venue_name": {
+        "value": "Pura Kahyangan, Pura Prajapati, Pura Ratu Gede Begawan Penyarikan Ian Pura Pemanahan, Br. Dukuh Pesirahan Desa Adat Pedungan",
+        "evidence": "Pura Kahyangan, Pura Prajapati, Pura Ratu Gede Begawan Penyarikan Ian Pura Pemanahan, Br. Dukuh Pesirahan Desa Adat Pedungan",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "Jl. P. Moyo",
+          "evidence": "JL. P. MOYO",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. P. Roti",
+          "evidence": "JL. P. ROTI",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. P. Saelus",
+          "evidence": "JL. P. SAELUS",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. P. Bungin",
+          "evidence": "JL. P. BUNGIN",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. P. Singkep",
+          "evidence": "JL. P. SINGKEP",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. P. Belitung",
+          "evidence": "JL. P. BELITUNG",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Raya Sesetan",
+          "evidence": "JL. RAYA SESETAN",
+          "needs_review": true
+        },
+        {
+          "name": "Jl. Dukuh Sari",
+          "evidence": "JL. DUKUH SARI",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "traffic_impact_description": {
+        "value": "Pengalihan arus lalu lintas di sekitar Jalan P. Moyo karena ada upacara.",
+        "evidence": "PENGALIHAN ARUS LALU LINTAS",
+        "needs_review": true
+      },
+      "organizer_name": {
+        "value": "Banjar Dukuh Pesirahan Desa Adat Pedungan",
+        "evidence": "BANJAR DUKUH PESIRAHAN DESA ADAT PEDUNGAN",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": [
+        "Terdapat dua rentang waktu pelaksanaan kegiatan (23 Agustus 2026 dan 26 Agustus 2026), end_datetime merepresentasikan waktu akhir dari jadwal terjauh yang tercantum."
+      ]
+    },
+    "DOC-09-PEDUNGAN-MAP-DIVERSION": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "event_category": {
+        "value": "upacara_adat",
+        "evidence": "Penutupan arus lalu lintas sekitaran Jl. Pulau Moyo (Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Pura Prajapati dan Pura Pemanahan)",
+        "needs_review": true
+      },
+      "start_datetime": {
+        "value": "2026-08-24T03:30:00.000Z",
+        "evidence": "Senin, 24 Agustus 2026 (11.30 - 13.00 Wita)",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": "2026-08-24T05:00:00.000Z",
+        "evidence": "Senin, 24 Agustus 2026 (11.30 - 13.00 Wita)",
+        "needs_review": false
+      },
+      "venue_name": {
+        "value": "Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Pura Prajapati dan Pura Pemanahan",
+        "evidence": "Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Pura Prajapati dan Pura Pemanahan",
+        "needs_review": true
+      },
+      "affected_road_names": [
+        {
+          "name": "Jalan Pulau Moyo",
+          "evidence": "Jl. Pulau Moyo (Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Pura Prajapati dan Pura Pemanahan)",
+          "needs_review": true
+        },
+        {
+          "name": "Jalan Pulau Singkep",
+          "evidence": "Arus Mobil dari Jl.Pulau Moyo menuju Jl. Pulau Singkep dan Jl. Pulau Belitung putar balik melalui Jl. Pulau Moyo I",
+          "needs_review": true
+        },
+        {
+          "name": "Jalan Pulau Belitung",
+          "evidence": "Arus Mobil dari Jl.Pulau Moyo menuju Jl. Pulau Singkep dan Jl. Pulau Belitung putar balik melalui Jl. Pulau Moyo I",
+          "needs_review": true
+        },
+        {
+          "name": "Jalan Pulau Moyo I",
+          "evidence": "Jl. Pulau Moyo I",
+          "needs_review": true
+        },
+        {
+          "name": "Jalan Gurita I",
+          "evidence": "Jl. Gurita I",
+          "needs_review": true
+        },
+        {
+          "name": "Jalan Raya Sesetan",
+          "evidence": "Jl. Raya Sesetan",
+          "needs_review": true
+        },
+        {
+          "name": "Gang Babakan Sari VII E",
+          "evidence": "Gg. Babakan Sari VII E",
+          "needs_review": true
+        },
+        {
+          "name": "Gang Babakan Sari",
+          "evidence": "Gg. Babakan Sari",
+          "needs_review": true
+        },
+        {
+          "name": "Jalan Pulau Saelus",
+          "evidence": "Jl. Pulau Saelus",
+          "needs_review": true
+        },
+        {
+          "name": "Jalan Pulau Roti",
+          "evidence": "Jl. Pulau Roti",
+          "needs_review": true
+        },
+        {
+          "name": "Jalan Dukuh Sari",
+          "evidence": "Jl. Dukuh Sari",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": null,
+        "evidence": null,
+        "needs_review": true
+      },
+      "traffic_impact_description": {
+        "value": "Penutupan arus lalu lintas sekitaran Jl. Pulau Moyo (Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Pura Prajapati dan Pura Pemanahan) pada Senin, 24 Agustus 2026 pukul 11.30 - 13.00 Wita dengan pengalihan arus untuk mobil dan sepeda motor.",
+        "evidence": "Penutupan arus lalu lintas sekitaran Jl. Pulau Moyo (Pura Dalem Dukuh Pesirahan hingga Pura Kahyangan, Pura Prajapati dan Pura Pemanahan) Senin, 24 Agustus 2026 (11.30 - 13.00 Wita)",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Banjar Dukuh Pesirahan Desa Adat Pedungan",
+        "evidence": "BANJAR DUKUH PESIRAHAN DESA ADAT PEDUNGAN KECAMATAN DENPASAR SELATAN, DENPASAR",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": [
+        "Nama kegiatan spesifik tidak tertulis pada dokumen."
+      ]
+    },
+    "DOC-10-PEDUNGAN-PEMELASPASAN": {
+      "schema_version": "1.0",
+      "event_name": {
+        "value": "Karya Pemelaspasan Pura Ratu Gede Begawan Penyarikan, Bale Kulkul dan Bale Panjang Banjar Dukuh Pesirahan",
+        "evidence": "Karya Pemelaspasan Pura Ratu Gede Begawan Penyarikan, Bale Kulkul dan Bale Panjang Banjar Dukuh Pesirahan",
+        "needs_review": false
+      },
+      "event_category": {
+        "value": "upacara_adat",
+        "evidence": "Prawartaka Karya Ngenteg Linggih Lan Padudusan Alit Pura Kahyangan, Pura Begawan Penyarikan, Pura Prajapati, Lan Pura Pemanahan",
+        "needs_review": false
+      },
+      "start_datetime": {
+        "value": "2026-06-10T23:00:00.000Z",
+        "evidence": "Kamis, 11 Juni 2026, Pukul 07.00 S/D 13.00 Wita",
+        "needs_review": false
+      },
+      "end_datetime": {
+        "value": "2026-06-11T05:00:00.000Z",
+        "evidence": "Kamis, 11 Juni 2026, Pukul 07.00 S/D 13.00 Wita",
+        "needs_review": false
+      },
+      "venue_name": {
+        "value": "Banjar Dukuh Pesirahan, Kel. Pedungan, Denpasar Selatan",
+        "evidence": "Pura Kahyangan, Pura Begawan Penyarikan, Pura Prajapati, Lan Pura Pemanahan, BANJAR DUKUH PESIRAHAN DÉSA ADAT PEDUNGAN, Jalan Pulau Roti, Br. Dukuh Pesirahan, Kel. Pedungan, Denpasar Selatan",
+        "needs_review": false
+      },
+      "affected_road_names": [
+        {
+          "name": "Jl. Pulau Roti",
+          "evidence": "jln. Pulau roti",
+          "needs_review": true
+        }
+      ],
+      "procession_description": {
+        "value": "Karya Pemelaspasan Pura Ratu Gede Begawan Penyarikan, Bale Kulkul dan Bale Panjang Banjar Dukuh Pesirahan",
+        "evidence": "karya Pemelaspasan Pura Ratu Gede Begawan Penyarikan, Bale Kulkul dan Bale Panjang Banjar Dukuh Pesirahan",
+        "needs_review": false
+      },
+      "traffic_impact_description": {
+        "value": "Pengalihan lalu lintas di jalan Pulau Roti",
+        "evidence": "akan di lakukan pengalihan lalu lintas di jln. Pulau roti seperti di peta terlampir",
+        "needs_review": false
+      },
+      "organizer_name": {
+        "value": "Prawartaka Karya Ngenteg Linggih Lan Padudusan Alit Pura Kahyangan, Pura Begawan Penyarikan, Pura Prajapati, Lan Pura Pemanahan, Banjar Dukuh Pesirahan Desa Adat Pedungan",
+        "evidence": "Prawartaka Karya Ngenteg Linggih Lan Padudusan Alit Pura Kahyangan, Pura Begawan Penyarikan, Pura Prajapati, Lan Pura Pemanahan, Banjar Dukuh Pesirahan Desa Adat Pedungan",
+        "needs_review": false
+      },
+      "cleanup_location_notes": null,
+      "permit_reference_text": null,
+      "contact_information": null,
+      "issues": []
+    }
+  }
+}

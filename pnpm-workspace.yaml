@@ -3,5 +3,7 @@
 # builds native bindings. Without these, pnpm 11+ aborts the install with
 # ERR_PNPM_IGNORED_BUILDS.
 allowBuilds:
+  '@astryxdesign/cli': true
+  '@astryxdesign/core': true
   esbuild: true
   workerd: true
