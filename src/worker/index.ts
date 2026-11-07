@@ -10,6 +10,8 @@ import { eventsRouter } from "./routes/events";
 import { extractionsRouter } from "./routes/extractions";
 import { publicRouter } from "./routes/public";
 import { roadsRouter } from "./routes/roads";
+import { organizationsRouter } from "./routes/organizations";
+import { invitationsRouter } from "./routes/invitations";
 import type { AppVariables, Env } from "./types";
 
 declare global {
@@ -122,6 +124,8 @@ app.route("/api", cleanupRouter);
 // Mount Events and Assignments routes
 app.route("/api/events", assignmentsRouter);
 app.route("/api/events", eventsRouter);
+app.route("/api/organizations", organizationsRouter);
+app.route("/api/invitations", invitationsRouter);
 
 // 404 handler for API routes
 app.notFound((c) => {

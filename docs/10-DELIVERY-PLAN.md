@@ -284,6 +284,7 @@ DEC-007: Use polling before adding realtime infrastructure.
 DEC-008: Defer waste prediction and cleanup CV to P2.
 DEC-009: Treat stale road statuses as unconfirmed.
 DEC-010: Keep public access read-only and login-free.
+DEC-011: Use Astryx Design System (@astryxdesign/core + @astryxdesign/theme-stone) with Tailwind CSS v4 layer bridge for UI components instead of shadcn/ui.
 
 Update this log when architectural decisions change.
 
