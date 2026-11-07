@@ -110,7 +110,7 @@ Never present assumptions or targets as measured results.
 - React Router
 - TanStack Query
 - Tailwind CSS
-- shadcn/ui
+- Astryx Design System (@astryxdesign/core, @astryxdesign/theme-stone)
 - Lucide Icons
 - React Hook Form
 - Zod

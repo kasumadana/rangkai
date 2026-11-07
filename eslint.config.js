@@ -25,4 +25,27 @@ export default tseslint.config(
 			],
 		},
 	},
+	{
+		files: ["src/react-app/**/*.{ts,tsx}"],
+		rules: {
+			"no-restricted-imports": [
+				"error",
+				{
+					patterns: [
+						{
+							group: [
+								"@/components/ui/*",
+								"@mui/*",
+								"@chakra-ui/*",
+								"@radix-ui/*",
+								"@headlessui/*",
+							],
+							message:
+								"Gunakan komponen Astryx yang sudah diverifikasi melalui CLI.",
+						},
+					],
+				},
+			],
+		},
+	},
 );

@@ -27,7 +27,7 @@ Frontend:
 - React Router
 - TanStack Query
 - Tailwind CSS
-- shadcn/ui
+- Astryx Design System (@astryxdesign/core, @astryxdesign/theme-stone)
 - MapLibre GL JS
 
 Backend:

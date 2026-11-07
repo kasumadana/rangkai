@@ -24,31 +24,31 @@ colors:
   waste-residual: "#78716c"
 typography:
   display:
-    fontFamily: "Inter, 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
+    fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
     fontSize: "1.875rem"
     fontWeight: 700
     lineHeight: "1.25"
     letterSpacing: "-0.02em"
   headline:
-    fontFamily: "Inter, 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
+    fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
     fontSize: "1.5rem"
     fontWeight: 600
     lineHeight: "1.3"
     letterSpacing: "-0.015em"
   title:
-    fontFamily: "Inter, 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
+    fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
     fontSize: "1.125rem"
     fontWeight: 600
     lineHeight: "1.35"
     letterSpacing: "-0.01em"
   body:
-    fontFamily: "Inter, 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
+    fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
     fontSize: "0.9375rem"
     fontWeight: 400
     lineHeight: "1.55"
     letterSpacing: "0em"
   label:
-    fontFamily: "Inter, 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
+    fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
     fontSize: "0.75rem"
     fontWeight: 600
     lineHeight: "1.2"
@@ -155,8 +155,8 @@ Palet warna menggunakan fondasi Tri Datu yang ditransformasikan menjadi sistem w
 
 ## Typography
 
-**Display & Headline Font:** Inter, 'Plus Jakarta Sans', system-ui, sans-serif  
-**Body & Data Font:** Inter, system-ui, -apple-system, sans-serif  
+**Display & Headline Font:** 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif (Heading weight normal 400, section title 32px)  
+**Body & Data Font:** 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif (Body base 16px)  
 **Tabular/Numeric Modifier:** `font-variant-numeric: tabular-nums` (via CSS)
 
 Kombinasi sans-serif geometris humanis dengan *x-height* besar memastikan teks terbaca jelas dalam resolusi layar rendah, ponsel murah, dan sudut pandang miring di lapangan.

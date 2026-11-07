@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 import { test as base, type Page } from "@playwright/test";
 import { DEMO_USERS } from "../fixtures/e2e/auth-fixtures";
 
