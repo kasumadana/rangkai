@@ -109,6 +109,13 @@ const SATELLITE_STYLE: maplibregl.StyleSpecification = {
 	},
 	layers: [
 		{
+			id: "satellite-bg",
+			type: "background",
+			paint: {
+				"background-color": "#151E28",
+			},
+		},
+		{
 			id: "satellite-layer",
 			type: "raster",
 			source: "satellite-tiles",
@@ -274,6 +281,26 @@ export function BaliMapTilerView({
 			resizeObserver.observe(mapContainerRef.current);
 		}
 
+		let intersectionObserver: IntersectionObserver | null = null;
+		if (mapContainerRef.current && typeof IntersectionObserver !== "undefined") {
+			intersectionObserver = new IntersectionObserver(
+				(entries) => {
+					for (const entry of entries) {
+						if (entry.isIntersecting && mapInstance) {
+							mapInstance.resize();
+						}
+					}
+				},
+				{ threshold: 0.05 },
+			);
+			intersectionObserver.observe(mapContainerRef.current);
+		}
+
+		const handleWindowResize = () => {
+			mapInstance?.resize();
+		};
+		window.addEventListener("resize", handleWindowResize);
+
 		// Force multiple resize ticks to handle flex/grid stabilization
 		const t1 = setTimeout(() => mapInstance?.resize(), 100);
 		const t2 = setTimeout(() => mapInstance?.resize(), 300);
@@ -285,6 +312,8 @@ export function BaliMapTilerView({
 			clearTimeout(t2);
 			clearTimeout(t3);
 			resizeObserver?.disconnect();
+			intersectionObserver?.disconnect();
+			window.removeEventListener("resize", handleWindowResize);
 			if (activePopupRef.current) {
 				activePopupRef.current.remove();
 				activePopupRef.current = null;
@@ -331,9 +360,13 @@ export function BaliMapTilerView({
 					if (foundVillage && onSelectVillage) {
 						onSelectVillage(foundVillage);
 					}
+					const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
 					map.flyTo({
 						center: foundVillage ? foundVillage.mapCenter : dist.center,
 						zoom: 13.0,
+						padding: isMobile
+							? { top: 130, bottom: 40, left: 20, right: 20 }
+							: { top: 60, bottom: 40, left: 20, right: 460 },
 						duration: 800,
 						essential: true,
 					});
@@ -532,14 +565,24 @@ export function BaliMapTilerView({
 			pinEl.addEventListener("click", (evt) => {
 				evt.stopPropagation();
 				setIsBaliOverview(false);
+				const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
 				if (onSelectVillage) {
 					onSelectVillage(v);
 				}
-				openCompactPopupForVillage(v);
+				if (isMobile) {
+					openCompactPopupForVillage(v);
+				} else {
+					if (activePopupRef.current) {
+						activePopupRef.current.remove();
+						activePopupRef.current = null;
+					}
+				}
 				map.flyTo({
 					center: v.mapCenter,
 					zoom: 13.5,
-					padding: { top: 130, bottom: 40, left: 20, right: 20 },
+					padding: isMobile
+						? { top: 130, bottom: 40, left: 20, right: 20 }
+						: { top: 60, bottom: 40, left: 20, right: 460 },
 					essential: true,
 				});
 			});
@@ -728,11 +771,24 @@ export function BaliMapTilerView({
 						q.includes(v.kecamatan.toLowerCase()),
 				);
 				if (matchingVillage) {
-					openCompactPopupForVillage(matchingVillage);
+					const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+					if (onSelectVillage) {
+						onSelectVillage(matchingVillage);
+					}
+					if (isMobile) {
+						openCompactPopupForVillage(matchingVillage);
+					} else {
+						if (activePopupRef.current) {
+							activePopupRef.current.remove();
+							activePopupRef.current = null;
+						}
+					}
 					map.flyTo({
 						center: matchingVillage.mapCenter,
 						zoom: 13.5,
-						padding: { top: 130, bottom: 40, left: 20, right: 20 },
+						padding: isMobile
+							? { top: 130, bottom: 40, left: 20, right: 20 }
+							: { top: 60, bottom: 40, left: 20, right: 460 },
 						essential: true,
 					});
 				}
@@ -836,7 +892,7 @@ export function BaliMapTilerView({
 				borderRadius: height === "100%" ? 0 : "var(--radius-element, 12px)",
 				overflow: "hidden",
 				border: "none",
-				background: "#E5E7EB",
+				background: "#151E28",
 			}}
 		>
 			<div

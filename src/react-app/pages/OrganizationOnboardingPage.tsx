@@ -5,11 +5,12 @@ import {
 	MapPin,
 	ShieldAlert,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { z } from "zod";
 import { ApiClientError } from "../lib/api-client";
 import { useAuthSession, useCreateOrganizationMutation } from "../lib/auth";
+import { useGsapPageReveal } from "../lib/gsap-motion";
 
 const orgSchema = z.object({
 	name: z
@@ -39,6 +40,7 @@ const BALI_KABUPATEN_OPTIONS = [
 
 export function OrganizationOnboardingPage() {
 	const navigate = useNavigate();
+	const pageRef = useRef<HTMLDivElement>(null);
 	const { data: sessionData, isLoading: isSessionLoading } = useAuthSession();
 	const createOrgMutation = useCreateOrganizationMutation();
 
@@ -53,6 +55,8 @@ export function OrganizationOnboardingPage() {
 	const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(
 		null,
 	);
+
+	useGsapPageReveal(pageRef, [isSessionLoading, Boolean(sessionData?.user)]);
 
 	async function handleOrgSubmit(e: React.FormEvent) {
 		e.preventDefault();
@@ -90,8 +94,19 @@ export function OrganizationOnboardingPage() {
 
 	if (!isSessionLoading && !sessionData?.user) {
 		return (
-			<div className="teduh-page-shell" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start" }}>
+			<div
+				ref={pageRef}
+				className="teduh-page-shell"
+				style={{
+					display: "flex",
+					flexDirection: "column",
+					alignItems: "center",
+					justifyContent: "flex-start",
+				}}
+			>
 				<div
+					className="teduh-auth-card"
+					data-gsap="reveal"
 					style={{
 						background: "#FFFFFF",
 						borderRadius: 20,
@@ -124,10 +139,19 @@ export function OrganizationOnboardingPage() {
 	}
 
 	return (
-		<div className="teduh-page-shell" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start" }}>
+		<div
+			ref={pageRef}
+			className="teduh-page-shell"
+			style={{
+				display: "flex",
+				flexDirection: "column",
+				alignItems: "center",
+				justifyContent: "flex-start",
+			}}
+		>
 			<div style={{ width: "100%", maxWidth: 520 }}>
 				{/* Top back link to Dashboard */}
-				<div style={{ marginBottom: 16 }}>
+				<div style={{ marginBottom: 16 }} data-gsap="reveal">
 					<Link
 						to="/dashboard"
 						className="teduh-back-link"
@@ -139,6 +163,8 @@ export function OrganizationOnboardingPage() {
 				</div>
 
 				<div
+					className="teduh-auth-card"
+					data-gsap="reveal"
 					style={{
 						background: "#FFFFFF",
 						borderRadius: 20,

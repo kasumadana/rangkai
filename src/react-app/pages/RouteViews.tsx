@@ -26,20 +26,28 @@ import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
+	AlertTriangle,
 	ArrowLeft,
 	ArrowRight,
 	Calendar,
 	CheckCircle2,
 	ClipboardCheck,
 	Clock,
+	FileText,
+	Info,
 	MapPin,
 	MapPinned,
+	Milestone,
+	Navigation,
+	PackageCheck,
 	Radio,
 	Save,
+	Scale,
 	Search,
+	ShieldCheck,
 	Users,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { RouterLinkBridge } from "../components/layout/AppShellLayout";
 import {
@@ -75,6 +83,7 @@ import {
 	uploadCleanupEvidence,
 	verifyCleanupTask,
 } from "../lib/events-api";
+import { useGsapPageReveal } from "../lib/gsap-motion";
 import type { OperationalRoadStatus } from "../lib/road-status";
 import { formatWitaRange } from "../lib/wita";
 
@@ -100,6 +109,7 @@ export function PublicFullMapView() {
 export function PublicEventsListPage() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [statusFilter, setStatusFilter] = useState<string>("all");
+	const pageRef = useRef<HTMLElement>(null);
 
 	const publicEventsQuery = useQuery({
 		queryKey: ["public", "events", statusFilter],
@@ -134,10 +144,16 @@ export function PublicEventsListPage() {
 		});
 	}, [publicEventsQuery.data?.events, searchQuery]);
 
+	useGsapPageReveal(pageRef, [
+		liveEvents.length,
+		statusFilter,
+		publicEventsQuery.isLoading,
+	]);
+
 	return (
-		<main className="teduh-page-shell">
+		<main ref={pageRef} className="teduh-page-shell">
 			<div className="teduh-page-container">
-				<header className="teduh-page-header">
+				<header className="teduh-page-header" data-gsap="reveal">
 					<h1 className="teduh-page-title">
 						Jadwal Upacara & Rekayasa Jalur Bali
 					</h1>
@@ -149,16 +165,28 @@ export function PublicEventsListPage() {
 				</header>
 
 				{/* Search & Status Filter Bar */}
-				<div className="teduh-toolbar">
+				<div className="teduh-toolbar" data-gsap="reveal">
 					<div className="teduh-search-box">
-						<Search size={17} color="#64748B" />
+						<Search size={17} color="#64748B" className="teduh-search-icon" />
 						<input
-							type="search"
+							type="text"
+							className="teduh-search-input"
 							placeholder="Cari nama upacara, desa adat, atau kabupaten..."
 							value={searchQuery}
 							onChange={(e) => setSearchQuery(e.target.value)}
 							aria-label="Cari jadwal upacara"
 						/>
+						{searchQuery && (
+							<button
+								type="button"
+								className="teduh-search-clear"
+								onClick={() => setSearchQuery("")}
+								aria-label="Bersihkan pencarian"
+								title="Bersihkan pencarian"
+							>
+								✕
+							</button>
+						)}
 					</div>
 
 					<div className="schedule-filter-bar" style={{ marginBottom: 0 }}>
@@ -181,13 +209,13 @@ export function PublicEventsListPage() {
 
 				{/* Events List / Cards */}
 				{publicEventsQuery.isLoading ? (
-					<div className="teduh-empty-surface">
+					<div className="teduh-empty-surface" data-gsap="reveal">
 						<p style={{ margin: 0, fontSize: 16, color: "#545B67" }}>
 							Memuat daftar jadwal upacara terpublikasi...
 						</p>
 					</div>
 				) : liveEvents.length === 0 ? (
-					<div className="teduh-empty-surface">
+					<div className="teduh-empty-surface" data-gsap="reveal">
 						<h2
 							style={{
 								margin: "0 0 8px 0",
@@ -267,7 +295,11 @@ export function PublicEventsListPage() {
 									: "Terpublikasi";
 
 							return (
-								<article key={evt.id} className="schedule-card">
+								<article
+									key={evt.id}
+									className="schedule-card"
+									data-gsap="scroll-card"
+								>
 									<div>
 										<div className="schedule-card-header">
 											<span className="schedule-village-label">
@@ -358,6 +390,7 @@ export function PublicEventDetailPage({
 }) {
 	const { slug } = useParams<{ slug: string }>();
 	const [selectedSegmentId, setSelectedSegmentId] = useState<string>("");
+	const detailRef = useRef<HTMLElement>(null);
 
 	const publicEventQuery = useQuery({
 		queryKey: ["public", "event-detail", slug],
@@ -395,11 +428,18 @@ export function PublicEventDetailPage({
 		return mapPublicEventToCeremonyProfile(apiEvent, rawRoads, 0);
 	}, [apiEvent, rawRoads]);
 
+	useGsapPageReveal(detailRef, [
+		slug,
+		Boolean(apiEvent),
+		rawRoads.length,
+		publicEventQuery.isLoading,
+	]);
+
 	if (publicEventQuery.isLoading) {
 		return (
-			<main className="teduh-page-shell">
+			<main ref={detailRef} className="teduh-page-shell">
 				<div className="teduh-page-container">
-					<div className="teduh-empty-surface">
+					<div className="teduh-empty-surface" data-gsap="reveal">
 						<p style={{ margin: 0, fontSize: 16, color: "#545B67" }}>
 							Memuat rincian acara dan status ruas jalan dari server...
 						</p>
@@ -411,9 +451,9 @@ export function PublicEventDetailPage({
 
 	if (!apiEvent || !spatialProfile) {
 		return (
-			<main className="teduh-page-shell">
+			<main ref={detailRef} className="teduh-page-shell">
 				<div className="teduh-page-container">
-					<div className="teduh-empty-surface">
+					<div className="teduh-empty-surface" data-gsap="reveal">
 						<h1
 							style={{
 								margin: "0 0 10px 0",
@@ -533,10 +573,10 @@ export function PublicEventDetailPage({
 	}
 
 	return (
-		<main className="teduh-page-shell">
+		<main ref={detailRef} className="teduh-page-shell">
 			<div className="teduh-page-container">
 				{/* 1. TOP NAVIGATION ROW */}
-				<div className="teduh-detail-nav">
+				<div className="teduh-detail-nav" data-gsap="reveal">
 					<Link to="/events" className="teduh-back-link">
 						<ArrowLeft size={16} />
 						<span>Kembali ke Jadwal Upacara</span>
@@ -554,7 +594,7 @@ export function PublicEventDetailPage({
 				</div>
 
 				{/* 2. HERO HEADER SURFACE */}
-				<section className="teduh-detail-hero">
+				<section className="teduh-detail-hero" data-gsap="reveal">
 					<div
 						style={{
 							display: "flex",
@@ -603,13 +643,11 @@ export function PublicEventDetailPage({
 						</div>
 
 						<div className="teduh-meta-block">
-							<span className="teduh-meta-label">Lokasi Utama</span>
+							<span className="teduh-meta-label">Lokasi & Wilayah Adat</span>
 							<div className="teduh-meta-value">
 								<MapPin size={16} color="#264D3B" />
 								<span>
-									{apiEvent.venueName ||
-										apiEvent.village ||
-										apiEvent.organizationName}
+									{apiEvent.venueName || apiEvent.village || apiEvent.organizationName}
 								</span>
 							</div>
 						</div>
@@ -617,8 +655,19 @@ export function PublicEventDetailPage({
 						<div className="teduh-meta-block">
 							<span className="teduh-meta-label">Penyelenggara Terverifikasi</span>
 							<div className="teduh-meta-value">
+								<ShieldCheck size={16} color="#264D3B" />
 								<span>
 									{apiEvent.organizerName || apiEvent.organizationName}
+								</span>
+							</div>
+						</div>
+
+						<div className="teduh-meta-block">
+							<span className="teduh-meta-label">Ruas Jalan Terdampak</span>
+							<div className="teduh-meta-value">
+								<Navigation size={16} color="#264D3B" />
+								<span>
+									{rawRoads.length} Ruas ({spatialProfile.primaryStatus === "closed" ? "Tutup Total" : spatialProfile.primaryStatus === "intermittent" ? "Buka-Tutup" : "Normal"})
 								</span>
 							</div>
 						</div>
@@ -629,22 +678,28 @@ export function PublicEventDetailPage({
 				{(apiEvent.description ||
 					apiEvent.processionDescription ||
 					apiEvent.trafficImpactDescription) && (
-					<section className="teduh-detail-section">
+					<section className="teduh-detail-section" data-gsap="scroll-section">
 						<h2 className="teduh-section-heading">
 							Rincian Prosesi & Pengaturan Lalu Lintas
 						</h2>
 
 						<div className="teduh-info-cards-grid">
 							{apiEvent.description ? (
-								<div className="teduh-surface-card">
-									<h3 className="teduh-card-label">Deskripsi Kegiatan</h3>
+								<div className="teduh-surface-card" data-gsap="scroll-card">
+									<h3 className="teduh-card-label">
+										<FileText size={15} color="#264D3B" />
+										<span>Deskripsi Kegiatan</span>
+									</h3>
 									<p className="teduh-card-body">{apiEvent.description}</p>
 								</div>
 							) : null}
 
 							{apiEvent.processionDescription ? (
-								<div className="teduh-surface-card">
-									<h3 className="teduh-card-label">Rute & Jalur Prosesi</h3>
+								<div className="teduh-surface-card" data-gsap="scroll-card">
+									<h3 className="teduh-card-label">
+										<Milestone size={15} color="#264D3B" />
+										<span>Rute & Jalur Prosesi</span>
+									</h3>
 									<p className="teduh-card-body">
 										{apiEvent.processionDescription}
 									</p>
@@ -652,9 +707,10 @@ export function PublicEventDetailPage({
 							) : null}
 
 							{apiEvent.trafficImpactDescription ? (
-								<div className="teduh-surface-card">
+								<div className="teduh-surface-card" data-gsap="scroll-card">
 									<h3 className="teduh-card-label">
-										Ringkasan Dampak & Pengalihan Arus
+										<AlertTriangle size={15} color="#264D3B" />
+										<span>Ringkasan Dampak & Pengalihan Arus</span>
 									</h3>
 									<p className="teduh-card-body">
 										{apiEvent.trafficImpactDescription}
@@ -666,7 +722,7 @@ export function PublicEventDetailPage({
 				)}
 
 				{/* 4. MAP & VERIFIED AFFECTED ROAD SEGMENTS */}
-				<section className="teduh-detail-section">
+				<section className="teduh-detail-section" data-gsap="scroll-section">
 					<div
 						style={{
 							display: "flex",
@@ -678,7 +734,7 @@ export function PublicEventDetailPage({
 						}}
 					>
 						<div>
-							<h2 className="teduh-section-heading" style={{ marginBottom: 4 }}>
+							<h2 className="teduh-section-heading">
 								Peta Lokasi & Ruas Jalan Terdampak ({rawRoads.length})
 							</h2>
 							<p style={{ margin: 0, fontSize: 15, color: "#545B67" }}>
@@ -725,6 +781,7 @@ export function PublicEventDetailPage({
 											key={road.id}
 											onClick={() => setSelectedSegmentId(road.id)}
 											className={`teduh-road-item ${isSelected ? "is-selected" : ""}`}
+											data-gsap="scroll-card"
 										>
 											<div
 												style={{
@@ -789,7 +846,7 @@ export function PublicEventDetailPage({
 								allVillages={[spatialProfile]}
 								selectedSegmentId={activeSegmentId}
 								onSelectSegment={setSelectedSegmentId}
-								height={420}
+								height="100%"
 							/>
 						</div>
 					</div>
@@ -801,7 +858,7 @@ export function PublicEventDetailPage({
 					cleanupData.wasteTotals.weighedKg > 0 ||
 					cleanupData.wasteTotals.estimatedKg > 0 ||
 					cleanupData.wasteTotals.totalSacks > 0) ? (
-					<section className="teduh-detail-section">
+					<section className="teduh-detail-section" data-gsap="scroll-section">
 						<h2 className="teduh-section-heading">
 							Penanganan Kebersihan & Catatan Sampah Pasca-Acara
 						</h2>
@@ -816,69 +873,45 @@ export function PublicEventDetailPage({
 						</p>
 
 						<div className="teduh-info-cards-grid">
-							<div className="teduh-surface-card">
-								<h3 className="teduh-card-label">Status Tugas Kebersihan</h3>
-								<div
-									style={{
-										fontSize: 24,
-										fontWeight: 400,
-										color: "#181B20",
-										marginBottom: 6,
-										fontVariantNumeric: "tabular-nums",
-									}}
-								>
-									{cleanupData.summary.verifiedTasks} /{" "}
-									{cleanupData.summary.totalTasks} Tugas Terverifikasi
+							<div className="teduh-surface-card" data-gsap="scroll-card">
+								<h3 className="teduh-card-label">
+									<ClipboardCheck size={15} color="#264D3B" />
+									<span>Status Tugas Kebersihan</span>
+								</h3>
+								<div className="teduh-stat-number">
+									{cleanupData.summary.verifiedTasks} / {cleanupData.summary.totalTasks} Tugas Terverifikasi
 								</div>
 								<p className="teduh-card-body">
-									Menunggu verifikasi: {cleanupData.summary.submittedTasks} •
-									Sedang dikerjakan: {cleanupData.summary.inProgressTasks}
+									Menunggu verifikasi: {cleanupData.summary.submittedTasks} • Sedang dikerjakan: {cleanupData.summary.inProgressTasks}
 								</p>
 							</div>
 
-							<div className="teduh-surface-card">
+							<div className="teduh-surface-card" data-gsap="scroll-card">
 								<h3 className="teduh-card-label">
-									Berat Sampah Terukur (Ditimbang)
+									<Scale size={15} color="#264D3B" />
+									<span>Berat Sampah Terukur (Ditimbang)</span>
 								</h3>
-								<div
-									style={{
-										fontSize: 24,
-										fontWeight: 400,
-										color: "#181B20",
-										marginBottom: 6,
-										fontVariantNumeric: "tabular-nums",
-									}}
-								>
+								<div className="teduh-stat-number">
 									{cleanupData.wasteTotals.weighedKg} kg
 								</div>
 								<p className="teduh-card-body">
-									Organik: {cleanupData.byCategory.organic.weighedKg} kg • Daur
-									Ulang: {cleanupData.byCategory.recyclable.weighedKg} kg •
-									Residu: {cleanupData.byCategory.residual.weighedKg} kg
+									Organik: {cleanupData.byCategory.organic.weighedKg} kg • Daur Ulang: {cleanupData.byCategory.recyclable.weighedKg} kg • Residu: {cleanupData.byCategory.residual.weighedKg} kg
 								</p>
 							</div>
 
-							<div className="teduh-surface-card">
+							<div className="teduh-surface-card" data-gsap="scroll-card">
 								<h3 className="teduh-card-label">
-									Estimasi & Jumlah Karung Sampah
+									<PackageCheck size={15} color="#264D3B" />
+									<span>Estimasi & Jumlah Karung Sampah</span>
 								</h3>
-								<div
-									style={{
-										fontSize: 24,
-										fontWeight: 400,
-										color: "#181B20",
-										marginBottom: 6,
-										fontVariantNumeric: "tabular-nums",
-									}}
-								>
+								<div className="teduh-stat-number">
 									{cleanupData.wasteTotals.totalSacks} Karung
 									{cleanupData.wasteTotals.estimatedKg > 0
 										? ` (${cleanupData.wasteTotals.estimatedKg} kg estimasi)`
 										: ""}
 								</div>
 								<p className="teduh-card-body">
-									Data estimasi dipisahkan dari hasil timbangan aktual sesuai
-									standar pelaporan Rangkai.
+									Data estimasi dipisahkan dari hasil timbangan aktual sesuai standar pelaporan Rangkai.
 								</p>
 							</div>
 						</div>
@@ -886,13 +919,18 @@ export function PublicEventDetailPage({
 				) : null}
 
 				{/* 6. HONEST OPERATIONAL DISCLAIMER */}
-				<footer className="teduh-detail-disclaimer">
-					<p style={{ margin: "0 0 6px 0", fontSize: 13.5, color: "#181B20" }}>
-						{OPERATIONAL_DISCLAIMERS.PUBLIC_LIMITATION}
-					</p>
-					<p style={{ margin: 0, fontSize: 13, color: "#545B67" }}>
-						{OPERATIONAL_DISCLAIMERS.OPEN_ROAD_NOTE}
-					</p>
+				<footer className="teduh-detail-disclaimer" data-gsap="scroll-section">
+					<div className="teduh-disclaimer-icon">
+						<Info size={18} color="#264D3B" />
+					</div>
+					<div className="teduh-disclaimer-text">
+						<p style={{ margin: "0 0 6px 0", fontSize: 13.5, color: "#181B20", fontWeight: 500 }}>
+							{OPERATIONAL_DISCLAIMERS.PUBLIC_LIMITATION}
+						</p>
+						<p style={{ margin: 0, fontSize: 13, color: "#545B67", lineHeight: 1.6 }}>
+							{OPERATIONAL_DISCLAIMERS.OPEN_ROAD_NOTE}
+						</p>
+					</div>
 				</footer>
 			</div>
 		</main>

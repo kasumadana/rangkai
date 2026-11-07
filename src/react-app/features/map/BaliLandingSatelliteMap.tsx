@@ -57,6 +57,13 @@ const BASEMAP_STYLES: Record<BasemapStyle, maplibregl.StyleSpecification> = {
 		},
 		layers: [
 			{
+				id: "satellite-bg",
+				type: "background",
+				paint: {
+					"background-color": "#151E28",
+				},
+			},
+			{
 				id: "satellite-layer",
 				type: "raster",
 				source: "satellite-tiles",
@@ -596,13 +603,37 @@ export function BaliLandingSatelliteMap({
 			resizeObserver.observe(mapContainerRef.current);
 		}
 
+		let intersectionObserver: IntersectionObserver | null = null;
+		if (wrapperRef.current && typeof IntersectionObserver !== "undefined") {
+			intersectionObserver = new IntersectionObserver(
+				(entries) => {
+					for (const entry of entries) {
+						if (entry.isIntersecting && mapInstance) {
+							mapInstance.resize();
+						}
+					}
+				},
+				{ threshold: 0.05 },
+			);
+			intersectionObserver.observe(wrapperRef.current);
+		}
+
+		const handleWindowResize = () => {
+			mapInstance?.resize();
+		};
+		window.addEventListener("resize", handleWindowResize);
+
 		const t1 = setTimeout(() => mapInstance?.resize(), 150);
 		const t2 = setTimeout(() => mapInstance?.resize(), 500);
+		const t3 = setTimeout(() => mapInstance?.resize(), 1200);
 
 		return () => {
 			clearTimeout(t1);
 			clearTimeout(t2);
+			clearTimeout(t3);
 			resizeObserver?.disconnect();
+			intersectionObserver?.disconnect();
+			window.removeEventListener("resize", handleWindowResize);
 			if (activePopupRef.current) {
 				activePopupRef.current.remove();
 				activePopupRef.current = null;
@@ -731,7 +762,7 @@ export function BaliLandingSatelliteMap({
 				width: "100%",
 				height: "100%",
 				minHeight: 0,
-				background: "#F8FAF8",
+				background: "#151E28",
 				overflow: "hidden",
 			}}
 		>
@@ -801,15 +832,17 @@ export function BaliLandingSatelliteMap({
 						top: "50%",
 						left: "50%",
 						transform: "translate(-50%, -50%)",
-						background: "#FFFFFF",
-						border: "none",
+						background: "rgba(21, 30, 40, 0.88)",
+						backdropFilter: "blur(8px)",
+						WebkitBackdropFilter: "blur(8px)",
+						border: "1px solid rgba(255, 255, 255, 0.14)",
 						borderRadius: 9999,
 						padding: "10px 20px",
-						boxShadow: "none",
+						boxShadow: "0 8px 24px rgba(0, 0, 0, 0.35)",
 						fontFamily: "var(--font-family-body, Figtree, sans-serif)",
 						fontSize: 13,
 						fontWeight: 500,
-						color: "#181B20",
+						color: "#F8FAFC",
 						zIndex: 8,
 						display: "flex",
 						alignItems: "center",

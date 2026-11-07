@@ -31,8 +31,10 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { forwardRef, useEffect, useRef, useState, type AnchorHTMLAttributes } from "react";
 import { Link as RouterLink, Outlet, useLocation } from "react-router";
+import { RangkaiPreloader, shouldPlayPreloader } from "../rangkai";
 import { useAuthSession, useSignOutMutation } from "../../lib/auth";
 import { fetchPublicEvents, formatWitaEventSchedule } from "../../lib/events-api";
+import { useGsapRouteTransition } from "../../lib/gsap-motion";
 
 export const RouterLinkBridge = forwardRef<
 	HTMLAnchorElement,
@@ -101,10 +103,16 @@ export function PublicShellLayout() {
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 	const [isNotifOpen, setIsNotifOpen] = useState(false);
 	const [readNotifIds, setReadNotifIds] = useState<string[]>([]);
+	const [isPreloaderActive, setIsPreloaderActive] = useState(() =>
+		pathname === "/" ? shouldPlayPreloader() : false,
+	);
 	const notifRef = useRef<HTMLDivElement>(null);
+	const mainContentRef = useRef<HTMLElement>(null);
 
 	const { data: sessionData } = useAuthSession();
 	const signOutMutation = useSignOutMutation();
+
+	useGsapRouteTransition(mainContentRef, pathname);
 
 	const { data: publicEventsData } = useQuery({
 		queryKey: ["public", "events", { limit: 6 }],
@@ -115,21 +123,28 @@ export function PublicShellLayout() {
 
 	useEffect(() => {
 		function handleScroll() {
-			setIsWindowScrolled(window.scrollY > 40);
+			const threshold = pathname === "/" ? Math.max(280, window.innerHeight * 0.65) : 40;
+			setIsWindowScrolled(window.scrollY > threshold);
 		}
 
 		handleScroll();
 		window.addEventListener("scroll", handleScroll, { passive: true });
 		return () => window.removeEventListener("scroll", handleScroll);
-	}, []);
+	}, [pathname]);
 
-	// Close dropdowns on route change
+	// Close dropdowns & reset scroll position on route change
 	const [prevPathname, setPrevPathname] = useState(pathname);
 	if (prevPathname !== pathname) {
 		setPrevPathname(pathname);
 		setIsMobileMenuOpen(false);
 		setIsNotifOpen(false);
 	}
+
+	useEffect(() => {
+		if (typeof window !== "undefined") {
+			window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+		}
+	}, [pathname]);
 
 	// Close notif dropdown on click outside
 	useEffect(() => {
@@ -149,19 +164,36 @@ export function PublicShellLayout() {
 		pathname.endsWith("/map");
 
 	// On full-screen map routes, the map console has its own split floating topbar and mobile dock.
-	// We return pure Outlet to avoid duplicate navbars and top cutoff!
+	// We return pure Outlet with the Rangkai map preloader on initial visit/reload
 	if (isFullViewportPage) {
-		return <Outlet />;
+		return (
+			<>
+				<RangkaiPreloader preloaderKey="peta" />
+				<Outlet />
+			</>
+		);
 	}
 
 	return (
 		<div style={{ minHeight: "100dvh", display: "flex", flexDirection: "column", position: "relative", backgroundColor: "#FBFBFA" }}>
+			{pathname === "/" && (
+				<RangkaiPreloader
+					preloaderKey="landing"
+					onComplete={() => setIsPreloaderActive(false)}
+				/>
+			)}
 			{/* Floating Capsule Navbar (Teduh Style) */}
-			<header className={`navbar ${isWindowScrolled ? "navbar-scrolled" : ""}`}>
+			<header
+				className={`navbar ${pathname === "/" ? "navbar-landing" : ""} ${isWindowScrolled ? "navbar-scrolled" : ""}`}
+				style={
+					isPreloaderActive
+						? { opacity: 0, pointerEvents: "none", transition: "opacity 0.4s ease" }
+						: undefined
+				}
+			>
 				<div className="navbar-inner">
-					<RouterLinkBridge href="/" className="navbar-brand">
+					<RouterLinkBridge href="/" className="navbar-brand" aria-label="Rangkai Beranda">
 						<img src="/logo.png" alt="Rangkai Logo" className="navbar-brand-logo" />
-						<span className="navbar-brand-text">Rangkai</span>
 					</RouterLinkBridge>
 
 					<nav className="navbar-links" aria-label="Menu Utama">
@@ -311,7 +343,6 @@ export function PublicShellLayout() {
 					<div className="mobile-nav-header">
 						<RouterLinkBridge href="/" className="navbar-brand">
 							<img src="/logo.png" alt="Rangkai Logo" style={{ height: 32 }} />
-							<span style={{ fontSize: 18, fontWeight: 500, color: "#264D3B" }}>Rangkai</span>
 						</RouterLinkBridge>
 						<button
 							type="button"
@@ -403,7 +434,7 @@ export function PublicShellLayout() {
 			</aside>
 
 			{/* Main Content Viewport */}
-			<main id="main-content" style={{ flex: 1 }}>
+			<main ref={mainContentRef} id="main-content" style={{ flex: 1 }}>
 				<Outlet />
 			</main>
 
@@ -497,6 +528,9 @@ export function PublicShellLayout() {
 
 export function WorkspaceShellLayout() {
 	const { pathname } = useLocation();
+	const workspaceContentRef = useRef<HTMLDivElement>(null);
+
+	useGsapRouteTransition(workspaceContentRef, pathname);
 
 	// Extract active event ID from current path if present (e.g. /dashboard/events/:id or /field/events/:id)
 	const eventIdMatch = pathname.match(/(?:dashboard|field)\/events\/([^/]+)/);
@@ -608,7 +642,12 @@ export function WorkspaceShellLayout() {
 			sideNav={sideNav}
 			contentPadding={0}
 		>
-			<Outlet />
+			<div
+				ref={workspaceContentRef}
+				style={{ height: "100%", display: "flex", flexDirection: "column" }}
+			>
+				<Outlet />
+			</div>
 		</AppShell>
 	);
 }

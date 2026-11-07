@@ -11,7 +11,7 @@ import {
 	Radio,
 	ShieldCheck,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { z } from "zod";
 import { ApiClientError } from "../lib/api-client";
@@ -21,6 +21,7 @@ import {
 	useSignInMutation,
 	useSignOutMutation,
 } from "../lib/auth";
+import { useGsapPageReveal } from "../lib/gsap-motion";
 
 const loginSchema = z.object({
 	email: z
@@ -34,6 +35,7 @@ const loginSchema = z.object({
 export function LoginPage() {
 	const navigate = useNavigate();
 	const location = useLocation();
+	const pageRef = useRef<HTMLDivElement>(null);
 	const { data: sessionData, isLoading: isSessionLoading } = useAuthSession();
 	const { data: orgsData } = useMyOrganizationsQuery();
 	const signInMutation = useSignInMutation();
@@ -51,6 +53,8 @@ export function LoginPage() {
 	);
 	const [showPilotCredentials, setShowPilotCredentials] = useState(false);
 
+	useGsapPageReveal(pageRef, [isSessionLoading, Boolean(sessionData?.user)]);
+
 	const redirectTarget =
 		(location.state as { from?: string } | null)?.from || "/dashboard";
 
@@ -63,11 +67,9 @@ export function LoginPage() {
 		if (!parsed.success) {
 			const nextErrors: { email?: string; password?: string } = {};
 			for (const issue of parsed.error.issues) {
-				if (issue.path[0] === "email" && !nextErrors.email) {
-					nextErrors.email = issue.message;
-				}
-				if (issue.path[0] === "password" && !nextErrors.password) {
-					nextErrors.password = issue.message;
+				const key = issue.path[0] as "email" | "password";
+				if (!nextErrors[key]) {
+					nextErrors[key] = issue.message;
 				}
 			}
 			setFieldErrors(nextErrors);
@@ -79,21 +81,20 @@ export function LoginPage() {
 				email: parsed.data.email,
 				password: parsed.data.password,
 			});
-			setPassword("");
 			navigate(redirectTarget);
 		} catch (err) {
 			if (err instanceof ApiClientError) {
 				setServerErrorMessage(err.message);
 			} else {
 				setServerErrorMessage(
-					"Gagal menghubungkan ke layanan autentikasi. Pastikan akun telah terdaftar atau gunakan kredensial pilot di bawah.",
+					"Gagal masuk. Periksa kembali alamat email dan kata sandi Anda.",
 				);
 			}
 		}
 	}
 
-	function handleFillPilotCredentials(pilotEmail: string) {
-		setEmail(pilotEmail);
+	function handleFillPilotCredentials(targetEmail: string) {
+		setEmail(targetEmail);
 		setPassword("Prajuru123!");
 		setFieldErrors({});
 		setServerErrorMessage(null);
@@ -102,10 +103,19 @@ export function LoginPage() {
 	const activeOrg = orgsData?.organizations?.[0];
 
 	return (
-		<div className="teduh-page-shell" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start" }}>
+		<div
+			ref={pageRef}
+			className="teduh-page-shell"
+			style={{
+				display: "flex",
+				flexDirection: "column",
+				alignItems: "center",
+				justifyContent: "flex-start",
+			}}
+		>
 			<div style={{ width: "100%", maxWidth: 460 }}>
 				{/* Top back link to Home */}
-				<div style={{ marginBottom: 16 }}>
+				<div style={{ marginBottom: 16 }} data-gsap="reveal">
 					<Link
 						to="/"
 						className="teduh-back-link"
@@ -119,6 +129,8 @@ export function LoginPage() {
 				{!isSessionLoading && sessionData?.user ? (
 					/* Active Session Card */
 					<div
+						className="teduh-auth-card"
+						data-gsap="reveal"
 						style={{
 							background: "#FFFFFF",
 							borderRadius: 20,
@@ -239,6 +251,8 @@ export function LoginPage() {
 				) : (
 					/* Sign In Form Card */
 					<div
+						className="teduh-auth-card"
+						data-gsap="reveal"
 						style={{
 							background: "#FFFFFF",
 							borderRadius: 20,

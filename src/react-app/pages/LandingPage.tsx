@@ -4,7 +4,7 @@ import {
 	Calendar,
 	MapPin,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { BaliLandingSatelliteMap } from "../features/map/BaliLandingSatelliteMap";
 import {
@@ -12,6 +12,7 @@ import {
 	formatWitaEventSchedule,
 	mapPublicEventToCeremonyProfile,
 } from "../lib/events-api";
+import { useGsapLandingScroll } from "../lib/gsap-motion";
 
 interface NormalizedLandingEvent {
 	id: string;
@@ -26,6 +27,7 @@ interface NormalizedLandingEvent {
 
 export function LandingPage() {
 	const [selectedRegencyFilter, setSelectedRegencyFilter] = useState("all");
+	const landingRef = useRef<HTMLDivElement>(null);
 
 	// Live API connection for published/active events from backend
 	const { data: publicEventsData, isLoading: isEventsLoading } = useQuery({
@@ -77,21 +79,32 @@ export function LandingPage() {
 		);
 	});
 
+	useGsapLandingScroll(landingRef, [
+		filteredEvents.length,
+		selectedRegencyFilter,
+		isEventsLoading,
+	]);
+
 	return (
-		<div style={{ width: "100%", overflowX: "hidden" }}>
+		<div ref={landingRef} style={{ width: "100%", overflowX: "hidden" }}>
 			{/* 1. HERO SPLIT SECTION */}
 			<section className="hero">
 				<div className="hero-left">
 					<div className="hero-left-inner">
-						<h1 className="hero-title">
+						<div className="hero-label" data-gsap="hero-item">
+							<span className="hero-label-diamond" aria-hidden="true" />
+							<span>Sistem Koordinasi Upacara Adat Bali</span>
+						</div>
+
+						<h1 className="hero-title" data-gsap="hero-item">
 							Koordinasi Upacara Adat & Jalur Publik Lebih Teratur
 						</h1>
 
-						<p className="hero-desc">
+						<p className="hero-desc" data-gsap="hero-item">
 							Platform koordinasi jadwal karya adat, pembaruan status ruas jalan oleh petugas Pecalang terverifikasi, serta dokumentasi penanganan kebersihan pasca-upacara di Bali.
 						</p>
 
-						<div className="hero-action-row">
+						<div className="hero-action-row" data-gsap="hero-item">
 							<a href="#peta-kawasan" className="btn-hero-primary">
 								<span>Lihat Peta Kawasan</span>
 								<ArrowRight size={16} />
@@ -127,7 +140,7 @@ export function LandingPage() {
 
 			{/* 3. JADWAL UPACARA & PENUTUPAN JALAN TERKINI */}
 			<section id="jadwal" className="schedule-section">
-				<div className="schedule-header">
+				<div className="schedule-header schedule-top-bar">
 					<h2 className="hd">
 						Jadwal Upacara & Rekayasa Jalur Terkini
 					</h2>
@@ -187,7 +200,11 @@ export function LandingPage() {
 							}
 
 							return (
-								<div key={evt.id} className="schedule-card">
+								<div
+									key={evt.id}
+									className="schedule-card"
+									data-gsap="scroll-card"
+								>
 									<div>
 										<div className="schedule-card-header">
 											<span className="schedule-village-label">{evt.village} • {evt.regency}</span>
@@ -227,6 +244,7 @@ export function LandingPage() {
 					</div>
 				) : (
 					<div
+						data-gsap="scroll-card"
 						style={{
 							background: "#FFFFFF",
 							borderRadius: 16,

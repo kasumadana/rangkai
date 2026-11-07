@@ -1,13 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-	ArrowLeft,
 	ArrowRight,
-	Calendar,
 	Clock,
-	Compass,
 	Locate,
 	LogOut,
-	MapPin,
+	Menu,
+	RotateCcw,
 	Search,
 	ShieldCheck,
 	X,
@@ -31,13 +29,17 @@ import {
 	fetchPublicEvents,
 	mapPublicEventToCeremonyProfile,
 } from "../../lib/events-api";
+import { useGsapPageReveal } from "../../lib/gsap-motion";
 import { BaliMapTilerView } from "./BaliMapTilerView";
 
 export function TeduhSpatialMapConsole() {
 	const [searchParams, setSearchParams] = useSearchParams();
+	const mapViewportRef = useRef<HTMLDivElement>(null);
 
 	const { data: sessionData } = useAuthSession();
 	const signOutMutation = useSignOutMutation();
+
+	useGsapPageReveal(mapViewportRef, []);
 
 	// 1. Fetch live published/active events from backend
 	const { data: publicEventsData } = useQuery({
@@ -62,9 +64,6 @@ export function TeduhSpatialMapConsole() {
 	const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(
 		Boolean(requestedParam),
 	);
-	const [drawerStage, setDrawerStage] = useState<"stage1" | "stage2">(
-		requestedParam ? "stage2" : "stage1",
-	);
 	const [selectedRegionName, setSelectedRegionName] = useState<string | null>(
 		null,
 	);
@@ -74,10 +73,12 @@ export function TeduhSpatialMapConsole() {
 	// Search dropdown state
 	const [searchQuery, setSearchQuery] = useState("");
 	const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
+	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 	const searchDropdownRef = useRef<HTMLDivElement>(null);
+	const mobileSearchRef = useRef<HTMLDivElement>(null);
 
-	// Guide panel collapse state
-	const [isGuideMinimized, setIsGuideMinimized] = useState(false);
+	// Guide panel dismissed state — defaults to false so it shows on initial visit; dismisses completely on X click
+	const [isGuideDismissed, setIsGuideDismissed] = useState<boolean>(false);
 
 	// Live coordinates status pill
 	const [cursorCoords, setCursorCoords] = useState<string>(
@@ -91,7 +92,6 @@ export function TeduhSpatialMapConsole() {
 		if (requestedParam) {
 			setSelectedEventKey(requestedParam);
 			setIsDrawerOpen(true);
-			setDrawerStage("stage2");
 		}
 	}
 
@@ -156,20 +156,6 @@ export function TeduhSpatialMapConsole() {
 		[allCeremonyProfiles],
 	);
 
-	// Filtered ceremonies for current selected region
-	const regionCeremonies = useMemo(() => {
-		if (!selectedRegionName) return allCeremonyProfiles;
-		const q = selectedRegionName.toLowerCase().replace("kecamatan ", "");
-		return allCeremonyProfiles.filter(
-			(v) =>
-				v.kabupaten.toLowerCase().includes(q) ||
-				v.kecamatan.toLowerCase().includes(q) ||
-				q.includes(v.kabupaten.toLowerCase()) ||
-				q.includes(v.kecamatan.toLowerCase()) ||
-				v.desaAdatName.toLowerCase().includes(q),
-		);
-	}, [selectedRegionName, allCeremonyProfiles]);
-
 	// Autocomplete search results grouped by category
 	const searchResults = useMemo(() => {
 		const q = searchQuery.toLowerCase().trim();
@@ -220,10 +206,15 @@ export function TeduhSpatialMapConsole() {
 	// Close search dropdown on click outside
 	useEffect(() => {
 		function handleClickOutside(event: MouseEvent) {
-			if (
+			const target = event.target as Node;
+			const insideDesktop =
 				searchDropdownRef.current &&
-				!searchDropdownRef.current.contains(event.target as Node)
-			) {
+				searchDropdownRef.current.contains(target);
+			const insideMobile =
+				mobileSearchRef.current &&
+				mobileSearchRef.current.contains(target);
+
+			if (!insideDesktop && !insideMobile) {
 				setIsSearchDropdownOpen(false);
 			}
 		}
@@ -231,7 +222,7 @@ export function TeduhSpatialMapConsole() {
 		return () => document.removeEventListener("mousedown", handleClickOutside);
 	}, []);
 
-	// Handle selection of a district or territory (does NOT overwrite an already-selected ceremony inside that district)
+	// Handle selection of a district or territory
 	function handleSelectDistrict(
 		districtName: string,
 		district?: BaliDistrictProperties,
@@ -277,64 +268,209 @@ export function TeduhSpatialMapConsole() {
 		}
 		setSearchParams({ village: key });
 		if (openDrawer) {
-			setDrawerStage("stage2");
 			setIsDrawerOpen(true);
 		}
 	}
 
-	// Road status statistics for Stage 1 distribution bar
-	const roadStatusCounts = useMemo(() => {
-		const list =
-			regionCeremonies.length > 0 ? regionCeremonies : allCeremonyProfiles;
-		let closed = 0;
-		let intermittent = 0;
-		let open = 0;
-		let unknown = 0;
+	const searchDropdownNode =
+		isSearchDropdownOpen && searchResults ? (
+			<div className="map-search-dropdown">
+				{/* Category 1: Kecamatan / Kawasan */}
+				{searchResults.districts.length > 0 && (
+					<div>
+						<div
+							style={{
+								padding: "8px 18px 4px",
+								fontSize: 11,
+								fontWeight: 500,
+								color: "#64748B",
+								textTransform: "uppercase",
+								letterSpacing: "0.05em",
+							}}
+						>
+							Wilayah Kecamatan
+						</div>
+						{searchResults.districts.map((d) => (
+							<button
+								type="button"
+								key={d.id}
+								className="map-search-item"
+								onClick={() => {
+									handleSelectDistrict(d.properties.name, d.properties);
+									setIsSearchDropdownOpen(false);
+								}}
+							>
+								<div>
+									<div
+										style={{
+											fontSize: 14,
+											fontWeight: 500,
+											color: "#181B20",
+										}}
+									>
+										{d.properties.name}
+									</div>
+									<div style={{ fontSize: 12, color: "#545B67" }}>
+										{d.properties.kabupaten}
+									</div>
+								</div>
+								<span
+									style={{
+										fontSize: 11,
+										fontWeight: 500,
+										color: "#264D3B",
+										background: "#ECF3EF",
+										padding: "2px 8px",
+										borderRadius: 9999,
+									}}
+								>
+									{d.properties.ceremonyCount} Acara
+								</span>
+							</button>
+						))}
+					</div>
+				)}
 
-		for (const v of list) {
-			if (v.roadSegments.length > 0) {
-				for (const r of v.roadSegments) {
-					if (r.status === "closed") closed++;
-					else if (r.status === "intermittent") intermittent++;
-					else if (r.status === "open") open++;
-					else unknown++;
-				}
-			} else {
-				if (v.primaryStatus === "closed") closed++;
-				else if (v.primaryStatus === "intermittent") intermittent++;
-				else if (v.primaryStatus === "open") open++;
-				else unknown++;
-			}
-		}
+				{/* Category 2: Upacara Adat */}
+				{searchResults.ceremonies.length > 0 && (
+					<div
+						style={{
+							marginTop: 4,
+							paddingTop: 4,
+							borderTop: "1px solid #F1F2F4",
+						}}
+					>
+						<div
+							style={{
+								padding: "8px 18px 4px",
+								fontSize: 11,
+								fontWeight: 500,
+								color: "#64748B",
+								textTransform: "uppercase",
+								letterSpacing: "0.05em",
+							}}
+						>
+							Upacara Terpublikasi
+						</div>
+						{searchResults.ceremonies.map((c) => (
+							<button
+								type="button"
+								key={c.id}
+								className="map-search-item"
+								onClick={() => {
+									handleSelectCeremony(c, true);
+									setIsSearchDropdownOpen(false);
+								}}
+							>
+								<div>
+									<div
+										style={{
+											fontSize: 14,
+											fontWeight: 500,
+											color: "#181B20",
+										}}
+									>
+										{c.ceremonyTitle}
+									</div>
+									<div style={{ fontSize: 12, color: "#545B67" }}>
+										{c.desaAdatName} • {c.kabupaten}
+									</div>
+								</div>
+								<RoadStatusBadge status={c.primaryStatus} />
+							</button>
+						))}
+					</div>
+				)}
 
-		const total = closed + intermittent + open + unknown;
-		const denom = total || 1;
-		return {
-			closed,
-			intermittent,
-			open,
-			unknown,
-			total,
-			closedPct: Math.round((closed / denom) * 100),
-			intermittentPct: Math.round((intermittent / denom) * 100),
-			openPct: Math.round((open / denom) * 100),
-			unknownPct: Math.round((unknown / denom) * 100),
-		};
-	}, [regionCeremonies, allCeremonyProfiles]);
+				{/* Category 3: Ruas Jalan */}
+				{searchResults.roads.length > 0 && (
+					<div
+						style={{
+							marginTop: 4,
+							paddingTop: 4,
+							borderTop: "1px solid #F1F2F4",
+						}}
+					>
+						<div
+							style={{
+								padding: "8px 18px 4px",
+								fontSize: 11,
+								fontWeight: 500,
+								color: "#64748B",
+								textTransform: "uppercase",
+								letterSpacing: "0.05em",
+							}}
+						>
+							Ruas Jalan Terdampak
+						</div>
+						{searchResults.roads.map((r) => (
+							<button
+								type="button"
+								key={r.road.id}
+								className="map-search-item"
+								onClick={() => {
+									handleSelectCeremony(r.village, true);
+									setSelectedSegmentId(r.road.id);
+									setIsSearchDropdownOpen(false);
+								}}
+							>
+								<div>
+									<div
+										style={{
+											fontSize: 14,
+											fontWeight: 500,
+											color: "#181B20",
+										}}
+									>
+										{r.road.roadName}
+									</div>
+									<div style={{ fontSize: 12, color: "#545B67" }}>
+										Pengalihan: {r.road.guidanceNote}
+									</div>
+								</div>
+								<RoadStatusBadge status={r.road.status} />
+							</button>
+						))}
+					</div>
+				)}
+
+				{searchResults.districts.length === 0 &&
+					searchResults.ceremonies.length === 0 &&
+					searchResults.roads.length === 0 && (
+						<div
+							style={{
+								padding: "20px 18px",
+								textAlign: "center",
+								fontSize: 13,
+								color: "#64748B",
+							}}
+						>
+							Tidak ditemukan hasil untuk "{searchQuery}". Coba ketik nama
+							kecamatan atau kabupaten di Bali.
+						</div>
+					)}
+			</div>
+		) : null;
 
 	return (
-		<div className="map-viewport">
+		<div
+			ref={mapViewportRef}
+			className={`map-viewport ${isDrawerOpen ? "has-drawer-open" : ""}`}
+		>
 			{/* 1. DESKTOP FLOATING SPLIT TOPBAR */}
-			<header className="map-desktop-topbar" aria-label="Bilah Navigasi Peta">
+			<header
+				className="map-desktop-topbar"
+				aria-label="Bilah Navigasi Peta"
+				data-gsap="reveal"
+			>
 				{/* Left Capsule: Logo + Search Bar + Instant Dropdown */}
 				<div className="map-desktop-topbar-left" ref={searchDropdownRef}>
-					<Link to="/" className="navbar-brand">
+					<Link to="/" className="navbar-brand" aria-label="Rangkai Beranda">
 						<img
 							src="/logo.png"
 							alt="Rangkai Logo"
 							className="navbar-brand-logo"
 						/>
-						<span className="navbar-brand-text">Rangkai</span>
 					</Link>
 
 					<div className="map-topbar-divider" />
@@ -373,187 +509,8 @@ export function TeduhSpatialMapConsole() {
 						)}
 					</div>
 
-					{/* Live Dropdown Results */}
-					{isSearchDropdownOpen && searchResults && (
-						<div className="map-search-dropdown">
-							{/* Category 1: Kecamatan / Kawasan */}
-							{searchResults.districts.length > 0 && (
-								<div>
-									<div
-										style={{
-											padding: "8px 18px 4px",
-											fontSize: 11,
-											fontWeight: 500,
-											color: "#64748B",
-											textTransform: "uppercase",
-											letterSpacing: "0.05em",
-										}}
-									>
-										Wilayah Kecamatan
-									</div>
-									{searchResults.districts.map((d) => (
-										<button
-											type="button"
-											key={d.id}
-											className="map-search-item"
-											onClick={() => {
-												handleSelectDistrict(d.properties.name, d.properties);
-												setDrawerStage("stage1");
-												setIsDrawerOpen(true);
-												setIsSearchDropdownOpen(false);
-											}}
-										>
-											<div>
-												<div
-													style={{
-														fontSize: 14,
-														fontWeight: 500,
-														color: "#181B20",
-													}}
-												>
-													{d.properties.name}
-												</div>
-												<div style={{ fontSize: 12, color: "#545B67" }}>
-													{d.properties.kabupaten}
-												</div>
-											</div>
-											<span
-												style={{
-													fontSize: 11,
-													fontWeight: 500,
-													color: "#264D3B",
-													background: "#ECF3EF",
-													padding: "2px 8px",
-													borderRadius: 9999,
-												}}
-											>
-												{d.properties.ceremonyCount} Acara
-											</span>
-										</button>
-									))}
-								</div>
-							)}
-
-							{/* Category 2: Upacara Adat */}
-							{searchResults.ceremonies.length > 0 && (
-								<div
-									style={{
-										marginTop: 4,
-										paddingTop: 4,
-										borderTop: "1px solid #F1F2F4",
-									}}
-								>
-									<div
-										style={{
-											padding: "8px 18px 4px",
-											fontSize: 11,
-											fontWeight: 500,
-											color: "#64748B",
-											textTransform: "uppercase",
-											letterSpacing: "0.05em",
-										}}
-									>
-										Upacara Terpublikasi
-									</div>
-									{searchResults.ceremonies.map((c) => (
-										<button
-											type="button"
-											key={c.id}
-											className="map-search-item"
-											onClick={() => {
-												handleSelectCeremony(c, true);
-												setIsSearchDropdownOpen(false);
-											}}
-										>
-											<div>
-												<div
-													style={{
-														fontSize: 14,
-														fontWeight: 500,
-														color: "#181B20",
-													}}
-												>
-													{c.ceremonyTitle}
-												</div>
-												<div style={{ fontSize: 12, color: "#545B67" }}>
-													{c.desaAdatName} • {c.kabupaten}
-												</div>
-											</div>
-											<RoadStatusBadge status={c.primaryStatus} />
-										</button>
-									))}
-								</div>
-							)}
-
-							{/* Category 3: Ruas Jalan */}
-							{searchResults.roads.length > 0 && (
-								<div
-									style={{
-										marginTop: 4,
-										paddingTop: 4,
-										borderTop: "1px solid #F1F2F4",
-									}}
-								>
-									<div
-										style={{
-											padding: "8px 18px 4px",
-											fontSize: 11,
-											fontWeight: 500,
-											color: "#64748B",
-											textTransform: "uppercase",
-											letterSpacing: "0.05em",
-										}}
-									>
-										Ruas Jalan Terdampak
-									</div>
-									{searchResults.roads.map((r) => (
-										<button
-											type="button"
-											key={r.road.id}
-											className="map-search-item"
-											onClick={() => {
-												handleSelectCeremony(r.village, true);
-												setSelectedSegmentId(r.road.id);
-												setIsSearchDropdownOpen(false);
-											}}
-										>
-											<div>
-												<div
-													style={{
-														fontSize: 14,
-														fontWeight: 500,
-														color: "#181B20",
-													}}
-												>
-													{r.road.roadName}
-												</div>
-												<div style={{ fontSize: 12, color: "#545B67" }}>
-													Pengalihan: {r.road.guidanceNote}
-												</div>
-											</div>
-											<RoadStatusBadge status={r.road.status} />
-										</button>
-									))}
-								</div>
-							)}
-
-							{searchResults.districts.length === 0 &&
-								searchResults.ceremonies.length === 0 &&
-								searchResults.roads.length === 0 && (
-									<div
-										style={{
-											padding: "20px 18px",
-											textAlign: "center",
-											fontSize: 13,
-											color: "#64748B",
-										}}
-									>
-										Tidak ditemukan hasil untuk "{searchQuery}". Coba ketik nama
-										kecamatan atau kabupaten di Bali.
-									</div>
-								)}
-						</div>
-					)}
+					{/* Live Dropdown Results (Desktop) */}
+					{searchDropdownNode}
 				</div>
 
 				{/* Right Capsule: 3 Clean Nav Links + Officer Auth */}
@@ -633,9 +590,31 @@ export function TeduhSpatialMapConsole() {
 				</div>
 			</header>
 
-			{/* 2. MOBILE TOP SEARCH CAPSULE (< 860px) */}
-			<div className="map-mobile-search-capsule">
-				<Search size={16} color="#64748B" />
+			{/* 2. MOBILE TOP SEARCH CAPSULE (< 860px) WITH HAMBURGER MENU */}
+			<div
+				ref={mobileSearchRef}
+				className="map-mobile-search-capsule"
+				data-gsap="reveal"
+			>
+				<Link
+					to="/"
+					aria-label="Kembali ke Beranda"
+					style={{
+						display: "inline-flex",
+						alignItems: "center",
+						justifyContent: "center",
+						textDecoration: "none",
+						flexShrink: 0,
+					}}
+				>
+					<img
+						src="/logo.png"
+						alt="Rangkai"
+						style={{ width: 24, height: 24, objectFit: "contain" }}
+					/>
+				</Link>
+				<div className="map-topbar-divider" style={{ height: 18, margin: "0 2px" }} />
+				<Search size={16} color="#64748B" style={{ flexShrink: 0 }} />
 				<input
 					type="text"
 					placeholder="Cari kecamatan, desa, atau acara..."
@@ -652,6 +631,7 @@ export function TeduhSpatialMapConsole() {
 						background: "transparent",
 						fontSize: 13.5,
 						color: "#181B20",
+						minWidth: 0,
 					}}
 				/>
 				{searchQuery && (
@@ -661,93 +641,158 @@ export function TeduhSpatialMapConsole() {
 							setSearchQuery("");
 							setIsSearchDropdownOpen(false);
 						}}
-						style={{ background: "none", border: "none", color: "#64748B" }}
+						style={{ background: "none", border: "none", color: "#64748B", padding: 4 }}
+						aria-label="Bersihkan pencarian"
 					>
 						<X size={16} />
 					</button>
 				)}
-			</div>
-
-			{/* 3. MOBILE BOTTOM DOCK (< 860px) */}
-			<div className="map-mobile-bottom-dock">
-				<Link
-					to="/"
+				<button
+					type="button"
+					onClick={() => setIsMobileMenuOpen(true)}
 					style={{
-						display: "flex",
-						flexDirection: "column",
-						alignItems: "center",
-						justifyContent: "center",
-						minHeight: 44,
-						minWidth: 56,
-						gap: 2,
-						textDecoration: "none",
-						color: "#545B67",
-						fontSize: 11,
-					}}
-				>
-					<Compass size={18} />
-					<span>Beranda</span>
-				</Link>
-				<Link
-					to="/peta"
-					style={{
-						display: "flex",
-						flexDirection: "column",
-						alignItems: "center",
-						justifyContent: "center",
-						minHeight: 44,
-						minWidth: 56,
-						gap: 2,
-						textDecoration: "none",
+						background: "none",
+						border: "none",
 						color: "#264D3B",
-						fontSize: 11,
-						fontWeight: 500,
-					}}
-				>
-					<MapPin size={18} />
-					<span>Peta</span>
-				</Link>
-				<Link
-					to="/events"
-					style={{
+						padding: "4px 2px",
 						display: "flex",
-						flexDirection: "column",
 						alignItems: "center",
 						justifyContent: "center",
-						minHeight: 44,
-						minWidth: 56,
-						gap: 2,
-						textDecoration: "none",
-						color: "#545B67",
-						fontSize: 11,
+						cursor: "pointer",
+						flexShrink: 0,
 					}}
+					aria-label="Buka Menu"
 				>
-					<Calendar size={18} />
-					<span>Jadwal</span>
-				</Link>
-				<Link
-					to="/login"
-					style={{
-						display: "flex",
-						flexDirection: "column",
-						alignItems: "center",
-						justifyContent: "center",
-						minHeight: 44,
-						minWidth: 56,
-						gap: 2,
-						textDecoration: "none",
-						color: "#545B67",
-						fontSize: 11,
-					}}
-				>
-					<ShieldCheck size={18} />
-					<span>Petugas</span>
-				</Link>
+					<Menu size={20} />
+				</button>
+
+				{/* Live Dropdown Results (Mobile) */}
+				{searchDropdownNode}
 			</div>
 
-			{/* 4. GUIDED 3-STEP EXPLORATION PANEL (TOP-LEFT BELOW SEARCH) */}
-			{!isGuideMinimized ? (
-				<div className="map-onboarding" role="region" aria-label="Panduan Eksplorasi Peta">
+			{/* Mobile Slide-Over Menu for Map Console */}
+			<div
+				className={`mobile-nav-overlay ${isMobileMenuOpen ? "is-visible" : ""}`}
+				onClick={() => setIsMobileMenuOpen(false)}
+			/>
+			<aside
+				className={`mobile-nav-menu ${isMobileMenuOpen ? "is-open" : ""}`}
+				aria-label="Menu Ponsel Peta"
+			>
+				<div className="mobile-nav-top">
+					<div className="mobile-nav-header">
+						<Link to="/" className="navbar-brand">
+							<img src="/logo.png" alt="Rangkai Logo" style={{ height: 32 }} />
+						</Link>
+						<button
+							type="button"
+							onClick={() => setIsMobileMenuOpen(false)}
+							style={{ background: "none", border: "none", cursor: "pointer", color: "#545B67" }}
+							aria-label="Tutup menu"
+						>
+							<X size={24} />
+						</button>
+					</div>
+
+					<div className="mobile-nav-links">
+						<Link
+							to="/"
+							className="mobile-nav-link"
+							onClick={() => setIsMobileMenuOpen(false)}
+						>
+							Beranda
+						</Link>
+						<Link
+							to="/peta"
+							className="mobile-nav-link is-active"
+							onClick={() => setIsMobileMenuOpen(false)}
+						>
+							Peta Kawasan
+						</Link>
+						<Link
+							to="/events"
+							className="mobile-nav-link"
+							onClick={() => setIsMobileMenuOpen(false)}
+						>
+							Jadwal Upacara
+						</Link>
+					</div>
+				</div>
+
+				<div style={{ paddingTop: 20, borderTop: "1px solid #E2E4E8" }}>
+					{sessionData?.user ? (
+						<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+							<Link
+								to="/dashboard"
+								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: 10,
+									padding: "10px 14px",
+									background: "#F4F4F3",
+									borderRadius: 12,
+									textDecoration: "none",
+									color: "#181B20",
+									fontSize: 14,
+								}}
+							>
+								<ShieldCheck size={18} color="#264D3B" />
+								<span>Panel Petugas Desa</span>
+							</Link>
+							<button
+								type="button"
+								onClick={() => signOutMutation.mutate()}
+								style={{
+									display: "flex",
+									alignItems: "center",
+									gap: 10,
+									padding: "10px 14px",
+									background: "none",
+									border: "1px solid #E2E4E8",
+									borderRadius: 12,
+									color: "#B91C1C",
+									fontSize: 14,
+									cursor: "pointer",
+								}}
+							>
+								<LogOut size={18} />
+								<span>Keluar Akun</span>
+							</button>
+						</div>
+					) : (
+						<Link
+							to="/login"
+							style={{
+								display: "flex",
+								alignItems: "center",
+								justifyContent: "center",
+								gap: 8,
+								width: "100%",
+								padding: "12px 20px",
+								borderRadius: 9999,
+								background: "#9E2A2B",
+								color: "#FFFFFF",
+								textDecoration: "none",
+								fontWeight: 500,
+								fontSize: 14.5,
+								boxSizing: "border-box",
+							}}
+						>
+							<ShieldCheck size={18} />
+							<span>Akses Petugas Desa</span>
+						</Link>
+					)}
+				</div>
+			</aside>
+
+			{/* 3. GUIDED 3-STEP EXPLORATION PANEL (Dismisses completely when X is clicked) */}
+			{!isGuideDismissed && (
+				<div
+					className="map-onboarding"
+					role="region"
+					aria-label="Panduan Eksplorasi Peta"
+					data-gsap="reveal"
+				>
 					<div style={{ flex: 1 }}>
 						<div
 							style={{
@@ -768,7 +813,7 @@ export function TeduhSpatialMapConsole() {
 							</span>
 							<button
 								type="button"
-								onClick={() => setIsGuideMinimized(true)}
+								onClick={() => setIsGuideDismissed(true)}
 								style={{
 									background: "none",
 									border: "none",
@@ -777,7 +822,7 @@ export function TeduhSpatialMapConsole() {
 									padding: 4,
 									display: "flex",
 								}}
-								aria-label="Sembunyikan panduan"
+								aria-label="Tutup panduan"
 							>
 								<X size={15} />
 							</button>
@@ -802,49 +847,28 @@ export function TeduhSpatialMapConsole() {
 								<strong>Klik Titik Upacara</strong> untuk melihat kartu ringkas lokasi dan jam kegiatan.
 							</li>
 							<li>
-								<strong>Klik Lihat Detail</strong> untuk membuka daftar ruas jalan terdampak di panel kanan.
+								<strong>Klik Lihat Detail</strong> untuk membuka panel rincian ruas jalan terdampak.
 							</li>
 						</ol>
 					</div>
 				</div>
-			) : (
-				<button
-					type="button"
-					onClick={() => setIsGuideMinimized(false)}
-					className="map-guide-reopen-btn"
-				>
-					<span>Panduan & Daftar Cepat ({allCeremonyProfiles.length})</span>
-				</button>
 			)}
 
-			{/* 5. FLOATING CONTROLS: GPS LOCATE BUTTON & RESET OVERVIEW */}
+			{/* 4. FLOATING CONTROLS: GPS LOCATE BUTTON & RESET OVERVIEW */}
 			<div className="map-floating-controls">
 				{(selectedRegionName || isDrawerOpen) && (
 					<button
 						type="button"
+						className="map-reset-btn"
 						onClick={() => {
 							setSelectedRegionName(null);
 							setIsDrawerOpen(false);
 							setSearchParams({});
 						}}
-						style={{
-							background: "rgba(255, 255, 255, 0.96)",
-							border: "none",
-							borderRadius: 9999,
-							padding: "9px 16px",
-							fontSize: 12.5,
-							fontWeight: 500,
-							color: "#181B20",
-							cursor: "pointer",
-							boxShadow: "0 4px 14px rgba(0, 0, 0, 0.1)",
-							display: "flex",
-							alignItems: "center",
-							gap: 6,
-							whiteSpace: "nowrap",
-						}}
 						title="Tampilkan Seluruh Wilayah Bali"
+						aria-label="Tampilkan Seluruh Wilayah Bali"
 					>
-						<span>↺ Seluruh Bali</span>
+						<RotateCcw size={18} />
 					</button>
 				)}
 				<button
@@ -871,7 +895,7 @@ export function TeduhSpatialMapConsole() {
 				</button>
 			</div>
 
-			{/* 6. BOTTOM STATUSBAR PILL */}
+			{/* 5. BOTTOM STATUSBAR PILL */}
 			<div className="map-statusbar">
 				<div className="map-status-pill tabular-nums">
 					<span>{cursorCoords}</span>
@@ -880,7 +904,7 @@ export function TeduhSpatialMapConsole() {
 				</div>
 			</div>
 
-			{/* 7. FULLSCREEN MAPLIBRE CANVAS */}
+			{/* 6. FULLSCREEN MAPLIBRE CANVAS */}
 			<div className="map-canvas-full">
 				<BaliMapTilerView
 					village={activeVillage}
@@ -890,14 +914,16 @@ export function TeduhSpatialMapConsole() {
 						handleSelectDistrict(regName, district);
 					}}
 					onSelectVillage={(v) => {
-						// Step 2: Pin click focuses the ceremony and shows compact popup above pin
-						handleSelectCeremony(v, false);
+						const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+						// On desktop: directly open right-side detail popup panel!
+						// On mobile: keep popup above pin; clicking "Lihat Detail" opens bottom sheet.
+						handleSelectCeremony(v, !isMobile);
 					}}
 					selectedSegmentId={selectedSegmentId}
 					onSelectSegment={(segId) => setSelectedSegmentId(segId)}
 					showAllVillagesMarkers={true}
 					onOpenCeremonyDetail={(c) => {
-						// Step 3: Clicking "Lihat Detail" on the popup opens the synchronized side panel
+						// Step 2: Clicking "Lihat Detail" on the popup opens the full bottom-up content sheet
 						const found = allCeremonyProfiles.find(
 							(v) => v.id === c.id || v.slug === c.slug,
 						);
@@ -912,445 +938,106 @@ export function TeduhSpatialMapConsole() {
 				/>
 			</div>
 
-			{/* 8. SYNCHRONIZED SLIDING SPATIAL DRAWER (BELOW TOPBAR, PURE BACKEND DATA) */}
+			{/* 7. BOTTOM-UP FULL CONTENT SHEET (No "Kembali ke Wilayah" button, clean X to close) */}
+			{isDrawerOpen && (
+				<div
+					className="spatial-drawer-backdrop"
+					onClick={() => setIsDrawerOpen(false)}
+					aria-hidden="true"
+				/>
+			)}
 			<aside
 				className={`spatial-drawer ${isDrawerOpen ? "is-open" : ""}`}
-				aria-label="Panel Rincian Wilayah & Upacara"
+				aria-label="Rincian Upacara & Ruas Jalan Terdampak"
 			>
-				<div className="drawer-header">
-					<div style={{ flex: 1 }}>
-						{drawerStage === "stage2" ? (
-							<button
-								type="button"
-								onClick={() => setDrawerStage("stage1")}
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									gap: 6,
-									background: "none",
-									border: "none",
-									padding: 0,
-									color: "#264D3B",
-									fontSize: 13,
-									fontWeight: 500,
-									cursor: "pointer",
-									marginBottom: 4,
-								}}
-							>
-								<ArrowLeft size={14} />
-								<span>Kembali ke Daftar Wilayah</span>
-							</button>
-						) : null}
-
-						<h3
-							style={{
-								fontSize: 20,
-								fontWeight: 400,
-								color: "#181B20",
-								margin: 0,
-								lineHeight: 1.3,
-							}}
-						>
-							{drawerStage === "stage2" && activeVillage
-								? activeVillage.ceremonyTitle
-								: selectedRegionName
-									? `Kawasan ${selectedRegionName}`
-									: "Ringkasan Wilayah Bali"}
-						</h3>
-					</div>
-
-					<button
-						type="button"
-						className="drawer-close-btn"
-						onClick={() => setIsDrawerOpen(false)}
-						title="Tutup Panel"
-						aria-label="Tutup Panel"
-					>
-						<X size={18} />
-					</button>
-				</div>
-
-				<div className="drawer-body">
-					{drawerStage === "stage1" || !activeVillage ? (
-						/* ================= STAGE 1: REGIONAL SUMMARY ================= */
-						<div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-							<div
-								style={{
-									background: "#FFFFFF",
-									borderRadius: 16,
-									padding: "18px 20px",
-								}}
-							>
+				<div className="drawer-mobile-grabber" aria-hidden="true" />
+				{activeVillage ? (
+					<>
+						<div className="drawer-header">
+							<div style={{ flex: 1, minWidth: 0 }}>
 								<div
 									style={{
 										display: "flex",
-										justifyContent: "space-between",
 										alignItems: "center",
-										marginBottom: 12,
-									}}
-								>
-									<span
-										style={{
-											fontSize: 14,
-											fontWeight: 500,
-											color: "#181B20",
-										}}
-									>
-										Komposisi Status Jalur
-									</span>
-									<span
-										style={{
-											fontSize: 12,
-											color: "#64748B",
-											fontVariantNumeric: "tabular-nums",
-										}}
-									>
-										{roadStatusCounts.total} Titik Terpantau
-									</span>
-								</div>
-
-								<div
-									style={{
-										height: 8,
-										borderRadius: 9999,
-										overflow: "hidden",
-										display: "flex",
-										background: "#E2E4E8",
-										marginBottom: 14,
-									}}
-								>
-									<div
-										style={{
-											width: `${roadStatusCounts.closedPct}%`,
-											background: "#B91C1C",
-										}}
-										title={`Ditutup: ${roadStatusCounts.closed}`}
-									/>
-									<div
-										style={{
-											width: `${roadStatusCounts.intermittentPct}%`,
-											background: "#D97706",
-										}}
-										title={`Buka-Tutup: ${roadStatusCounts.intermittent}`}
-									/>
-									<div
-										style={{
-											width: `${roadStatusCounts.openPct}%`,
-											background: "#15803D",
-										}}
-										title={`Lancar: ${roadStatusCounts.open}`}
-									/>
-									<div
-										style={{
-											width: `${roadStatusCounts.unknownPct}%`,
-											background: "#64748B",
-										}}
-										title={`Belum Dikonfirmasi: ${roadStatusCounts.unknown}`}
-									/>
-								</div>
-
-								<div
-									style={{
-										display: "grid",
-										gridTemplateColumns: "1fr 1fr",
 										gap: 8,
+										marginBottom: 6,
+										flexWrap: "wrap",
 									}}
 								>
-									<div
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: 6,
-											fontSize: 12.5,
-											color: "#181B20",
-										}}
-									>
-										<span
-											style={{
-												width: 8,
-												height: 8,
-												borderRadius: 2,
-												background: "#B91C1C",
-											}}
-										/>
-										<span>
-											Ditutup: <strong>{roadStatusCounts.closed}</strong>
-										</span>
-									</div>
-									<div
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: 6,
-											fontSize: 12.5,
-											color: "#181B20",
-										}}
-									>
-										<span
-											style={{
-												width: 8,
-												height: 8,
-												borderRadius: 2,
-												background: "#D97706",
-											}}
-										/>
-										<span>
-											Buka-Tutup:{" "}
-											<strong>{roadStatusCounts.intermittent}</strong>
-										</span>
-									</div>
-									<div
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: 6,
-											fontSize: 12.5,
-											color: "#181B20",
-										}}
-									>
-										<span
-											style={{
-												width: 8,
-												height: 8,
-												borderRadius: 2,
-												background: "#15803D",
-											}}
-										/>
-										<span>
-											Lancar: <strong>{roadStatusCounts.open}</strong>
-										</span>
-									</div>
-									<div
-										style={{
-											display: "flex",
-											alignItems: "center",
-											gap: 6,
-											fontSize: 12.5,
-											color: "#181B20",
-										}}
-									>
-										<span
-											style={{
-												width: 8,
-												height: 8,
-												borderRadius: 2,
-												background: "#64748B",
-											}}
-										/>
-										<span>
-											Belum Konf.: <strong>{roadStatusCounts.unknown}</strong>
-										</span>
-									</div>
-								</div>
-							</div>
-
-							<div>
-								<div
-									style={{
-										fontSize: 13,
-										fontWeight: 500,
-										color: "#545B67",
-										marginBottom: 10,
-									}}
-								>
-									Daftar Upacara di Wilayah Ini ({regionCeremonies.length})
-								</div>
-
-								{regionCeremonies.length > 0 ? (
-									<div
-										style={{
-											display: "flex",
-											flexDirection: "column",
-											gap: 10,
-										}}
-									>
-										{regionCeremonies.map((c) => (
-											<button
-												type="button"
-												key={c.id}
-												onClick={() => handleSelectCeremony(c, true)}
-												style={{
-													background: "#FFFFFF",
-													border: "none",
-													borderRadius: 14,
-													padding: "16px 18px",
-													cursor: "pointer",
-													textAlign: "left",
-													width: "100%",
-												}}
-											>
-												<div
-													style={{
-														display: "flex",
-														justifyContent: "space-between",
-														alignItems: "center",
-														marginBottom: 6,
-													}}
-												>
-													<span
-														style={{
-															fontSize: 12,
-															fontWeight: 500,
-															color: "#264D3B",
-														}}
-													>
-														{c.desaAdatName}
-													</span>
-													<RoadStatusBadge status={c.primaryStatus} />
-												</div>
-
-												<div
-													style={{
-														fontSize: 15,
-														fontWeight: 500,
-														color: "#181B20",
-														marginBottom: 6,
-													}}
-												>
-													{c.ceremonyTitle}
-												</div>
-
-												<div
-													style={{
-														fontSize: 12.5,
-														color: "#545B67",
-													}}
-												>
-													{c.scheduleDateLabel} • {c.sacredCenterName}
-												</div>
-											</button>
-										))}
-									</div>
-								) : (
-									<div
-										style={{
-											background: "#FFFFFF",
-											borderRadius: 14,
-											padding: "24px 20px",
-											textAlign: "center",
-											color: "#545B67",
-										}}
-									>
-										<p style={{ margin: 0, fontSize: 14 }}>
-											Belum ada upacara adat terpublikasi di kawasan ini.
-										</p>
-									</div>
-								)}
-							</div>
-						</div>
-					) : (
-						/* ================= STAGE 2: CEREMONY & VERIFIED ROADS DETAIL ================= */
-						<div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-							{/* Ceremony Header Card */}
-							<div
-								style={{
-									background: "#FFFFFF",
-									borderRadius: 16,
-									padding: "18px 20px",
-								}}
-							>
-								<div
-									style={{
-										display: "flex",
-										justifyContent: "space-between",
-										alignItems: "center",
-										marginBottom: 8,
-										gap: 8,
-									}}
-								>
-									<span
-										style={{
-											fontSize: 12.5,
-											fontWeight: 500,
-											color: "#264D3B",
-										}}
-									>
+									<span className="drawer-location-tag">
 										{activeVillage.desaAdatName} • {activeVillage.kabupaten}
 									</span>
 									<RoadStatusBadge status={activeVillage.primaryStatus} />
 								</div>
+								<h3 className="drawer-title">
+									{activeVillage.ceremonyTitle}
+								</h3>
+							</div>
 
-								<div
-									style={{
-										fontSize: 13.5,
-										color: "#545B67",
-										marginBottom: 12,
-									}}
-								>
-									Lokasi Utama:{" "}
-									<strong style={{ color: "#181B20" }}>
-										{activeVillage.sacredCenterName}
-									</strong>
-								</div>
+							<button
+								type="button"
+								className="drawer-close-btn"
+								onClick={() => setIsDrawerOpen(false)}
+								title="Tutup Panel"
+								aria-label="Tutup Panel"
+							>
+								<X size={20} />
+							</button>
+						</div>
 
-								<div
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: 8,
-										background: "#F4F4F3",
-										padding: "9px 14px",
-										borderRadius: 10,
-										fontSize: 13,
-										color: "#181B20",
-										fontVariantNumeric: "tabular-nums",
-									}}
-								>
-									<Clock size={15} color="#264D3B" />
-									<span>
-										{activeVillage.scheduleDateLabel} •{" "}
-										{activeVillage.scheduleWindowWita}
-									</span>
+						<div className="drawer-body">
+							{/* 1. Ceremony Info Card */}
+							<div className="drawer-info-card">
+								<div className="drawer-info-row">
+									<div className="drawer-info-item">
+										<span className="drawer-info-label">Pusat Upacara</span>
+										<span className="drawer-info-value">{activeVillage.sacredCenterName}</span>
+									</div>
+									<div className="drawer-info-item">
+										<span className="drawer-info-label">Jadwal Pelaksanaan</span>
+										<div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+											<Clock size={15} color="#264D3B" />
+											<span className="drawer-info-value tabular-nums">
+												{activeVillage.scheduleDateLabel} • {activeVillage.scheduleWindowWita}
+											</span>
+										</div>
+									</div>
 								</div>
 
 								{activeVillage.overview && (
-									<p
-										style={{
-											margin: "12px 0 0 0",
-											fontSize: 13.5,
-											color: "#545B67",
-											lineHeight: 1.55,
-										}}
-									>
-										{activeVillage.overview}
-									</p>
+									<div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #ECEEEF" }}>
+										<span className="drawer-info-label">Arahan Pelaksanaan</span>
+										<p style={{ margin: "4px 0 0", fontSize: 13.5, color: "#545B67", lineHeight: 1.65 }}>
+											{activeVillage.overview}
+										</p>
+									</div>
 								)}
 							</div>
 
-							{/* Verified Road Segments from Backend */}
-							<div>
+							{/* 2. Verified Road Segments Section */}
+							<div className="drawer-roads-section">
 								<div
 									style={{
-										fontSize: 13,
-										fontWeight: 500,
-										color: "#545B67",
-										marginBottom: 10,
+										display: "flex",
+										justifyContent: "space-between",
+										alignItems: "center",
+										marginBottom: 12,
 									}}
 								>
-									Ruas Jalan Terdampak Terverifikasi (
-									{activeVillage.roadSegments.length})
+									<span style={{ fontSize: 14, fontWeight: 600, color: "#181B20" }}>
+										Ruas Jalan Terdampak Terverifikasi ({activeVillage.roadSegments.length})
+									</span>
+									<span style={{ fontSize: 12, color: "#64748B" }}>
+										Verifikasi Pecalang
+									</span>
 								</div>
 
 								{isRoadsLoading ? (
-									<div
-										style={{
-											background: "#FFFFFF",
-											borderRadius: 14,
-											padding: "20px",
-											fontSize: 13.5,
-											color: "#545B67",
-										}}
-									>
+									<div className="drawer-empty-box">
 										Memuat daftar ruas jalan terverifikasi...
 									</div>
 								) : activeVillage.roadSegments.length > 0 ? (
-									<div
-										style={{
-											display: "flex",
-											flexDirection: "column",
-											gap: 10,
-										}}
-									>
+									<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 										{activeVillage.roadSegments.map((seg, idx) => {
 											const isSelected = seg.id === selectedSegmentId;
 											return (
@@ -1358,29 +1045,21 @@ export function TeduhSpatialMapConsole() {
 													type="button"
 													key={seg.id}
 													onClick={() => setSelectedSegmentId(seg.id)}
-													style={{
-														background: isSelected ? "#ECF3EF" : "#FFFFFF",
-														border: "none",
-														borderRadius: 14,
-														padding: "14px 16px",
-														cursor: "pointer",
-														textAlign: "left",
-														width: "100%",
-													}}
+													className={`drawer-road-item ${isSelected ? "is-selected" : ""}`}
 												>
 													<div
 														style={{
 															display: "flex",
 															justifyContent: "space-between",
 															alignItems: "center",
-															marginBottom: 6,
+															marginBottom: 8,
 															gap: 8,
 														}}
 													>
 														<span
 															style={{
-																fontSize: 14,
-																fontWeight: 500,
+																fontSize: 14.5,
+																fontWeight: 600,
 																color: "#181B20",
 															}}
 														>
@@ -1391,35 +1070,29 @@ export function TeduhSpatialMapConsole() {
 
 													<div
 														style={{
-															fontSize: 13,
+															fontSize: 13.5,
 															color: "#545B67",
-															marginBottom: 4,
+															lineHeight: 1.5,
+															marginBottom: 6,
 														}}
 													>
-														Arahan Jalur:{" "}
+														Arahan Pengalihan:{" "}
 														<strong style={{ color: "#181B20" }}>
 															{seg.guidanceNote}
 														</strong>
 													</div>
 
-													<div style={{ fontSize: 12, color: "#64748B" }}>
-														{seg.corridorSection} • {seg.windowWita}
+													<div style={{ fontSize: 12, color: "#64748B", display: "flex", gap: 10, flexWrap: "wrap" }}>
+														<span>{seg.corridorSection}</span>
+														<span>•</span>
+														<span className="tabular-nums">{seg.windowWita}</span>
 													</div>
 												</button>
 											);
 										})}
 									</div>
 								) : (
-									<div
-										style={{
-											background: "#FFFFFF",
-											borderRadius: 14,
-											padding: "20px 18px",
-											fontSize: 13.5,
-											color: "#545B67",
-											lineHeight: 1.5,
-										}}
-									>
+									<div className="drawer-empty-box">
 										Belum ada segmen jalan spesifik yang ditandai tertutup pada
 										acara ini.{" "}
 										{activeVillage.alternativeRouteSummary
@@ -1429,55 +1102,26 @@ export function TeduhSpatialMapConsole() {
 								)}
 							</div>
 						</div>
-					)}
-				</div>
 
-				{/* Drawer Footer */}
-				<div className="drawer-footer">
-					<button
-						type="button"
-						onClick={() => {
-							if (drawerStage === "stage2") {
-								setDrawerStage("stage1");
-							} else {
-								setIsDrawerOpen(false);
-							}
-						}}
-						style={{
-							background: "#F4F4F3",
-							border: "none",
-							borderRadius: 9999,
-							padding: "9px 16px",
-							fontSize: 13,
-							fontWeight: 500,
-							color: "#181B20",
-							cursor: "pointer",
-						}}
-					>
-						{drawerStage === "stage2" ? "Ringkasan Wilayah" : "Tutup Panel"}
-					</button>
+						<div className="drawer-footer">
+							<button
+								type="button"
+								onClick={() => setIsDrawerOpen(false)}
+								className="drawer-btn-secondary"
+							>
+								Tutup
+							</button>
 
-					{activeVillage && (
-						<Link
-							to={`/events/${activeVillage.slug || activeVillage.id}`}
-							style={{
-								display: "inline-flex",
-								alignItems: "center",
-								gap: 6,
-								background: "#9E2A2B",
-								color: "#FFFFFF",
-								borderRadius: 9999,
-								padding: "9px 18px",
-								fontSize: 13,
-								fontWeight: 500,
-								textDecoration: "none",
-							}}
-						>
-							<span>Buka Halaman Detail Lengkap</span>
-							<ArrowRight size={14} />
-						</Link>
-					)}
-				</div>
+							<Link
+								to={`/events/${activeVillage.slug || activeVillage.id}`}
+								className="drawer-btn-primary"
+							>
+								<span>Buka Halaman Detail Lengkap</span>
+								<ArrowRight size={15} />
+							</Link>
+						</div>
+					</>
+				) : null}
 			</aside>
 
 			<CeremonyDetailModal

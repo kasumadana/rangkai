@@ -23,6 +23,14 @@ export {
 	type RoadSegmentFallbackItem,
 } from "./MapFallbackRoadList";
 export {
+	RangkaiPreloader,
+	type RangkaiPreloaderProps,
+} from "./RangkaiPreloader";
+export {
+	markPreloaderShown,
+	shouldPlayPreloader,
+} from "../../lib/preloader";
+export {
 	RoadStatusBadge,
 	type OperationalRoadStatus,
 	type RoadStatusBadgeProps,

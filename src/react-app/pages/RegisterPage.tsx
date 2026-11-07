@@ -11,11 +11,12 @@ import {
 	User,
 	UserPlus,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router";
 import { z } from "zod";
 import { ApiClientError } from "../lib/api-client";
 import { useAuthSession, useSignUpMutation } from "../lib/auth";
+import { useGsapPageReveal } from "../lib/gsap-motion";
 
 const registerSchema = z
 	.object({
@@ -38,6 +39,7 @@ const registerSchema = z
 	});
 
 export function RegisterPage() {
+	const pageRef = useRef<HTMLDivElement>(null);
 	const { data: sessionData } = useAuthSession();
 	const signUpMutation = useSignUpMutation();
 
@@ -56,6 +58,8 @@ export function RegisterPage() {
 		null,
 	);
 	const [registrationSuccess, setRegistrationSuccess] = useState(false);
+
+	useGsapPageReveal(pageRef, [registrationSuccess, Boolean(sessionData?.user)]);
 
 	async function handleRegisterSubmit(e: React.FormEvent) {
 		e.preventDefault();
@@ -100,10 +104,19 @@ export function RegisterPage() {
 	}
 
 	return (
-		<div className="teduh-page-shell" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start" }}>
+		<div
+			ref={pageRef}
+			className="teduh-page-shell"
+			style={{
+				display: "flex",
+				flexDirection: "column",
+				alignItems: "center",
+				justifyContent: "flex-start",
+			}}
+		>
 			<div style={{ width: "100%", maxWidth: 480 }}>
 				{/* Top back link to Login or Home */}
-				<div style={{ marginBottom: 16 }}>
+				<div style={{ marginBottom: 16 }} data-gsap="reveal">
 					<Link
 						to="/login"
 						className="teduh-back-link"
@@ -115,6 +128,8 @@ export function RegisterPage() {
 				</div>
 
 				<div
+					className="teduh-auth-card"
+					data-gsap="reveal"
 					style={{
 						background: "#FFFFFF",
 						borderRadius: 20,

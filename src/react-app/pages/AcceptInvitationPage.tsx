@@ -6,7 +6,7 @@ import {
 	Trash2,
 	UserPlus,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ApiClientError } from "../lib/api-client";
 import {
@@ -14,11 +14,13 @@ import {
 	useAuthSession,
 	useInvitationQuery,
 } from "../lib/auth";
+import { useGsapPageReveal } from "../lib/gsap-motion";
 
 export function AcceptInvitationPage() {
 	const params = useParams();
 	const token = params.token || "";
 	const navigate = useNavigate();
+	const pageRef = useRef<HTMLDivElement>(null);
 
 	const { data: sessionData, isLoading: isSessionLoading } = useAuthSession();
 	const { data: inviteData, isLoading: isInviteLoading, error: inviteError } =
@@ -26,6 +28,8 @@ export function AcceptInvitationPage() {
 	const acceptMutation = useAcceptInvitationMutation();
 
 	const [actionError, setActionError] = useState<string | null>(null);
+
+	useGsapPageReveal(pageRef, [isInviteLoading, Boolean(inviteData?.valid)]);
 
 	async function handleAccept() {
 		setActionError(null);
@@ -44,9 +48,20 @@ export function AcceptInvitationPage() {
 	}
 
 	return (
-		<div className="teduh-page-shell" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-start" }}>
+		<div
+			ref={pageRef}
+			className="teduh-page-shell"
+			style={{
+				display: "flex",
+				flexDirection: "column",
+				alignItems: "center",
+				justifyContent: "flex-start",
+			}}
+		>
 			<div style={{ width: "100%", maxWidth: 500 }}>
 				<div
+					className="teduh-auth-card"
+					data-gsap="reveal"
 					style={{
 						background: "#FFFFFF",
 						borderRadius: 20,
