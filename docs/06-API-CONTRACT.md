@@ -365,6 +365,30 @@ Permission: organizer
 
 Returns reviewed road-segment candidates.
 
+POST /api/road-segments
+Permission: organizer
+
+Creates a human-verified road segment (`LineString`) drawn by an organizer on the dashboard map.
+
+Request:
+
+```json
+{
+  "displayName": "Jl. Raya Ubud — Depan Puri Saren",
+  "coverageArea": "Ubud, Gianyar",
+  "coordinates": [
+    [115.2612, -8.5068],
+    [115.2645, -8.5069]
+  ],
+  "humanVerified": true
+}
+```
+
+GET /api/events/:eventId/road-impacts
+Permission: organizer or assigned officer
+
+Returns road impacts attached to the event along with `operationalStatus` (`effectiveStatus`, `rawStatus`, `isStale`, `observedAt`, `expiresAt`).
+
 POST /api/events/:eventId/road-impacts
 Permission: organizer
 
@@ -381,6 +405,9 @@ Request:
 ```
 
 PATCH /api/events/:eventId/road-impacts/:impactId
+Permission: organizer
+
+DELETE /api/events/:eventId/road-impacts/:impactId
 Permission: organizer
 
 ## 7. Live Road Status

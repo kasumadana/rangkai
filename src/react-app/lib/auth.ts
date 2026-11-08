@@ -125,13 +125,14 @@ export async function fetchMyOrganizations(): Promise<{
 }
 
 export interface InvitationDetails {
+	invitationRole: "organizer" | "officer";
 	valid: boolean;
 	token: string;
 	event: {
 		id: string;
 		title: string;
 		venueName?: string | null;
-	};
+	} | null;
 	organization: {
 		id: string;
 		name: string;
@@ -142,7 +143,7 @@ export interface InvitationDetails {
 		canUpdateTraffic: boolean;
 		canUpdateCleanup: boolean;
 	};
-	recipientEmail?: string | null;
+	recipientEmail: string;
 	expiresAt: string;
 }
 
@@ -283,7 +284,7 @@ export interface CreateInvitationInput {
 	organizationId?: string;
 	eventId?: string;
 	role: "organizer" | "officer";
-	recipientEmail?: string;
+	recipientEmail: string;
 	canUpdateTraffic?: boolean;
 	canUpdateCleanup?: boolean;
 }

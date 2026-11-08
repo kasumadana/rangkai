@@ -118,7 +118,7 @@ export function AcceptInvitationPage() {
 										marginBottom: 10,
 									}}
 								>
-									Undangan Petugas Lapangan Resmi
+									{inviteData.invitationRole === "organizer" ? "Undangan Penyelenggara" : "Undangan Petugas Lapangan"}
 								</span>
 								<h1
 									style={{
@@ -133,7 +133,7 @@ export function AcceptInvitationPage() {
 									Bergabung ke {inviteData.organization.name}
 								</h1>
 								<p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "#545B67" }}>
-									Anda diundang bertugas dalam koordinasi kegiatan upacara adat di Bali.
+									{inviteData.invitationRole === "organizer" ? "Anda diundang sebagai penyelenggara organisasi ini." : "Anda diundang bertugas dalam koordinasi kegiatan upacara adat di Bali."}
 								</p>
 							</div>
 
@@ -149,16 +149,16 @@ export function AcceptInvitationPage() {
 									border: "1px solid rgba(228, 231, 229, 0.8)",
 								}}
 							>
-								<div>
+								{inviteData.event ? <div>
 									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500, textTransform: "uppercase" }}>
 										Kegiatan yang Ditugaskan
 									</div>
 									<div style={{ fontSize: 15, fontWeight: 600, color: "#181B20", marginTop: 2 }}>
 										{inviteData.event.title}
 									</div>
-								</div>
+								</div> : null}
 
-								<div>
+								{inviteData.invitationRole === "officer" ? <div>
 									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500, textTransform: "uppercase", marginBottom: 6 }}>
 										Izin Hak Tugas Lapangan
 									</div>
@@ -176,7 +176,7 @@ export function AcceptInvitationPage() {
 											</div>
 										)}
 									</div>
-								</div>
+								</div> : <p>Hak penyelenggara berlaku untuk organisasi ini. Tidak ada tugas lapangan yang diberikan.</p>}
 							</div>
 
 							{actionError && (

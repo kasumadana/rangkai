@@ -1,143 +1,127 @@
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
-import { Button } from "@astryxdesign/core/Button";
-import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
-import { Divider } from "@astryxdesign/core/Divider";
-import { FileInput } from "@astryxdesign/core/FileInput";
-import { FormLayout } from "@astryxdesign/core/FormLayout";
-import { Grid } from "@astryxdesign/core/Grid";
-import { Heading } from "@astryxdesign/core/Heading";
-import { Icon } from "@astryxdesign/core/Icon";
-import {
-	Layout,
-	LayoutContent,
-	LayoutFooter,
-	LayoutHeader,
-} from "@astryxdesign/core/Layout";
-import { List, ListItem } from "@astryxdesign/core/List";
-import {
-	MetadataList,
-	MetadataListItem,
-} from "@astryxdesign/core/MetadataList";
-import { Selector } from "@astryxdesign/core/Selector";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
-import { Step, Stepper } from "@astryxdesign/core/Stepper";
-import { Text } from "@astryxdesign/core/Text";
-import { Token } from "@astryxdesign/core/Token";
-import { TextArea } from "@astryxdesign/core/TextArea";
-import { TextInput } from "@astryxdesign/core/TextInput";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
 	ArrowLeft,
 	ArrowRight,
-	CalendarDays,
+	Building2,
 	CheckCircle2,
+	ClipboardCheck,
 	FileText,
 	MapPinned,
+	PenTool,
 	Plus,
+	Radio,
 	Save,
 	Send,
 	Sparkles,
 	Trash2,
+	Upload,
 	Users,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { Link, useNavigate, useParams } from "react-router";
 import { z } from "zod";
-import { RouterLinkBridge } from "../components/layout/AppShellLayout";
 import {
 	EmptyStateCard,
 	ErrorStateBanner,
 	EventLifecycleBadge,
 	FieldReviewIndicator,
+	type FieldReviewState,
 	LoadingStateBlock,
 	RoadStatusBadge,
-	type FieldReviewState,
 } from "../components/rangkai";
-import { BaliMapTilerView } from "../features/map/BaliMapTilerView";
+import { DashboardRoadMapInput } from "../features/map/DashboardRoadMapInput";
 import { ApiClientError } from "../lib/api-client";
 import {
+	useCreateOrganizationMutation,
+	useMyOrganizationsQuery,
+} from "../lib/auth";
+import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
+import {
+	type DocumentRecord,
+	type ExtractionRecord,
 	cancelEvent,
+	completeEvent,
 	createEventDraft,
 	createRoadImpact,
+	createRoadSegment,
+	deleteRoadImpact,
 	fetchEventDetail,
 	fetchEventRoadImpacts,
 	fetchRoadSegments,
 	fromIsoToWitaInput,
 	getSavedOrganizationId,
-	mapPublicEventToCeremonyProfile,
+	normalizeEventCategory,
+	normalizeRoadImpactType,
 	publishVerifiedEvent,
 	saveExtractedFields,
+	saveOrganizationId,
 	toWitaIsoTimestamp,
 	transitionEventToReview,
 	triggerDocumentExtraction,
 	uploadEventDocument,
-	type DocumentRecord,
-	type ExtractionRecord,
 } from "../lib/events-api";
 import { formatWitaDateTime, formatWitaRange } from "../lib/wita";
-import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
-import { useMyOrganizationsQuery } from "../lib/auth";
 
 const DRAFT_STORAGE_KEY = "rangkai:event-wizard-draft-v1";
 const UUID_REGEX =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const DESA_ADAT_OPTIONS = [
+export const CATEGORY_OPTIONS = [
+	{ value: "upacara_adat", label: "Upacara Adat / Dewa Yadnya" },
+	{ value: "odalan", label: "Piodalan / Pujawali Pura" },
+	{ value: "melasti", label: "Prosesi Melasti" },
+	{ value: "pengerupukan", label: "Pengerupukan / Pawai Ogoh-Ogoh" },
+	{ value: "karya", label: "Karya Agung / Pitra Yadnya (Pelebon)" },
+	{ value: "lainnya", label: "Kegiatan Adat & Budaya Lainnya" },
+];
+
+export const IMPACT_TYPE_OPTIONS: Array<{
+	value: "closure" | "intermittent" | "narrowing" | "procession";
+	label: string;
+}> = [
 	{
-		value: "11111111-1111-4111-8111-111111111111",
-		label: "Banjar Uji Coba / Desa Adat Simulasi (Pangkalan Data Neon)",
+		value: "closure",
+		label: "Penutupan Total (Bahu & Badan Jalan Ditutup)",
 	},
 	{
-		value: "00000000-0000-4000-8000-000000000001",
-		label: "Desa Adat Ubud (Gianyar)",
+		value: "intermittent",
+		label: "Buka-Tutup Berkala (Intermittent / Prioritas Prosesi)",
 	},
 	{
-		value: "550e8400-e29b-41d4-a716-446655440000",
-		label: "Desa Adat Padangtegal (Gianyar)",
+		value: "narrowing",
+		label: "Penyempitan Lajur / Pengalihan Sebagian",
 	},
 	{
-		value: "550e8400-e29b-41d4-a716-446655440001",
-		label: "Desa Adat Intaran Sanur (Denpasar)",
-	},
-	{
-		value: "550e8400-e29b-41d4-a716-446655440002",
-		label: "Desa Adat Kuta (Badung)",
+		value: "procession",
+		label: "Jalur Iring-iringan Prosesi Berjalan",
 	},
 ];
 
-const CATEGORY_OPTIONS = [
-	{ value: "upacara", label: "Dewa Yadnya (Pujawali / Karya Agung)" },
-	{ value: "prosesi", label: "Prosesi Melasti / Pawai Ogoh-Ogoh" },
-	{ value: "ngaben", label: "Pitra Yadnya (Ngaben / Pelebon)" },
-	{ value: "budaya", label: "Pawai Adat / Budaya Desa" },
-];
-
-const IMPACT_TYPE_OPTIONS = [
-	{ value: "full_closure", label: "Penutupan Total (Bahu & Badan Jalan)" },
-	{ value: "partial_closure", label: "Penutupan Sebagian (Buka-Tutup Arus)" },
-	{ value: "one_way", label: "Satu Arah Sementara (Contra-flow)" },
-	{ value: "speed_reduction", label: "Pengurangan Kecepatan / Pengawalan" },
-];
-
-function getImpactTypeLabel(type?: string): string {
-	switch (type) {
-		case "full_closure":
+export function getImpactTypeLabel(type?: string): string {
+	const normalized = normalizeRoadImpactType(type);
+	switch (normalized) {
+		case "closure":
 			return "Penutupan Total";
-		case "partial_closure":
-			return "Buka-Tutup";
-		case "one_way":
-			return "Satu Arah";
-		case "speed_reduction":
-			return "Pengurangan Kecepatan";
+		case "intermittent":
+			return "Buka-Tutup Berkala";
+		case "narrowing":
+			return "Penyempitan Lajur";
+		case "procession":
+			return "Jalur Prosesi";
 		default:
 			return "Penutupan Jalan";
 	}
 }
 
 function getFieldReviewStatus(
-	candidate?: { value: string | null; evidence: string | null; needs_review: boolean } | null,
+	candidate?: {
+		value: string | null;
+		evidence: string | null;
+		needs_review: boolean;
+	} | null,
 	currentVal?: string,
 ): { state: FieldReviewState; evidence?: string | null } {
 	if (!candidate) {
@@ -159,10 +143,26 @@ function getFieldReviewStatus(
 }
 
 const WIZARD_STEPS = [
-	{ label: "1. Surat Edaran", description: "Unggah dokumen & AI" },
-	{ label: "2. Detail Upacara", description: "Periksa & lengkapi data" },
-	{ label: "3. Peta & Jalan", description: "Ruas jalan terdampak" },
-	{ label: "4. Terbitkan", description: "Verifikasi Prajuru" },
+	{
+		id: 0,
+		label: "1. Surat Edaran & AI",
+		description: "Unggah dokumen & ekstraksi Gemini",
+	},
+	{
+		id: 1,
+		label: "2. Detail & Jadwal WITA",
+		description: "Periksa & lengkapi informasi",
+	},
+	{
+		id: 2,
+		label: "3. Input Peta & Ruas Jalan",
+		description: "Gambar atau pilih jalan terdampak",
+	},
+	{
+		id: 3,
+		label: "4. Verifikasi & Terbitkan",
+		description: "Konfirmasi Prajuru & pengumuman",
+	},
 ];
 
 const wizardFormSchema = z
@@ -224,11 +224,12 @@ interface DraftFormState {
 }
 
 function loadSessionDraft(): DraftFormState {
-	const fallbackOrg = getSavedOrganizationId() || DESA_ADAT_OPTIONS[0].value;
+	const fallbackOrg =
+		getSavedOrganizationId() || "";
 	const defaults: DraftFormState = {
 		organizationId: fallbackOrg,
 		title: "",
-		category: "upacara",
+		category: "upacara_adat",
 		venueName: "",
 		startsAtWita: "2026-11-14T08:00",
 		endsAtWita: "2026-11-14T13:30",
@@ -248,6 +249,10 @@ function loadSessionDraft(): DraftFormState {
 		return {
 			...defaults,
 			...parsed,
+			category:
+				normalizeEventCategory(parsed.category) ||
+				parsed.category ||
+				"upacara_adat",
 			organizationId: parsed.organizationId || fallbackOrg,
 		};
 	} catch {
@@ -265,8 +270,24 @@ export function EventWizardPage() {
 		routeEventId && UUID_REGEX.test(routeEventId),
 	);
 
+	const myOrgsQuery = useMyOrganizationsQuery();
+	const createOrgMutation = useCreateOrganizationMutation();
+	const myOrganizations = useMemo(
+		() => myOrgsQuery.data?.organizations ?? [],
+		[myOrgsQuery.data?.organizations],
+	);
+
+	const orgOptions = useMemo(() => {
+		if (myOrganizations.length > 0) {
+			return myOrganizations.map((org) => ({
+				value: org.id,
+				label: `${org.name}${org.village ? ` (${org.village})` : ""}`,
+			}));
+		}
+		return [];
+	}, [myOrganizations]);
+
 	const [activeStep, setActiveStep] = useState(0);
-	const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
 	const [activeDocument, setActiveDocument] = useState<DocumentRecord | null>(
 		null,
 	);
@@ -286,11 +307,36 @@ export function EventWizardPage() {
 		description: string;
 	} | null>(null);
 	const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
-	const [selectedRoadSegmentId, setSelectedRoadSegmentId] = useState<string>("");
-	const [selectedImpactType, setSelectedImpactType] = useState<
-		"full_closure" | "partial_closure" | "one_way" | "speed_reduction"
-	>("full_closure");
 	const [aiConsentGranted, setAiConsentGranted] = useState(true);
+
+	// Inline quick-create Desa Adat state
+	const [quickOrgName, setQuickOrgName] = useState("");
+	const [quickOrgVillage, setQuickOrgVillage] = useState("");
+
+	// Step 2: Road Map Input State ("draw" vs "catalog")
+	const [roadInputMode, setRoadInputMode] = useState<"draw" | "catalog">(
+		"draw",
+	);
+	const [draftCoordinates, setDraftCoordinates] = useState<[number, number][]>(
+		[],
+	);
+	const [newSegmentName, setNewSegmentName] = useState("");
+	const [newSegmentArea, setNewSegmentArea] = useState("Bali");
+	const [humanVerifiedRoad, setHumanVerifiedRoad] = useState(true);
+
+	const [selectedRoadSegmentId, setSelectedRoadSegmentId] =
+		useState<string>("");
+	const [selectedImpactType, setSelectedImpactType] = useState<
+		"closure" | "intermittent" | "narrowing" | "procession"
+	>("closure");
+	const [impactFromWita, setImpactFromWita] = useState<string>("");
+	const [impactToWita, setImpactToWita] = useState<string>("");
+	const [impactDiversionNote, setImpactDiversionNote] = useState<string>("");
+
+	// Step 3: Cancel reason
+	const [cancelReason, setCancelReason] = useState(
+		"Jadwal upacara disesuaikan kembali oleh Prajuru Desa Adat.",
+	);
 
 	// 1. Fetch Event Detail if already created
 	const eventDetailQuery = useQuery({
@@ -300,12 +346,12 @@ export function EventWizardPage() {
 		retry: false,
 	});
 
-	// 2. Fetch Verified Road Segments for Step 3
+	// 2. Fetch Verified Road Segments for Step 2
 	const roadSegmentsQuery = useQuery({
 		queryKey: ["road-segments", "catalog"],
 		queryFn: () => fetchRoadSegments(),
 		enabled: activeStep === 2,
-		staleTime: 5 * 60 * 1000,
+		staleTime: 60_000,
 	});
 
 	// 3. Fetch Real Road Impacts attached to this event
@@ -316,10 +362,9 @@ export function EventWizardPage() {
 		retry: false,
 	});
 
-	const myOrgsQuery = useMyOrganizationsQuery();
 	const activeOrg = useMemo(() => {
 		const orgs = myOrgsQuery.data?.organizations ?? [];
-		return orgs.find((o) => o.id === formState.organizationId) || orgs[0];
+		return orgs.find((o) => o.id === formState.organizationId);
 	}, [myOrgsQuery.data, formState.organizationId]);
 
 	const hasOperationalAuthority = Boolean(activeOrg?.hasOperationalAuthority);
@@ -329,21 +374,29 @@ export function EventWizardPage() {
 	if (loadedEvent && hydratedEventId !== loadedEvent.id) {
 		setHydratedEventId(loadedEvent.id);
 		const record = loadedEvent as unknown as Record<string, unknown>;
+		const startWita = fromIsoToWitaInput(loadedEvent.startsAt);
+		const endWita = fromIsoToWitaInput(loadedEvent.endsAt);
 		setFormState({
 			organizationId: loadedEvent.organizationId,
 			title: loadedEvent.title,
-			category: loadedEvent.category || "upacara",
+			category:
+				normalizeEventCategory(loadedEvent.category) ||
+				loadedEvent.category ||
+				"upacara_adat",
 			venueName: loadedEvent.venueName || "",
-			startsAtWita: fromIsoToWitaInput(loadedEvent.startsAt),
-			endsAtWita: fromIsoToWitaInput(loadedEvent.endsAt),
+			startsAtWita: startWita || "2026-11-14T08:00",
+			endsAtWita: endWita || "2026-11-14T13:30",
 			permitReference: loadedEvent.permitReference || "",
 			description: loadedEvent.description || "",
 			processionDescription: (record.processionDescription as string) || "",
-			trafficImpactDescription: (record.trafficImpactDescription as string) || "",
+			trafficImpactDescription:
+				(record.trafficImpactDescription as string) || "",
 			organizerName: (record.organizerName as string) || "",
 			cleanupLocationNotes: (record.cleanupLocationNotes as string) || "",
 			contactInformation: (record.contactInformation as string) || "",
 		});
+		if (!impactFromWita && startWita) setImpactFromWita(startWita);
+		if (!impactToWita && endWita) setImpactToWita(endWita);
 	}
 
 	useEffect(() => {
@@ -368,29 +421,40 @@ export function EventWizardPage() {
 		}
 	}
 
+	// Ensure a real event exists in DB before attaching documents or road impacts
+	async function ensureRealEventId(): Promise<string> {
+		if (routeEventId && isRealUuidEvent) {
+			return routeEventId;
+		}
+		const orgId = formState.organizationId || orgOptions[0].value;
+		const draftRes = await createEventDraft({
+			organizationId: orgId,
+			title:
+				formState.title.trim().length >= 3
+					? formState.title.trim()
+					: "Draf Pengumuman Upacara Adat",
+			category: normalizeEventCategory(formState.category) || "upacara_adat",
+			venueName: formState.venueName.trim() || null,
+			startsAt: toWitaIsoTimestamp(formState.startsAtWita),
+			endsAt: toWitaIsoTimestamp(formState.endsAtWita),
+			permitReference: formState.permitReference.trim() || null,
+			description: formState.description.trim() || null,
+		});
+		await queryClient.invalidateQueries({ queryKey: ["events"] });
+		return draftRes.event.id;
+	}
+
 	// ---------------------------------------------------------------------------
 	// Upload Document & Trigger Gemini AI Extraction Pipeline
 	// ---------------------------------------------------------------------------
 	const uploadAndExtractMutation = useMutation({
 		mutationFn: async (file: File) => {
 			setBannerFeedback(null);
+			const targetEventId = await ensureRealEventId();
 
-			// Ensure we have a valid draft event ID first
-			let targetEventId = routeEventId;
-			if (!targetEventId || !isRealUuidEvent) {
-				const draftRes = await createEventDraft({
-					organizationId: formState.organizationId || DESA_ADAT_OPTIONS[0].value,
-					title: formState.title.trim() || `Draf Dokumen ${file.name.replace(/\.[^/.]+$/, "")}`,
-					category: formState.category || "upacara",
-				});
-				targetEventId = draftRes.event.id;
-			}
-
-			// Upload document to private R2 storage
 			const uploadRes = await uploadEventDocument(targetEventId, file, true);
 			setActiveDocument(uploadRes.document);
 
-			// Trigger server-side Gemini multimodal extraction
 			const extractRes = await triggerDocumentExtraction(
 				targetEventId,
 				uploadRes.document.id,
@@ -412,8 +476,11 @@ export function EventWizardPage() {
 				setFormState((prev) => {
 					const nextState: DraftFormState = { ...prev };
 					if (out.event_name?.value) nextState.title = out.event_name.value;
-					if (out.event_category?.value)
-						nextState.category = out.event_category.value;
+					if (out.event_category?.value) {
+						nextState.category =
+							normalizeEventCategory(out.event_category.value) ||
+							"upacara_adat";
+					}
 					if (out.venue_name?.value) nextState.venueName = out.venue_name.value;
 					if (out.start_datetime?.value)
 						nextState.startsAtWita = fromIsoToWitaInput(
@@ -424,16 +491,14 @@ export function EventWizardPage() {
 					if (out.permit_reference_text?.value)
 						nextState.permitReference = out.permit_reference_text.value;
 					if (out.procession_description?.value)
-						nextState.processionDescription =
-							out.procession_description.value;
+						nextState.processionDescription = out.procession_description.value;
 					if (out.traffic_impact_description?.value)
 						nextState.trafficImpactDescription =
 							out.traffic_impact_description.value;
 					if (out.organizer_name?.value)
 						nextState.organizerName = out.organizer_name.value;
 					if (out.cleanup_location_notes?.value)
-						nextState.cleanupLocationNotes =
-							out.cleanup_location_notes.value;
+						nextState.cleanupLocationNotes = out.cleanup_location_notes.value;
 					if (out.contact_information?.value)
 						nextState.contactInformation = out.contact_information.value;
 
@@ -454,18 +519,18 @@ export function EventWizardPage() {
 				title: "Analisis Surat Edaran Selesai",
 				description:
 					issuesCount > 0
-						? `AI Gemini mendeteksi ${issuesCount} catatan keraguan yang memerlukan perhatian khusus dari Prajuru. Silakan periksa formulir di langkah berikutnya.`
-						: "Informasi surat edaran berhasil diekstraksi ke draf kegiatan. Silakan periksa dan koreksi sebelum diterbitkan.",
+						? `AI Gemini mendeteksi ${issuesCount} catatan keraguan yang wajib diperiksa Prajuru pada Langkah 2.`
+						: "Informasi surat edaran berhasil diekstraksi ke draf kegiatan. Silakan periksa di Langkah 2.",
 			});
 		},
 		onError: (err) => {
 			setBannerFeedback({
 				status: "warning",
-				title: "Ekstraksi AI Tidak Berhasil",
+				title: "Ekstraksi AI Tidak Berhasil — Gunakan Input Manual",
 				description:
 					err instanceof Error
-						? `${err.message}. Anda dapat melanjutkan dengan mengisi draf kegiatan secara manual.`
-						: "Dokumen tidak dapat dianalisis secara otomatis. Silakan isi draf secara manual.",
+						? `${err.message}. Anda tetap dapat melanjutkan pengisian draf kegiatan secara manual pada Langkah 2.`
+						: "Dokumen tidak dapat dianalisis otomatis. Silakan isi draf secara manual.",
 			});
 		},
 	});
@@ -495,12 +560,14 @@ export function EventWizardPage() {
 
 			const startsAtIso = toWitaIsoTimestamp(parsed.data.startsAtWita);
 			const endsAtIso = toWitaIsoTimestamp(parsed.data.endsAtWita);
+			const canonicalCategory =
+				normalizeEventCategory(parsed.data.category) || "upacara_adat";
 
 			if (isCreateMode || !isRealUuidEvent) {
 				return createEventDraft({
 					organizationId: parsed.data.organizationId,
 					title: parsed.data.title,
-					category: parsed.data.category || null,
+					category: canonicalCategory,
 					venueName: parsed.data.venueName || null,
 					startsAt: startsAtIso,
 					endsAt: endsAtIso,
@@ -511,7 +578,7 @@ export function EventWizardPage() {
 
 			return saveExtractedFields(routeEventId!, {
 				title: parsed.data.title,
-				category: (parsed.data.category || null) as never,
+				category: canonicalCategory,
 				venueName: parsed.data.venueName || null,
 				startsAt: startsAtIso,
 				endsAt: endsAtIso,
@@ -532,8 +599,8 @@ export function EventWizardPage() {
 				}
 				setBannerFeedback({
 					status: "success",
-					title: "Draf disimpan",
-					description: `"${result.event.title}" berhasil disimpan sebagai draf internal.`,
+					title: "Draf Upacara Disimpan",
+					description: `"${result.event.title}" berhasil dibuat pada pangkalan data.`,
 				});
 				navigate(`/dashboard/events/${result.event.id}`);
 			} else {
@@ -542,8 +609,9 @@ export function EventWizardPage() {
 				});
 				setBannerFeedback({
 					status: "success",
-					title: "Perubahan disimpan",
-					description: "Rincian upacara dan koreksi Prajuru berhasil diperbarui.",
+					title: "Perubahan Disimpan",
+					description:
+						"Rincian upacara dan koreksi Prajuru berhasil diperbarui.",
 				});
 			}
 		},
@@ -558,49 +626,167 @@ export function EventWizardPage() {
 	});
 
 	// ---------------------------------------------------------------------------
-	// Add Road Impact Mutation
+	// Draw New Road Segment + Attach Road Impact Mutation
 	// ---------------------------------------------------------------------------
-	const addRoadImpactMutation = useMutation({
-		mutationFn: async (roadSegmentId: string) => {
-			if (!routeEventId || !isRealUuidEvent) {
-				throw new Error("Simpan draf kegiatan terlebih dahulu.");
+	const drawAndAttachRoadMutation = useMutation({
+		mutationFn: async () => {
+			if (draftCoordinates.length < 2) {
+				throw new Error(
+					"Klik minimal 2 titik pada peta untuk membentuk garis ruas jalan.",
+				);
 			}
-			const startsIso = toWitaIsoTimestamp(formState.startsAtWita);
-			const endsIso = toWitaIsoTimestamp(formState.endsAtWita);
-			if (!startsIso || !endsIso) {
-				throw new Error("Lengkapi jadwal pelaksanaan upacara terlebih dahulu.");
+			if (newSegmentName.trim().length < 3) {
+				throw new Error(
+					"Masukkan nama ruas jalan terdampak (minimal 3 karakter).",
+				);
+			}
+			if (!humanVerifiedRoad) {
+				throw new Error(
+					"Centang pernyataan verifikasi lokasi ruas jalan oleh Prajuru.",
+				);
 			}
 
-			return createRoadImpact(routeEventId, {
-				roadSegmentId,
+			const targetEventId = await ensureRealEventId();
+			const startsIso = toWitaIsoTimestamp(
+				impactFromWita || formState.startsAtWita,
+			);
+			const endsIso = toWitaIsoTimestamp(impactToWita || formState.endsAtWita);
+
+			// 1. Create human-verified road segment in PostGIS catalog
+			const segRes = await createRoadSegment({
+				displayName: newSegmentName.trim(),
+				coverageArea:
+					newSegmentArea.trim() ||
+					formState.venueName.trim() ||
+					"Kawasan Desa Adat",
+				coordinates: draftCoordinates,
+				humanVerified: true,
+			});
+
+			// 2. Attach road segment to event
+			await createRoadImpact(targetEventId, {
+				roadSegmentId: segRes.segment.id,
+				impactType: selectedImpactType,
 				plannedFrom: startsIso,
 				plannedTo: endsIso,
-				impactType: selectedImpactType,
-				diversionNote: formState.trafficImpactDescription || undefined,
+				diversionNote:
+					impactDiversionNote.trim() ||
+					formState.trafficImpactDescription.trim() ||
+					null,
 			});
+
+			return { eventId: targetEventId, segmentName: segRes.segment.displayName };
 		},
-		onSuccess: async () => {
-			setSelectedRoadSegmentId("");
+		onSuccess: async (res) => {
+			setDraftCoordinates([]);
+			setNewSegmentName("");
+			setImpactDiversionNote("");
 			await queryClient.invalidateQueries({
-				queryKey: ["events", routeEventId, "road-impacts"],
+				queryKey: ["road-segments", "catalog"],
 			});
+			await queryClient.invalidateQueries({
+				queryKey: ["events", res.eventId, "road-impacts"],
+			});
+			if (isCreateMode) {
+				navigate(`/dashboard/events/${res.eventId}`);
+			}
 			setBannerFeedback({
 				status: "success",
-				title: "Ruas Jalan Ditambahkan",
-				description: "Ruas jalan terverifikasi berhasil ditautkan ke rencana penutupan.",
+				title: "Ruas Jalan Baru Berhasil Digambar & Ditautkan",
+				description: `Ruas "${res.segmentName}" telah tersimpan sebagai geometri terverifikasi dan ditautkan ke kegiatan ini.`,
 			});
 		},
 		onError: (err) => {
 			setBannerFeedback({
 				status: "error",
-				title: "Gagal Menambahkan Jalan",
-				description: err instanceof Error ? err.message : "Terjadi kendala jaringan.",
+				title: "Gagal Menyimpan Ruas Jalan dari Peta",
+				description:
+					err instanceof Error ? err.message : "Periksa kembali input peta.",
 			});
 		},
 	});
 
 	// ---------------------------------------------------------------------------
-	// Review & Publication Transitions
+	// Attach Existing Catalog Road Segment Mutation
+	// ---------------------------------------------------------------------------
+	const addCatalogRoadImpactMutation = useMutation({
+		mutationFn: async (roadSegmentId: string) => {
+			const targetEventId = await ensureRealEventId();
+			const startsIso = toWitaIsoTimestamp(
+				impactFromWita || formState.startsAtWita,
+			);
+			const endsIso = toWitaIsoTimestamp(impactToWita || formState.endsAtWita);
+
+			await createRoadImpact(targetEventId, {
+				roadSegmentId,
+				plannedFrom: startsIso,
+				plannedTo: endsIso,
+				impactType: selectedImpactType,
+				diversionNote:
+					impactDiversionNote.trim() ||
+					formState.trafficImpactDescription.trim() ||
+					null,
+			});
+			return targetEventId;
+		},
+		onSuccess: async (targetEventId) => {
+			setSelectedRoadSegmentId("");
+			setImpactDiversionNote("");
+			await queryClient.invalidateQueries({
+				queryKey: ["events", targetEventId, "road-impacts"],
+			});
+			if (isCreateMode) {
+				navigate(`/dashboard/events/${targetEventId}`);
+			}
+			setBannerFeedback({
+				status: "success",
+				title: "Ruas Jalan Katalog Ditambahkan",
+				description:
+					"Ruas jalan terverifikasi berhasil ditautkan ke rencana penutupan.",
+			});
+		},
+		onError: (err) => {
+			setBannerFeedback({
+				status: "error",
+				title: "Gagal Menambahkan Ruas Jalan",
+				description:
+					err instanceof Error ? err.message : "Terjadi kendala jaringan.",
+			});
+		},
+	});
+
+	// ---------------------------------------------------------------------------
+	// Delete Road Impact Mutation
+	// ---------------------------------------------------------------------------
+	const removeRoadImpactMutation = useMutation({
+		mutationFn: async (impactId: string) => {
+			if (!routeEventId || !isRealUuidEvent) {
+				throw new Error("Kegiatan belum tersimpan.");
+			}
+			return deleteRoadImpact(routeEventId, impactId);
+		},
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: ["events", routeEventId, "road-impacts"],
+			});
+			setBannerFeedback({
+				status: "info",
+				title: "Ruas Jalan Dihapus",
+				description: "Ruas jalan terdampak telah dilepas dari kegiatan ini.",
+			});
+		},
+		onError: (err) => {
+			setBannerFeedback({
+				status: "error",
+				title: "Gagal Menghapus Ruas Jalan",
+				description:
+					err instanceof Error ? err.message : "Terjadi kendala jaringan.",
+			});
+		},
+	});
+
+	// ---------------------------------------------------------------------------
+	// Review, Publish, Complete & Cancel Transitions
 	// ---------------------------------------------------------------------------
 	const reviewMutation = useMutation({
 		mutationFn: async () => {
@@ -617,14 +803,17 @@ export function EventWizardPage() {
 			setBannerFeedback({
 				status: "success",
 				title: "Data Dikonfirmasi Prajuru",
-				description: `Diverifikasi pada ${formatWitaDateTime(result.event.verifiedAt)}. Kegiatan siap diumumkan ke publik.`,
+				description: `Diverifikasi pada ${formatWitaDateTime(result.event.verifiedAt)}. Kegiatan siap diterbitkan ke publik.`,
 			});
 		},
 		onError: (err) => {
 			setBannerFeedback({
 				status: "error",
 				title: "Konfirmasi Gagal",
-				description: err instanceof Error ? err.message : "Terjadi kendala saat konfirmasi.",
+				description:
+					err instanceof Error
+						? err.message
+						: "Terjadi kendala saat konfirmasi.",
 			});
 		},
 	});
@@ -646,10 +835,12 @@ export function EventWizardPage() {
 			});
 			setBannerFeedback({
 				status: "success",
+
 				title: hasOperationalAuthority ? "Resmi Diumumkan" : "Simulasi Diumumkan",
 				description: hasOperationalAuthority
 					? `Diterbitkan pada ${formatWitaDateTime(result.event.publishedAt)}. Publik dapat melihat status penutupan di portal desa.`
 					: `Diterbitkan dalam mode simulasi pada ${formatWitaDateTime(result.event.publishedAt)}. Publik dapat melihat tanda simulasi di portal desa.`,
+
 			});
 		},
 		onError: (err) => {
@@ -665,12 +856,46 @@ export function EventWizardPage() {
 		},
 	});
 
+	const completeMutation = useMutation({
+		mutationFn: async () => {
+			if (!routeEventId || !isRealUuidEvent) {
+				throw new Error("Kegiatan belum tersimpan.");
+			}
+			return completeEvent(routeEventId);
+		},
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({ queryKey: ["events"] });
+			await queryClient.invalidateQueries({
+				queryKey: ["events", "detail", routeEventId],
+			});
+			setBannerFeedback({
+				status: "success",
+				title: "Upacara Ditandai Selesai",
+				description:
+					"Status kegiatan beralih ke Selesai (Completed). Dokumentasi kebersihan pasca-acara tetap dapat dilanjutkan.",
+			});
+		},
+		onError: (err) => {
+			setBannerFeedback({
+				status: "error",
+				title: "Gagal Menyelesaikan Acara",
+				description:
+					err instanceof Error ? err.message : "Terjadi kendala jaringan.",
+			});
+		},
+	});
+
 	const cancelMutation = useMutation({
 		mutationFn: async () => {
 			if (!routeEventId || !isRealUuidEvent) {
 				throw new Error("Kegiatan belum tersimpan.");
 			}
-			return cancelEvent(routeEventId, "Dibatalkan oleh Panitia Desa Adat.");
+			return cancelEvent(
+				routeEventId,
+				cancelReason.trim().length >= 5
+					? cancelReason.trim()
+					: "Dibatalkan oleh Panitia Desa Adat.",
+			);
 		},
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({ queryKey: ["events"] });
@@ -683,804 +908,1341 @@ export function EventWizardPage() {
 				description: "Status kegiatan diubah menjadi dibatalkan.",
 			});
 		},
+		onError: (err) => {
+			setBannerFeedback({
+				status: "error",
+				title: "Gagal Membatalkan",
+				description:
+					err instanceof Error ? err.message : "Terjadi kendala jaringan.",
+			});
+		},
 	});
 
 	const currentLifecycleStatus = loadedEvent?.status ?? "draft";
 	const previewStartsIso = toWitaIsoTimestamp(formState.startsAtWita);
 	const previewEndsIso = toWitaIsoTimestamp(formState.endsAtWita);
-
-	const wizardSpatialProfile = useMemo(() => {
-		const wizardRoads = eventRoadImpactsQuery.data?.roadImpacts ?? [];
-		if (loadedEvent) {
-			return mapPublicEventToCeremonyProfile(
-				{
-					id: loadedEvent.id,
-					title: loadedEvent.title,
-					slug: loadedEvent.publicSlug || loadedEvent.id,
-					category: loadedEvent.category ?? null,
-					description: loadedEvent.description ?? null,
-					venueName: loadedEvent.venueName,
-					startsAt: loadedEvent.startsAt,
-					endsAt: loadedEvent.endsAt,
-					status: loadedEvent.status,
-					publishedAt: loadedEvent.publishedAt ?? null,
-					organizationName: "Desa Adat",
-					village: "Bali",
-					district: "Bali",
-				},
-				wizardRoads,
-			);
-		}
-		if (formState.title || formState.venueName) {
-			return mapPublicEventToCeremonyProfile(
-				{
-					id: "draft-preview",
-					title: formState.title || "Draf Kegiatan",
-					slug: "draf",
-					startsAt: previewStartsIso,
-					endsAt: previewEndsIso,
-					venueName: formState.venueName || null,
-					category: formState.category || null,
-					description: formState.description || null,
-					status: "draft",
-					publishedAt: null,
-					organizationName: "Desa Adat",
-					village: "Bali",
-					district: "Bali",
-				},
-				wizardRoads,
-			);
-		}
-		return null;
-	}, [loadedEvent, eventRoadImpactsQuery.data?.roadImpacts, formState, previewStartsIso, previewEndsIso]);
+	const attachedRoadImpacts = eventRoadImpactsQuery.data?.roadImpacts ?? [];
+	const catalogSegments = roadSegmentsQuery.data?.segments ?? [];
 
 	return (
-		<Layout
-			defaultHasDividers
-			height="fill"
-			contentWidth={760}
-			header={
-				<LayoutHeader hasDivider>
-					<VStack gap={3}>
-						<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
-							<HStack gap={2} vAlign="center" wrap="wrap">
-								<Button
-									as={RouterLinkBridge}
-									href="/dashboard"
-									variant="ghost"
-									size="sm"
-									label="Daftar Upacara"
-									icon={<Icon icon={ArrowLeft} size="sm" />}
-								/>
-								<Heading level={1}>
-									{isCreateMode
-										? "Buat Pengumuman Upacara"
-										: formState.title || "Kelola Pengumuman"}
-								</Heading>
-								<EventLifecycleBadge status={currentLifecycleStatus} />
-							</HStack>
+		<div>
+			{/* Header Workspace */}
+			<div className="teduh-workspace-header">
+				<div>
+					<div className="teduh-workspace-eyebrow">
+						<Sparkles className="w-3.5 h-3.5" />
+						<span>
+							{isCreateMode
+								? "Penyusunan Draf Pengumuman Baru"
+								: "Pengelolaan & Verifikasi Pengumuman Upacara"}
+						</span>
+					</div>
+					<div className="flex flex-wrap items-center gap-3">
+						<h1 className="teduh-workspace-title">
+							{isCreateMode
+								? "Buat Pengumuman Upacara"
+								: formState.title || "Kelola Pengumuman Upacara"}
+						</h1>
+						<EventLifecycleBadge status={currentLifecycleStatus} />
+					</div>
+					<p className="teduh-workspace-subtitle">
+						Ikuti 4 langkah terstruktur: unggah surat edaran untuk ekstraksi AI,
+						lengkapi rincian jadwal WITA, gambar/pilih ruas jalan terdampak di
+						peta, lalu verifikasi untuk diterbitkan ke publik.
+					</p>
+				</div>
 
-							<Button
-								variant="secondary"
-								size="sm"
-								label="Simpan Draf"
-								icon={<Icon icon={Save} size="sm" />}
-								isLoading={saveDraftMutation.isPending}
-								onClick={() => {
-									void saveDraftMutation.mutateAsync();
-								}}
-							/>
-						</HStack>
-
-						<Stepper
-							activeStep={activeStep}
-							onStepClick={setActiveStep}
-							orientation="horizontal"
-							density="compact"
+				<div className="flex flex-wrap items-center gap-2">
+					<Link
+						to="/dashboard"
+						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+					>
+						<ArrowLeft className="w-3.5 h-3.5" />
+						<span>Daftar Upacara</span>
+					</Link>
+					{isRealUuidEvent && routeEventId ? (
+						<Link
+							to={`/dashboard/events/${routeEventId}/team`}
+							className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
 						>
-							{WIZARD_STEPS.map((s, idx) => (
-								<Step
-									key={s.label}
-									step={idx}
-									label={s.label}
-									description={s.description}
-								/>
-							))}
-						</Stepper>
-					</VStack>
-				</LayoutHeader>
-			}
-			content={
-				<LayoutContent>
-					<VStack gap={5}>
-						{bannerFeedback ? (
-							<Banner
-								status={bannerFeedback.status}
-								collapsible={false}
-								title={bannerFeedback.title}
-								description={bannerFeedback.description}
-							/>
-						) : null}
+							<Users className="w-3.5 h-3.5 text-[#264D3B]" />
+							<span>Tim &amp; Undangan</span>
+						</Link>
+					) : null}
+					<button
+						type="button"
+						disabled={saveDraftMutation.isPending}
+						onClick={() => void saveDraftMutation.mutateAsync()}
+						className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+					>
+						<Save className="w-3.5 h-3.5" />
+						<span>
+							{saveDraftMutation.isPending ? "Menyimpan..." : "Simpan Draf"}
+						</span>
+					</button>
+				</div>
+			</div>
 
-						{isRealUuidEvent && eventDetailQuery.isLoading ? (
-							<LoadingStateBlock label="Memuat data upacara..." rows={3} />
-						) : isRealUuidEvent && eventDetailQuery.isError ? (
-							<ErrorStateBanner
-								title="Gagal Memuat Data"
-								error={eventDetailQuery.error}
-								onRetry={() => {
-									void eventDetailQuery.refetch();
-								}}
-							/>
-						) : null}
+			{/* Step Navigation Bar */}
+			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+				{WIZARD_STEPS.map((step) => {
+					const isCurrent = activeStep === step.id;
+					const isDone = activeStep > step.id;
+					return (
+						<button
+							key={step.id}
+							type="button"
+							onClick={() => setActiveStep(step.id)}
+							className={`text-left rounded-2xl border p-3.5 transition-all ${
+								isCurrent
+									? "border-[#264D3B] bg-[#EBF3EE] ring-2 ring-[#264D3B]/10"
+									: isDone
+										? "border-[#C7DBD0] bg-white hover:bg-[#F3F1EC]"
+										: "border-[#E5E3DC] bg-white hover:bg-[#F3F1EC]"
+							}`}
+						>
+							<div className="flex items-center justify-between gap-2 mb-1">
+								<span
+									className={`text-xs font-bold ${
+										isCurrent ? "text-[#264D3B]" : "text-[#181817]"
+									}`}
+								>
+									{step.label}
+								</span>
+								{isDone ? (
+									<CheckCircle2 className="w-3.5 h-3.5 text-[#264D3B] shrink-0" />
+								) : null}
+							</div>
+							<p className="text-[11px] text-[#585854] leading-snug">
+								{step.description}
+							</p>
+						</button>
+					);
+				})}
+			</div>
 
-						{/* STEP 0: SURAT EDARAN & GEMINI EXTRACTION */}
-						{activeStep === 0 ? (
-							<VStack gap={4}>
-								<VStack gap={1}>
-									<Heading level={2}>Surat Edaran Desa Adat & AI Gemini</Heading>
-									<Text type="supporting" size="sm">
-										Unggah foto atau PDF surat edaran desa adat. Sistem AI
-										Gemini akan membaca informasi penting menjadi draf
-										terstruktur untuk diperiksa oleh Prajuru Adat.
-									</Text>
-								</VStack>
+			{/* Feedback Banner */}
+			{bannerFeedback ? (
+				<div className="mb-6">
+					<Banner
+						status={bannerFeedback.status}
+						collapsible={false}
+						title={bannerFeedback.title}
+						description={bannerFeedback.description}
+					/>
+				</div>
+			) : null}
 
-								<Banner
-									status="info"
-									collapsible={false}
-									title="Prinsip Validasi Human-in-the-Loop"
-									description="Hasil bacaan AI bersifat draf rekomendasi dan tidak pernah langsung dipublikasikan ke warga tanpa konfirmasi manusia."
-								/>
+			{isRealUuidEvent && eventDetailQuery.isLoading ? (
+				<div className="teduh-workspace-card">
+					<LoadingStateBlock label="Memuat data upacara..." rows={3} />
+				</div>
+			) : isRealUuidEvent && eventDetailQuery.isError ? (
+				<div className="teduh-workspace-card">
+					<ErrorStateBanner
+						title="Gagal Memuat Data Upacara"
+						error={eventDetailQuery.error}
+						onRetry={() => void eventDetailQuery.refetch()}
+					/>
+				</div>
+			) : (
+				<>
+					{/* ================================================================= */}
+					{/* STEP 0: SURAT EDARAN & GEMINI AI EXTRACTION                       */}
+					{/* ================================================================= */}
+					{activeStep === 0 ? (
+						<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+							<div className="xl:col-span-7 teduh-workspace-card space-y-5">
+								<div className="border-b border-[#F0EFEA] pb-3">
+									<h2 className="teduh-workspace-card-title">
+										1. Pilih Desa Adat &amp; Unggah Surat Edaran
+									</h2>
+									<p className="text-xs text-[#585854] mt-1">
+										Unggah foto atau PDF surat edaran resmi desa adat. Google
+										Gemini akan mengekstrak informasi ke draf terstruktur untuk
+										diperiksa Prajuru.
+									</p>
+								</div>
 
-								<Selector
-									label="Desa Adat Penyelenggara"
-									placeholder="Pilih Desa Adat"
-									value={formState.organizationId}
-									onChange={(val) => updateField("organizationId", val)}
-									options={DESA_ADAT_OPTIONS}
-									isRequired
-								/>
+								{/* Desa Adat Selector */}
+								<div className="space-y-2">
+									<label
+										htmlFor="wizard-org-select"
+										className="block text-xs font-semibold text-[#181817]"
+									>
+										Desa Adat Penyelenggara *
+									</label>
+									<select
+										id="wizard-org-select"
+										value={formState.organizationId}
+										onChange={(e) => {
+											updateField("organizationId", e.target.value);
+											saveOrganizationId(e.target.value);
+										}}
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs font-medium text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									>
+										{orgOptions.map((opt) => (
+											<option key={opt.value} value={opt.value}>
+												{opt.label}
+											</option>
+										))}
+									</select>
 
-								<FileInput
-									mode="dropzone"
-									label="Berkas Surat Edaran (PDF, JPG, PNG • Maks. 8 MB)"
-									accept=".pdf,image/jpeg,image/png"
-									value={uploadedFiles}
-									onChange={(files) => {
-										const normalized = Array.isArray(files)
-											? files
-											: files
-												? [files]
-												: [];
-										setUploadedFiles(normalized);
-										if (normalized.length > 0) {
-											if (!aiConsentGranted) {
-												setBannerFeedback({
-													status: "warning",
-													title: "Persetujuan Pemrosesan AI Belum Diberikan",
-													description:
-														"Centang persetujuan pemrosesan AI Gemini untuk mengekstrak draf otomatis, atau lewati dan isi draf formulir secara manual.",
-												});
-												return;
-											}
-											void uploadAndExtractMutation.mutateAsync(normalized[0]);
-										}
-									}}
-								/>
+									{/* Quick-create Desa Adat if user has 0 memberships */}
+									{myOrganizations.length === 0 ? (
+										<div className="rounded-xl border border-[#F3D9A4] bg-[#FDF7EB] p-3.5 space-y-2.5 mt-2">
+											<div className="flex items-center gap-1.5 text-xs font-bold text-[#9A5B13]">
+												<Building2 className="w-3.5 h-3.5" />
+												<span>
+													Belum punya Desa Adat terdaftar? Buat cepat di sini:
+												</span>
+											</div>
+											<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+												<input
+													type="text"
+													value={quickOrgName}
+													onChange={(e) => setQuickOrgName(e.target.value)}
+													placeholder="Nama Desa Adat / Banjar *"
+													className="rounded-xl border border-[#E5E3DC] bg-white px-3 py-1.5 text-xs text-[#181817]"
+												/>
+												<input
+													type="text"
+													value={quickOrgVillage}
+													onChange={(e) => setQuickOrgVillage(e.target.value)}
+													placeholder="Kelurahan / Kecamatan (Mis. Ubud)"
+													className="rounded-xl border border-[#E5E3DC] bg-white px-3 py-1.5 text-xs text-[#181817]"
+												/>
+											</div>
+											<button
+												type="button"
+												disabled={
+													createOrgMutation.isPending ||
+													quickOrgName.trim().length < 3
+												}
+												onClick={async () => {
+													try {
+														const res = await createOrgMutation.mutateAsync({
+															name: quickOrgName.trim(),
+															village: quickOrgVillage.trim() || undefined,
+														});
+														updateField(
+															"organizationId",
+															res.organization.id,
+														);
+														saveOrganizationId(res.organization.id);
+														setQuickOrgName("");
+														setQuickOrgVillage("");
+														setBannerFeedback({
+															status: "success",
+															title: "Desa Adat Berhasil Didaftarkan",
+															description: `"${res.organization.name}" kini aktif sebagai Desa Adat penyelenggara.`,
+														});
+													} catch (err) {
+														setBannerFeedback({
+															status: "error",
+															title: "Gagal Membuat Desa Adat",
+															description:
+																err instanceof Error
+																	? err.message
+																	: "Pastikan Anda telah masuk akun.",
+														});
+													}
+												}}
+												className="px-3 py-1.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+											>
+												{createOrgMutation.isPending
+													? "Mendaftarkan..."
+													: "+ Daftarkan & Gunakan Desa Adat Ini"}
+											</button>
+										</div>
+									) : null}
+								</div>
 
-								<CheckboxInput
-									value={aiConsentGranted}
-									onChange={(checked) => setAiConsentGranted(Boolean(checked))}
-									label="Persetujuan Pemrosesan AI Gemini (Privat & Sesuai FR-012)"
-									description="Dokumen disimpan secara privat di Cloudflare R2 dan diekstraksi ke draf kegiatan internal tanpa dipublikasikan otomatis."
-								/>
+								{/* AI Consent Checkbox */}
+								<label className="flex items-start gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 cursor-pointer">
+									<input
+										type="checkbox"
+										checked={aiConsentGranted}
+										onChange={(e) => setAiConsentGranted(e.target.checked)}
+										className="mt-0.5 rounded border-[#C5C3BC] text-[#264D3B] focus:ring-[#264D3B]"
+									/>
+									<div className="text-xs">
+										<span className="font-bold text-[#181817] block">
+											Persetujuan Pemrosesan AI Gemini (Privat &amp; Sesuai
+											FR-012)
+										</span>
+										<span className="text-[#585854]">
+											Dokumen surat edaran disimpan secara privat di Cloudflare
+											R2 dan dianalisis menjadi draf kegiatan internal tanpa
+											dipublikasikan otomatis.
+										</span>
+									</div>
+								</label>
+
+								{/* File Upload Dropzone */}
+								<div className="rounded-2xl border-2 border-dashed border-[#C7DBD0] bg-[#F6FAF7] p-6 text-center space-y-3">
+									<Upload className="w-8 h-8 text-[#264D3B] mx-auto" />
+									<div className="space-y-1">
+										<p className="text-sm font-bold text-[#181817]">
+											Unggah Berkas Surat Edaran (PDF, JPG, PNG • Maks. 10 MB)
+										</p>
+										<p className="text-xs text-[#585854]">
+											Pilih berkas dari perangkat Anda untuk langsung diekstrak
+											oleh AI Gemini, atau lewati ke Langkah 2 untuk mengisi
+											manual.
+										</p>
+									</div>
+									<div>
+										<label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] cursor-pointer">
+											<Upload className="w-3.5 h-3.5" />
+											<span>
+												{uploadAndExtractMutation.isPending
+													? "Mengunggah & Mengekstrak..."
+													: "Pilih File Surat Edaran"}
+											</span>
+											<input
+												type="file"
+												accept=".pdf,image/jpeg,image/png,image/webp"
+												disabled={uploadAndExtractMutation.isPending}
+												onChange={(e) => {
+													const file = e.target.files?.[0];
+													if (!file) return;
+													if (!aiConsentGranted) {
+														setBannerFeedback({
+															status: "warning",
+															title:
+																"Persetujuan Pemrosesan AI Belum Dicentang",
+															description:
+																"Centang persetujuan AI Gemini terlebih dahulu atau lanjut ke Langkah 2 untuk pengisian manual.",
+														});
+														return;
+													}
+													void uploadAndExtractMutation.mutateAsync(file);
+												}}
+												className="hidden"
+											/>
+										</label>
+									</div>
+									{activeDocument ? (
+										<p className="text-xs font-semibold text-[#264D3B]">
+											Berkas terunggah: {activeDocument.originalName} (
+											{Math.round(activeDocument.sizeBytes / 1024)} KB)
+										</p>
+									) : null}
+								</div>
 
 								{uploadAndExtractMutation.isPending ? (
 									<LoadingStateBlock
-										label={SYSTEM_STATE_MESSAGES.loadingAiExtraction.description}
+										label={
+											SYSTEM_STATE_MESSAGES.loadingAiExtraction.description
+										}
 										rows={2}
 									/>
 								) : null}
 
-								{activeDocument ? (
-									<Text size="sm" type="supporting">
-										Berkas terunggah: {activeDocument.originalName} (
-										{Math.round(activeDocument.sizeBytes / 1024)} KB)
-									</Text>
-								) : null}
+								<div className="flex justify-end pt-2">
+									<button
+										type="button"
+										onClick={() => setActiveStep(1)}
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+									>
+										<span>Lewati &amp; Isi Rincian Manual</span>
+										<ArrowRight className="w-3.5 h-3.5" />
+									</button>
+								</div>
+							</div>
+
+							{/* Right Column: AI Extraction Summary */}
+							<div className="xl:col-span-5 teduh-workspace-card space-y-4">
+								<div className="flex items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
+									<div className="flex items-center gap-2">
+										<Sparkles className="w-4 h-4 text-[#264D3B]" />
+										<h3 className="teduh-workspace-card-title">
+											Hasil Ekstraksi AI Gemini
+										</h3>
+									</div>
+									{activeExtraction ? (
+										<span className="px-2.5 py-0.5 rounded-full bg-[#EBF3EE] text-[#264D3B] text-[11px] font-bold">
+											{activeExtraction.modelName} ({activeExtraction.latencyMs}{" "}
+											ms)
+										</span>
+									) : null}
+								</div>
 
 								{activeExtraction ? (
-									<VStack gap={3}>
-										<Divider variant="subtle" />
-										<HStack justify="between" vAlign="center" wrap="wrap">
-											<HStack gap={2} vAlign="center">
-												<Icon icon={Sparkles} size="sm" />
-												<Heading level={3}>
-													Hasil Pembacaan Dokumen ({activeExtraction.modelName})
-												</Heading>
-											</HStack>
-											<Token
-												color={
-													activeExtraction.status === "completed"
-														? "green"
-														: "orange"
-												}
-												size="sm"
-												label={
-													activeExtraction.status === "completed"
-														? `Selesai (${activeExtraction.latencyMs} ms)`
-														: activeExtraction.status
-												}
-											/>
-										</HStack>
-
+									<div className="space-y-4 text-xs">
 										{activeExtraction.issues.length > 0 ? (
-											<Banner
-												status="warning"
-												collapsible={false}
-												title="Catatan Keraguan Ekstraksi"
-												description={
-													<VStack gap={1}>
-														<Text size="sm">
-															AI menemukan bagian yang ambigu dan wajib diverifikasi manual:
-														</Text>
-														<List density="compact">
-															{activeExtraction.issues.map((issue, idx) => (
-																<ListItem
-																	key={idx}
-																	startContent={
-																		<Icon icon={AlertTriangle} size="xsm" />
-																	}
-																	label={issue}
-																/>
-															))}
-														</List>
-													</VStack>
-												}
-											/>
+											<div className="rounded-xl border border-[#F3D9A4] bg-[#FDF7EB] p-3.5 space-y-1.5">
+												<div className="flex items-center gap-1.5 font-bold text-[#9A5B13]">
+													<AlertTriangle className="w-4 h-4 shrink-0" />
+													<span>
+														Catatan Keraguan AI ({activeExtraction.issues.length}
+														)
+													</span>
+												</div>
+												<ul className="list-disc pl-4 space-y-1 text-[#585854]">
+													{activeExtraction.issues.map((issue, idx) => (
+														<li key={idx}>{issue}</li>
+													))}
+												</ul>
+											</div>
 										) : null}
 
-										<MetadataList columns={2}>
-											<MetadataListItem label="Nama Upacara Terdeteksi">
-												{formState.title || "-"}
-											</MetadataListItem>
-											<MetadataListItem label="Penyelenggara">
-												{formState.organizerName || "-"}
-											</MetadataListItem>
-											<MetadataListItem label="Jadwal Pelaksanaan">
-												{formState.startsAtWita && formState.endsAtWita
-													? `${formState.startsAtWita} s/d ${formState.endsAtWita} WITA`
-													: "-"}
-											</MetadataListItem>
-											<MetadataListItem label="Nomor Surat / Referensi">
-												{formState.permitReference || "-"}
-											</MetadataListItem>
-										</MetadataList>
+										<div className="space-y-2">
+											<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
+												<span className="text-[11px] text-[#585854] block">
+													Nama Upacara Terdeteksi
+												</span>
+												<p className="font-bold text-[#181817]">
+													{formState.title || "-"}
+												</p>
+											</div>
+											<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
+												<span className="text-[11px] text-[#585854] block">
+													Lokasi / Rute Prosesi
+												</span>
+												<p className="font-bold text-[#181817]">
+													{formState.venueName || "-"}
+												</p>
+											</div>
+											<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
+												<span className="text-[11px] text-[#585854] block">
+													Jadwal Pelaksanaan (WITA)
+												</span>
+												<p className="font-bold text-[#181817]">
+													{formState.startsAtWita} s/d {formState.endsAtWita}
+												</p>
+											</div>
+										</div>
 
-										<HStack justify="end">
-											<Button
-												variant="primary"
-												size="md"
-												label="Lanjut Periksa Rincian"
-												icon={<Icon icon={ArrowRight} size="sm" />}
-												onClick={() => setActiveStep(1)}
-											/>
-										</HStack>
-									</VStack>
+										<button
+											type="button"
+											onClick={() => setActiveStep(1)}
+											className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+										>
+											<span>Periksa &amp; Koreksi Rincian</span>
+											<ArrowRight className="w-3.5 h-3.5" />
+										</button>
+									</div>
+								) : (
+									<div className="py-8 text-center space-y-2 text-xs text-[#585854]">
+										<FileText className="w-8 h-8 text-[#8A8984] mx-auto" />
+										<p className="font-semibold text-[#181817]">
+											Belum Ada Dokumen yang Dianalisis
+										</p>
+										<p className="max-w-xs mx-auto">
+											Unggah surat edaran di sebelah kiri untuk mengekstrak nama
+											upacara, waktu pelaksanaan, nomor surat, dan dampak lalu
+											lintas secara otomatis.
+										</p>
+									</div>
+								)}
+							</div>
+						</div>
+					) : null}
+
+					{/* ================================================================= */}
+					{/* STEP 1: DETAIL UPACARA & JADWAL WITA                              */}
+					{/* ================================================================= */}
+					{activeStep === 1 ? (
+						<div className="teduh-workspace-card space-y-5">
+							<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
+								<div>
+									<h2 className="teduh-workspace-card-title">
+										2. Detail Upacara &amp; Jadwal Operasional WITA
+									</h2>
+									<p className="text-xs text-[#585854] mt-0.5">
+										Periksa dan lengkapi seluruh kolom berikut. Setiap perubahan
+										dicatat sebagai hasil tinjauan resmi Panitia Desa Adat.
+									</p>
+								</div>
+								{activeExtraction ? (
+									<span className="px-3 py-1 rounded-full bg-[#EBF3EE] text-[#264D3B] text-xs font-semibold">
+										Terisi dari Ekstraksi Surat Edaran
+									</span>
 								) : null}
-							</VStack>
-						) : null}
+							</div>
 
-						{/* STEP 1: DETAIL UPACARA & KOREKSI PRAJURU */}
-						{activeStep === 1 ? (
-							<VStack gap={4}>
-								<HStack justify="between" vAlign="center" wrap="wrap">
-									<VStack gap={1}>
-										<Heading level={2}>Detail Upacara & Jadwal WITA</Heading>
-										<Text type="supporting" size="sm">
-											Periksa dan sesuaikan seluruh kolom data. Perubahan akan
-											tersimpan sebagai data hasil peninjauan Prajuru Adat.
-										</Text>
-									</VStack>
-									{activeExtraction ? (
-										<Token
-											color="gray"
-											size="sm"
-											label="Terisi dari Surat Edaran"
-										/>
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+								{/* Nama Upacara */}
+								<div className="md:col-span-2 space-y-1.5">
+									<label className="block text-xs font-semibold text-[#181817]">
+										Nama Upacara / Kegiatan Adat *
+									</label>
+									<input
+										type="text"
+										value={formState.title}
+										onChange={(e) => updateField("title", e.target.value)}
+										placeholder="Contoh: Karya Pujawali & Prosesi Melasti Pura Dalem Ubud"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									/>
+									{fieldErrors.title ? (
+										<p className="text-xs text-[#9E2A2B] font-medium">
+											{fieldErrors.title}
+										</p>
 									) : null}
-								</HStack>
-
-								<FormLayout direction="vertical" defaultOptionality="optional">
-									<VStack gap={1.5}>
-										<TextInput
-											label="Nama Upacara / Kegiatan Adat"
-											placeholder="Contoh: Karya Pujawali & Prosesi Melasti Pura Dalem"
-											value={formState.title}
-											onChange={(val) => updateField("title", val)}
-											isRequired
-											startIcon={FileText}
-											status={
-												fieldErrors.title
-													? { type: "error", message: fieldErrors.title }
-													: undefined
-											}
-											statusVariant="detached"
-											width="100%"
-										/>
-										{activeExtraction?.outputJson ? (
-											<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
-												<FieldReviewIndicator
-													state={
-														getFieldReviewStatus(
-															activeExtraction.outputJson.event_name,
-															formState.title,
-														).state
-													}
-												/>
-												{activeExtraction.outputJson.event_name?.evidence ? (
-													<Text size="xsm" type="supporting">
-														Bukti dokumen: &quot;{activeExtraction.outputJson.event_name.evidence}&quot;
-													</Text>
-												) : null}
-											</HStack>
-										) : null}
-									</VStack>
-
-									<Grid columns={{ minWidth: 220, max: 2 }} gap={4}>
-										<Selector
-											label="Kategori Upacara"
-											value={formState.category}
-											onChange={(val) => updateField("category", val)}
-											options={CATEGORY_OPTIONS}
-											isRequired
-										/>
-										<TextInput
-											label="Nomor Surat / Rekomendasi"
-											placeholder="Contoh: 14/DA-UBD/XI/2026"
-											value={formState.permitReference}
-											onChange={(val) => updateField("permitReference", val)}
-											width="100%"
-										/>
-									</Grid>
-
-									<VStack gap={1.5}>
-										<TextInput
-											label="Titik Pura / Banjar & Rute Utama"
-											placeholder="Contoh: Pura Dalem Ubud menuju Catus Pata Ubud"
-											value={formState.venueName}
-											onChange={(val) => updateField("venueName", val)}
-											startIcon={MapPinned}
-											width="100%"
-										/>
-										{activeExtraction?.outputJson ? (
-											<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
-												<FieldReviewIndicator
-													state={
-														getFieldReviewStatus(
-															activeExtraction.outputJson.venue_name,
-															formState.venueName,
-														).state
-													}
-												/>
-												{activeExtraction.outputJson.venue_name?.evidence ? (
-													<Text size="xsm" type="supporting">
-														Bukti dokumen: &quot;{activeExtraction.outputJson.venue_name.evidence}&quot;
-													</Text>
-												) : null}
-											</HStack>
-										) : null}
-									</VStack>
-
-									<VStack gap={1.5}>
-										<Grid columns={{ minWidth: 220, max: 2 }} gap={4}>
-											<TextInput
-												label="Waktu Mulai (WITA)"
-												placeholder="YYYY-MM-DDTHH:mm"
-												value={formState.startsAtWita}
-												onChange={(val) => updateField("startsAtWita", val)}
-												startIcon={CalendarDays}
-												width="100%"
-											/>
-
-											<TextInput
-												label="Waktu Selesai (WITA)"
-												placeholder="YYYY-MM-DDTHH:mm"
-												value={formState.endsAtWita}
-												onChange={(val) => updateField("endsAtWita", val)}
-												startIcon={CalendarDays}
-												width="100%"
-												status={
-													fieldErrors.endsAtWita
-														? { type: "error", message: fieldErrors.endsAtWita }
-														: undefined
+									{activeExtraction?.outputJson ? (
+										<div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+											<FieldReviewIndicator
+												state={
+													getFieldReviewStatus(
+														activeExtraction.outputJson.event_name,
+														formState.title,
+													).state
 												}
-												statusVariant="detached"
 											/>
-										</Grid>
-										{activeExtraction?.outputJson ? (
-											<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
-												<FieldReviewIndicator
-													state={
-														getFieldReviewStatus(
-															activeExtraction.outputJson.start_datetime,
-															formState.startsAtWita,
-														).state
-													}
-												/>
-												{activeExtraction.outputJson.start_datetime?.evidence ? (
-													<Text size="xsm" type="supporting">
-														Bukti jadwal: &quot;{activeExtraction.outputJson.start_datetime.evidence}&quot;
-													</Text>
-												) : null}
-											</HStack>
-										) : null}
-									</VStack>
+											{activeExtraction.outputJson.event_name?.evidence ? (
+												<span className="text-[11px] text-[#585854] italic">
+													Bukti surat: &quot;
+													{activeExtraction.outputJson.event_name.evidence}
+													&quot;
+												</span>
+											) : null}
+										</div>
+									) : null}
+								</div>
 
-									<TextArea
-										label="Deskripsi Prosesi / Iring-iringan"
-										placeholder="Urutan barisan, sarana upakara yang diusung, dan estimasi waktu perhentian..."
+								{/* Kategori Upacara */}
+								<div className="space-y-1.5">
+									<label className="block text-xs font-semibold text-[#181817]">
+										Kategori Upacara *
+									</label>
+									<select
+										value={formState.category}
+										onChange={(e) => updateField("category", e.target.value)}
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									>
+										{CATEGORY_OPTIONS.map((opt) => (
+											<option key={opt.value} value={opt.value}>
+												{opt.label}
+											</option>
+										))}
+									</select>
+								</div>
+
+								{/* Nomor Surat */}
+								<div className="space-y-1.5">
+									<label className="block text-xs font-semibold text-[#181817]">
+										Nomor Surat Edaran / Referensi Desa Adat
+									</label>
+									<input
+										type="text"
+										value={formState.permitReference}
+										onChange={(e) =>
+											updateField("permitReference", e.target.value)
+										}
+										placeholder="Contoh: 14/DA-UBD/XI/2026"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									/>
+								</div>
+
+								{/* Lokasi Utama / Titik Pura */}
+								<div className="md:col-span-2 space-y-1.5">
+									<label className="block text-xs font-semibold text-[#181817]">
+										Titik Pura / Banjar &amp; Kawasan Utama
+									</label>
+									<input
+										type="text"
+										value={formState.venueName}
+										onChange={(e) => updateField("venueName", e.target.value)}
+										placeholder="Contoh: Pura Desa Adat Ubud menuju Catus Pata Ubud"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									/>
+									{activeExtraction?.outputJson ? (
+										<div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+											<FieldReviewIndicator
+												state={
+													getFieldReviewStatus(
+														activeExtraction.outputJson.venue_name,
+														formState.venueName,
+													).state
+												}
+											/>
+											{activeExtraction.outputJson.venue_name?.evidence ? (
+												<span className="text-[11px] text-[#585854] italic">
+													Bukti surat: &quot;
+													{activeExtraction.outputJson.venue_name.evidence}
+													&quot;
+												</span>
+											) : null}
+										</div>
+									) : null}
+								</div>
+
+								{/* Waktu Mulai WITA */}
+								<div className="space-y-1.5">
+									<label className="block text-xs font-semibold text-[#181817]">
+										Waktu Mulai (WITA • UTC+8)
+									</label>
+									<input
+										type="datetime-local"
+										value={formState.startsAtWita}
+										onChange={(e) =>
+											updateField("startsAtWita", e.target.value)
+										}
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									/>
+								</div>
+
+								{/* Waktu Selesai WITA */}
+								<div className="space-y-1.5">
+									<label className="block text-xs font-semibold text-[#181817]">
+										Waktu Selesai (WITA • UTC+8)
+									</label>
+									<input
+										type="datetime-local"
+										value={formState.endsAtWita}
+										onChange={(e) => updateField("endsAtWita", e.target.value)}
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									/>
+									{fieldErrors.endsAtWita ? (
+										<p className="text-xs text-[#9E2A2B] font-medium">
+											{fieldErrors.endsAtWita}
+										</p>
+									) : null}
+								</div>
+
+								{/* Deskripsi Prosesi */}
+								<div className="md:col-span-2 space-y-1.5">
+									<label className="block text-xs font-semibold text-[#181817]">
+										Rincian Prosesi &amp; Rangkaian Upacara
+									</label>
+									<textarea
+										rows={3}
 										value={formState.processionDescription}
-										onChange={(val) => updateField("processionDescription", val)}
-										rows={2}
-										maxLength={2000}
-										width="100%"
-									/>
-
-									<VStack gap={1.5}>
-										<TextArea
-											label="Dampak Lalu Lintas & Pengalihan Arus"
-											placeholder="Ruas jalan yang dialihkan, titik kantong parkir, dan imbauan bagi pengendara..."
-											value={formState.trafficImpactDescription}
-											onChange={(val) =>
-												updateField("trafficImpactDescription", val)
+										onChange={(e) => {
+											updateField("processionDescription", e.target.value);
+											if (!formState.description) {
+												updateField("description", e.target.value);
 											}
-											rows={3}
-											maxLength={2000}
-											width="100%"
-										/>
-										{activeExtraction?.outputJson ? (
-											<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
-												<FieldReviewIndicator
-													state={
-														getFieldReviewStatus(
-															activeExtraction.outputJson.traffic_impact_description,
-															formState.trafficImpactDescription,
-														).state
-													}
+										}}
+										placeholder="Urutan iring-iringan, sarana upakara yang diusung, dan titik pemberhentian..."
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									/>
+								</div>
+
+								{/* Dampak Lalu Lintas & Pengalihan */}
+								<div className="md:col-span-2 space-y-1.5">
+									<label className="block text-xs font-semibold text-[#181817]">
+										Rekayasa Lalu Lintas &amp; Jalur Alternatif Warga
+									</label>
+									<textarea
+										rows={3}
+										value={formState.trafficImpactDescription}
+										onChange={(e) =>
+											updateField("trafficImpactDescription", e.target.value)
+										}
+										placeholder="Rute pengalihan arus kendaraan, kantong parkir krama, dan imbauan bagi pengguna jalan..."
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									/>
+								</div>
+
+								{/* Panitia & Narahubung */}
+								<div className="space-y-1.5">
+									<label className="block text-xs font-semibold text-[#181817]">
+										Nama Panitia / Prajuru Penyelenggara
+									</label>
+									<input
+										type="text"
+										value={formState.organizerName}
+										onChange={(e) =>
+											updateField("organizerName", e.target.value)
+										}
+										placeholder="Contoh: Prawartaka Karya Desa Adat Ubud"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									/>
+								</div>
+
+								<div className="space-y-1.5">
+									<label className="block text-xs font-semibold text-[#181817]">
+										Kontak Koordinasi / Pecalang
+									</label>
+									<input
+										type="text"
+										value={formState.contactInformation}
+										onChange={(e) =>
+											updateField("contactInformation", e.target.value)
+										}
+										placeholder="Contoh: 0812-3456-7890 (Jro Pecalang)"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+									/>
+								</div>
+							</div>
+
+							<div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#F0EFEA]">
+								<button
+									type="button"
+									onClick={() => setActiveStep(0)}
+									className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+								>
+									<ArrowLeft className="w-3.5 h-3.5" />
+									<span>Kembali ke Surat Edaran</span>
+								</button>
+
+								<div className="flex items-center gap-2">
+									<button
+										type="button"
+										disabled={saveDraftMutation.isPending}
+										onClick={() => void saveDraftMutation.mutateAsync()}
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4]"
+									>
+										<Save className="w-3.5 h-3.5" />
+										<span>Simpan Rincian</span>
+									</button>
+									<button
+										type="button"
+										onClick={() => setActiveStep(2)}
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+									>
+										<span>Lanjut ke Peta &amp; Ruas Jalan</span>
+										<ArrowRight className="w-3.5 h-3.5" />
+									</button>
+								</div>
+							</div>
+						</div>
+					) : null}
+
+					{/* ================================================================= */}
+					{/* STEP 2: INPUT PETA & RUAS JALAN TERDAMPAK                         */}
+					{/* ================================================================= */}
+					{activeStep === 2 ? (
+						<div className="space-y-6">
+							<div className="teduh-workspace-card space-y-5">
+								<div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#F0EFEA] pb-3">
+									<div>
+										<h2 className="teduh-workspace-card-title">
+											3. Input Peta &amp; Ruas Jalan Terdampak
+										</h2>
+										<p className="text-xs text-[#585854] mt-0.5">
+											Tentukan lokasi penutupan jalan secara akurat: klik titik
+											koordinat langsung di peta untuk menggambar ruas jalan
+											baru, atau pilih dari katalog jalan terverifikasi.
+										</p>
+									</div>
+
+									{/* Mode Switcher: Gambar di Peta vs Pilih Katalog */}
+									<div className="inline-flex rounded-xl border border-[#E5E3DC] bg-[#F3F1EC] p-1">
+										<button
+											type="button"
+											onClick={() => setRoadInputMode("draw")}
+											className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+												roadInputMode === "draw"
+													? "bg-[#264D3B] text-white"
+													: "text-[#585854] hover:text-[#181817]"
+											}`}
+										>
+											<PenTool className="w-3.5 h-3.5" />
+											<span>Gambar Ruas di Peta</span>
+										</button>
+										<button
+											type="button"
+											onClick={() => setRoadInputMode("catalog")}
+											className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+												roadInputMode === "catalog"
+													? "bg-[#264D3B] text-white"
+													: "text-[#585854] hover:text-[#181817]"
+											}`}
+										>
+											<MapPinned className="w-3.5 h-3.5" />
+											<span>Pilih dari Katalog ({catalogSegments.length})</span>
+										</button>
+									</div>
+								</div>
+
+								{/* Dedicated Dashboard Road Map Component */}
+								<DashboardRoadMapInput
+									mode={roadInputMode}
+									height={420}
+									draftCoordinates={draftCoordinates}
+									onDraftCoordinatesChange={setDraftCoordinates}
+									catalogSegments={catalogSegments}
+									selectedCatalogSegmentId={selectedRoadSegmentId}
+									onSelectCatalogSegment={(id) => setSelectedRoadSegmentId(id)}
+									attachedRoadImpacts={attachedRoadImpacts}
+								/>
+
+								{/* Input Form Based on Active Map Mode */}
+								{roadInputMode === "draw" ? (
+									<div className="rounded-2xl border border-[#D7E3DC] bg-[#F6FAF7] p-4 space-y-4">
+										<div className="flex flex-wrap items-center justify-between gap-2">
+											<div className="flex items-center gap-2">
+												<PenTool className="w-4 h-4 text-[#264D3B]" />
+												<span className="text-xs font-bold text-[#181817]">
+													Formulir Ruas Jalan dari Titik Peta (
+													{draftCoordinates.length} titik dipilih)
+												</span>
+											</div>
+											<span className="text-[11px] font-semibold text-[#264D3B]">
+												{draftCoordinates.length < 2
+													? "Klik minimal 2 titik pada peta di atas"
+													: "Garis ruas jalan siap disimpan"}
+											</span>
+										</div>
+
+										<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+											<div>
+												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+													Nama Ruas Jalan / Simpang *
+												</label>
+												<input
+													type="text"
+													value={newSegmentName}
+													onChange={(e) => setNewSegmentName(e.target.value)}
+													placeholder="Mis. Jl. Raya Ubud (Depan Puri Saren)"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
 												/>
-												{activeExtraction.outputJson.traffic_impact_description?.evidence ? (
-													<Text size="xsm" type="supporting">
-														Bukti rekayasa jalan: &quot;{activeExtraction.outputJson.traffic_impact_description.evidence}&quot;
-													</Text>
-												) : null}
-											</HStack>
-										) : null}
-									</VStack>
+											</div>
 
-									<Grid columns={{ minWidth: 220, max: 2 }} gap={4}>
-										<TextInput
-											label="Panitia Penyelenggara"
-											placeholder="Contoh: Prajuru Banjar Sambahan"
-											value={formState.organizerName}
-											onChange={(val) => updateField("organizerName", val)}
-											startIcon={Users}
-											width="100%"
-										/>
-										<TextInput
-											label="Kontak Informasi / Narahubung"
-											placeholder="Contoh: 0812-3456-7890 (I Made Subrata)"
-											value={formState.contactInformation}
-											onChange={(val) => updateField("contactInformation", val)}
-											width="100%"
-										/>
-									</Grid>
-								</FormLayout>
-							</VStack>
-						) : null}
+											<div>
+												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+													Kawasan / Desa Adat *
+												</label>
+												<input
+													type="text"
+													value={newSegmentArea}
+													onChange={(e) => setNewSegmentArea(e.target.value)}
+													placeholder="Mis. Ubud, Gianyar"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+												/>
+											</div>
 
-						{/* STEP 2: PETA & RUAS JALAN TERDAMPAK */}
-						{activeStep === 2 ? (
-							<VStack gap={4}>
-								<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
-									<VStack gap={1}>
-										<Heading level={2}>Ruas Jalan & Rencana Penutupan</Heading>
-										<Text type="supporting" size="sm">
-											Pilih ruas jalan terverifikasi yang dilalui iring-iringan
-											upacara atau diberlakukan penutupan sementara.
-										</Text>
-									</VStack>
-									<Token
-										color="gray"
-										size="sm"
-										label="Katalog Ruas Terverifikasi"
-									/>
-								</HStack>
+											<div>
+												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+													Jenis Dampak Lalu Lintas *
+												</label>
+												<select
+													value={selectedImpactType}
+													onChange={(e) =>
+														setSelectedImpactType(
+															e.target.value as typeof selectedImpactType,
+														)
+													}
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+												>
+													{IMPACT_TYPE_OPTIONS.map((opt) => (
+														<option key={opt.value} value={opt.value}>
+															{opt.label}
+														</option>
+													))}
+												</select>
+											</div>
 
-								<BaliMapTilerView village={wizardSpatialProfile} height={320} />
+											<div>
+												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+													Mulai Penutupan (WITA)
+												</label>
+												<input
+													type="datetime-local"
+													value={impactFromWita || formState.startsAtWita}
+													onChange={(e) => setImpactFromWita(e.target.value)}
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+												/>
+											</div>
 
-								<VStack gap={3}>
-									<Heading level={3}>Tambah Ruas Jalan Terdampak</Heading>
-									<Grid columns={{ minWidth: 260, max: 2 }} gap={3}>
-										<Selector
-											label="Pilih Ruas Jalan Terverifikasi"
-											placeholder="Pilih dari katalog jalan..."
-											value={selectedRoadSegmentId}
-											onChange={setSelectedRoadSegmentId}
-											options={
-												roadSegmentsQuery.data?.segments.map((s) => ({
-													value: s.id,
-													label: `${s.displayName} (${s.coverageArea})`,
-												})) ?? []
-											}
-										/>
-										<Selector
-											label="Rencana Dampak Operasional"
-											value={selectedImpactType}
-											onChange={(val) =>
-												setSelectedImpactType(
-													val as typeof selectedImpactType,
-												)
-											}
-											options={IMPACT_TYPE_OPTIONS}
-										/>
-									</Grid>
-									<HStack vAlign="end" paddingBlockEnd={1}>
-										<Button
-											variant="secondary"
-											size="md"
-											label="Tautkan Ruas Jalan"
-											icon={<Icon icon={Plus} size="sm" />}
-											isDisabled={!selectedRoadSegmentId || !isRealUuidEvent}
-											isLoading={addRoadImpactMutation.isPending}
-											onClick={() => {
-												if (selectedRoadSegmentId) {
-													void addRoadImpactMutation.mutateAsync(
-														selectedRoadSegmentId,
-													);
+											<div>
+												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+													Selesai Penutupan (WITA)
+												</label>
+												<input
+													type="datetime-local"
+													value={impactToWita || formState.endsAtWita}
+													onChange={(e) => setImpactToWita(e.target.value)}
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+												/>
+											</div>
+
+											<div>
+												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+													Catatan Pengalihan Arus / Rute Alternatif
+												</label>
+												<input
+													type="text"
+													value={impactDiversionNote}
+													onChange={(e) =>
+														setImpactDiversionNote(e.target.value)
+													}
+													placeholder="Mis. Dialihkan melalui Jl. Sugriwa / Monkey Forest"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+												/>
+											</div>
+										</div>
+
+										<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+											<label className="flex items-center gap-2 text-xs text-[#181817] cursor-pointer">
+												<input
+													type="checkbox"
+													checked={humanVerifiedRoad}
+													onChange={(e) =>
+														setHumanVerifiedRoad(e.target.checked)
+													}
+													className="rounded border-[#C5C3BC] text-[#264D3B]"
+												/>
+												<span>
+													Saya memverifikasi bahwa garis ruas jalan ini sesuai
+													dengan lokasi penutupan lapangan (Human-Verified).
+												</span>
+											</label>
+
+											<button
+												type="button"
+												disabled={
+													drawAndAttachRoadMutation.isPending ||
+													draftCoordinates.length < 2
 												}
-											}}
-										/>
-									</HStack>
-								</VStack>
+												onClick={() =>
+													void drawAndAttachRoadMutation.mutateAsync()
+												}
+												className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 shrink-0"
+											>
+												<Plus className="w-3.5 h-3.5" />
+												<span>
+													{drawAndAttachRoadMutation.isPending
+														? "Menyimpan Ruas Jalan..."
+														: "Simpan & Tautkan Ruas Jalan"}
+												</span>
+											</button>
+										</div>
+									</div>
+								) : (
+									<div className="rounded-2xl border border-[#E5E3DC] bg-[#FBFBFA] p-4 space-y-4">
+										<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+											<div className="md:col-span-2">
+												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+													Pilih Ruas Jalan dari Katalog Terverifikasi *
+												</label>
+												<select
+													value={selectedRoadSegmentId}
+													onChange={(e) =>
+														setSelectedRoadSegmentId(e.target.value)
+													}
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+												>
+													<option value="">
+														-- Pilih ruas jalan atau klik garis biru di peta --
+													</option>
+													{catalogSegments.map((seg) => (
+														<option key={seg.id} value={seg.id}>
+															{seg.displayName} ({seg.coverageArea})
+														</option>
+													))}
+												</select>
+											</div>
 
-								<Divider variant="subtle" />
+											<div>
+												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+													Jenis Dampak Lalu Lintas *
+												</label>
+												<select
+													value={selectedImpactType}
+													onChange={(e) =>
+														setSelectedImpactType(
+															e.target.value as typeof selectedImpactType,
+														)
+													}
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+												>
+													{IMPACT_TYPE_OPTIONS.map((opt) => (
+														<option key={opt.value} value={opt.value}>
+															{opt.label}
+														</option>
+													))}
+												</select>
+											</div>
+										</div>
 
-								<Heading level={3}>Ruas Jalan yang Direncanakan Ditutup</Heading>
-								{eventRoadImpactsQuery.data?.roadImpacts &&
-								eventRoadImpactsQuery.data.roadImpacts.length > 0 ? (
-									<List hasDividers density="balanced">
-										{eventRoadImpactsQuery.data.roadImpacts.map((imp) => (
-											<ListItem
+										<div className="flex justify-end">
+											<button
+												type="button"
+												disabled={
+													!selectedRoadSegmentId ||
+													addCatalogRoadImpactMutation.isPending
+												}
+												onClick={() => {
+													if (selectedRoadSegmentId) {
+														void addCatalogRoadImpactMutation.mutateAsync(
+															selectedRoadSegmentId,
+														);
+													}
+												}}
+												className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+											>
+												<Plus className="w-3.5 h-3.5" />
+												<span>
+													{addCatalogRoadImpactMutation.isPending
+														? "Menautkan..."
+														: "Tautkan Ruas Katalog ke Acara"}
+												</span>
+											</button>
+										</div>
+									</div>
+								)}
+							</div>
+
+							{/* Attached Road Impacts List */}
+							<div className="teduh-workspace-card space-y-4">
+								<div className="flex items-center justify-between">
+									<h3 className="teduh-workspace-card-title">
+										Daftar Ruas Jalan Terdampak ({attachedRoadImpacts.length})
+									</h3>
+								</div>
+
+								{attachedRoadImpacts.length > 0 ? (
+									<div className="space-y-2.5">
+										{attachedRoadImpacts.map((imp) => (
+											<div
 												key={imp.id}
-												startContent={<Icon icon={MapPinned} size="sm" />}
-												label={imp.displayName || "Ruas Jalan Terverifikasi"}
-												description={`${imp.coverageArea || "Kawasan"} • ${getImpactTypeLabel(imp.impactType)} • ${formatWitaRange(imp.plannedFrom, imp.plannedTo)}`}
-												endContent={
+												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+											>
+												<div className="space-y-1">
+													<div className="flex flex-wrap items-center gap-2">
+														<span className="text-xs font-bold text-[#181817]">
+															{imp.segment?.displayName ||
+																imp.displayName ||
+																"Ruas Jalan Terverifikasi"}
+														</span>
+														<span className="px-2 py-0.5 rounded-md bg-[#EBF3EE] text-[#264D3B] text-[11px] font-semibold">
+															{getImpactTypeLabel(imp.impactType)}
+														</span>
+													</div>
+													<p className="text-xs text-[#585854]">
+														{imp.segment?.coverageArea ||
+															imp.coverageArea ||
+															"Bali"}{" "}
+														•{" "}
+														{imp.plannedFrom && imp.plannedTo
+															? formatWitaRange(imp.plannedFrom, imp.plannedTo)
+															: "Sesuai jadwal acara"}
+														{imp.diversionNote
+															? ` • Alihan: ${imp.diversionNote}`
+															: ""}
+													</p>
+												</div>
+
+												<div className="flex items-center gap-2 shrink-0">
 													<RoadStatusBadge
 														status={
 															imp.operationalStatus?.effectiveStatus ===
 															"unconfirmed"
 																? "unknown"
 																: (imp.operationalStatus?.effectiveStatus ??
-																	"closed")
+																	"unknown")
 														}
+														expiresAt={imp.operationalStatus?.expiresAt}
 													/>
-												}
-											/>
+													<button
+														type="button"
+														disabled={removeRoadImpactMutation.isPending}
+														onClick={() =>
+															void removeRoadImpactMutation.mutateAsync(imp.id)
+														}
+														className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-[11px] font-semibold text-[#9E2A2B] hover:bg-[#fae5e5]"
+													>
+														<Trash2 className="w-3 h-3" />
+														<span>Hapus</span>
+													</button>
+												</div>
+											</div>
 										))}
-									</List>
+									</div>
 								) : (
 									<EmptyStateCard
 										title={SYSTEM_STATE_MESSAGES.noMatchingRoad.title}
-										description={SYSTEM_STATE_MESSAGES.noMatchingRoad.description}
-									/>
-								)}
-							</VStack>
-						) : null}
 
-						{/* STEP 3: TERBITKAN KEGIATAN */}
-						{activeStep === 3 ? (
-							<VStack gap={4}>
-								<VStack gap={1}>
-									<Heading level={2}>Verifikasi & Terbitkan ke Warga</Heading>
-									<Text type="supporting" size="sm">
-										Pastikan seluruh data telah diperiksa oleh Prajuru Adat.
-										Kegiatan yang telah diverifikasi dapat resmi diumumkan kepada
-										masyarakat luas.
-									</Text>
-								</VStack>
+										description={
+											SYSTEM_STATE_MESSAGES.noMatchingRoad.description
 
-								<MetadataList columns={2}>
-									<MetadataListItem label="Nama Upacara">
-										{formState.title.trim() || "Belum diisi"}
-									</MetadataListItem>
-									<MetadataListItem label="Lokasi & Rute">
-										{formState.venueName.trim() || "Belum diisi"}
-									</MetadataListItem>
-									<MetadataListItem label="Jadwal (WITA)">
-										{previewStartsIso && previewEndsIso
-											? formatWitaRange(previewStartsIso, previewEndsIso)
-											: "Belum lengkap"}
-									</MetadataListItem>
-									<MetadataListItem label="Nomor Surat / Izin">
-										{formState.permitReference.trim() || "-"}
-									</MetadataListItem>
-									<MetadataListItem label="Penyelenggara">
-										{formState.organizerName.trim() || "-"}
-									</MetadataListItem>
-									<MetadataListItem label="Narahubung">
-										{formState.contactInformation.trim() || "-"}
-									</MetadataListItem>
-								</MetadataList>
-
-								{formState.trafficImpactDescription ? (
-									<Banner
-										status="info"
-										collapsible={false}
-										title="Imbauan Lalu Lintas"
-										description={formState.trafficImpactDescription}
-									/>
-								) : null}
-
-								{!hasOperationalAuthority ? (
-									<Banner
-										status="info"
-										collapsible={false}
-										title="Publikasi Dalam Mode Simulasi Latihan"
-										description="Organisasi desa adat ini belum memiliki wewenang operasional penutupan jalan resmi. Kegiatan akan dipublikasikan dengan penanda tegas 'SIMULASI' agar warga memahami ini adalah latihan koordinasi dan bukan penutupan jalan resmi Dishub/Kepolisian."
-									/>
-								) : null}
-
-								<Divider variant="subtle" />
-
-								<HStack gap={2} wrap="wrap" justify="between" vAlign="center">
-									<Token
-										color={loadedEvent?.verifiedAt ? "green" : "orange"}
-										size="sm"
-										label={
-											loadedEvent?.verifiedAt
-												? `Diverifikasi Prajuru pada ${formatWitaDateTime(loadedEvent.verifiedAt)}`
-												: "Wajib verifikasi Prajuru sebelum diterbitkan"
 										}
 									/>
+								)}
 
-									<HStack gap={2} wrap="wrap">
-										<Button
-											variant="secondary"
-											size="md"
-											label="Tandai Diperiksa Prajuru"
-											icon={<Icon icon={CheckCircle2} size="sm" />}
-											isDisabled={!isRealUuidEvent}
-											isLoading={reviewMutation.isPending}
-											onClick={() => {
-												void reviewMutation.mutateAsync();
-											}}
-										/>
-										<Button
-											variant="primary"
-											size="md"
-											label={
-												hasOperationalAuthority
-													? "Terbitkan ke Warga"
-													: "Publikasikan Simulasi"
-											}
-											icon={<Icon icon={Send} size="sm" />}
-											isDisabled={
+
+								<div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#F0EFEA]">
+									<button
+										type="button"
+										onClick={() => setActiveStep(1)}
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+									>
+										<ArrowLeft className="w-3.5 h-3.5" />
+										<span>Kembali ke Detail Upacara</span>
+									</button>
+									<button
+										type="button"
+										onClick={() => setActiveStep(3)}
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+									>
+										<span>Lanjut ke Verifikasi &amp; Terbitkan</span>
+										<ArrowRight className="w-3.5 h-3.5" />
+									</button>
+								</div>
+							</div>
+						</div>
+					) : null}
+
+					{/* ================================================================= */}
+					{/* STEP 3: VERIFIKASI PRAJURU & TERBITKAN KE WARGA                   */}
+					{/* ================================================================= */}
+					{activeStep === 3 ? (
+						<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+							<div className="xl:col-span-7 teduh-workspace-card space-y-5">
+								<div className="border-b border-[#F0EFEA] pb-3">
+									<h2 className="teduh-workspace-card-title">
+										4. Verifikasi Prajuru &amp; Penerbitan Resmi
+									</h2>
+									<p className="text-xs text-[#585854] mt-0.5">
+										Periksa ringkasan akhir di bawah ini. Sesuai invarian domain
+										Rangkai, pengumuman wajib diverifikasi Prajuru (`REVIEW`)
+										sebelum diterbitkan ke publik (`PUBLISHED`).
+									</p>
+								</div>
+
+								<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
+										<span className="text-[11px] text-[#585854] block">
+											Nama Upacara
+										</span>
+										<p className="font-bold text-[#181817]">
+											{formState.title.trim() || "Belum diisi"}
+										</p>
+									</div>
+									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
+										<span className="text-[11px] text-[#585854] block">
+											Lokasi &amp; Kawasan
+										</span>
+										<p className="font-bold text-[#181817]">
+											{formState.venueName.trim() || "Belum diisi"}
+										</p>
+									</div>
+									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
+										<span className="text-[11px] text-[#585854] block">
+											Jadwal Pelaksanaan (WITA)
+										</span>
+										<p className="font-bold text-[#181817]">
+											{previewStartsIso && previewEndsIso
+												? formatWitaRange(previewStartsIso, previewEndsIso)
+												: "Belum lengkap"}
+										</p>
+									</div>
+									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
+										<span className="text-[11px] text-[#585854] block">
+											Ruas Jalan Terdampak
+										</span>
+										<p className="font-bold text-[#264D3B]">
+											{attachedRoadImpacts.length} ruas jalan terverifikasi
+										</p>
+									</div>
+									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
+										<span className="text-[11px] text-[#585854] block">
+											Nomor Surat Edaran
+										</span>
+										<p className="font-bold text-[#181817]">
+											{formState.permitReference.trim() || "-"}
+										</p>
+									</div>
+									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
+										<span className="text-[11px] text-[#585854] block">
+											Status Verifikasi Prajuru
+										</span>
+										<p className="font-bold text-[#181817]">
+											{loadedEvent?.verifiedAt
+												? `Diverifikasi (${formatWitaDateTime(loadedEvent.verifiedAt)})`
+												: "Menunggu Konfirmasi Prajuru"}
+										</p>
+									</div>
+								</div>
+
+								{/* Action Bar: Save, Verify (Review), Publish, Complete */}
+								<div className="rounded-2xl border border-[#D7E3DC] bg-[#F6FAF7] p-4 space-y-3">
+									<div className="flex flex-wrap items-center justify-between gap-2">
+										<span className="text-xs font-bold text-[#181817]">
+											Tindakan Siklus Hidup Acara (Event Lifecycle)
+										</span>
+										<EventLifecycleBadge status={currentLifecycleStatus} />
+									</div>
+
+									<div className="flex flex-wrap items-center gap-2.5">
+										<button
+											type="button"
+											disabled={saveDraftMutation.isPending}
+											onClick={() => void saveDraftMutation.mutateAsync()}
+											className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+										>
+											<Save className="w-3.5 h-3.5" />
+											<span>1. Simpan Draf</span>
+										</button>
+
+										<button
+											type="button"
+											disabled={!isRealUuidEvent || reviewMutation.isPending}
+											onClick={() => void reviewMutation.mutateAsync()}
+											className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4] disabled:opacity-50"
+										>
+											<CheckCircle2 className="w-3.5 h-3.5" />
+											<span>
+												{reviewMutation.isPending
+													? "Memverifikasi..."
+													: "2. Tandai Diperiksa Prajuru (Review)"}
+											</span>
+										</button>
+
+										<button
+											type="button"
+											disabled={
+
 												!isRealUuidEvent ||
 												(!loadedEvent?.verifiedAt &&
 													currentLifecycleStatus !== "review")
 											}
-											onClick={() => {
-												setIsPublishDialogOpen(true);
-											}}
-										/>
-									</HStack>
-								</HStack>
+											onClick={() => setIsPublishDialogOpen(true)}
+											className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+										>
+											<Send className="w-3.5 h-3.5" />
+											<span>3. Terbitkan ke Warga</span>
+										</button>
 
+										{isRealUuidEvent &&
+										(currentLifecycleStatus === "published" ||
+											currentLifecycleStatus === "active") ? (
+											<button
+												type="button"
+												disabled={completeMutation.isPending}
+												onClick={() => void completeMutation.mutateAsync()}
+												className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B] bg-white text-xs font-semibold text-[#264D3B] hover:bg-[#EBF3EE]"
+											>
+												<CheckCircle2 className="w-3.5 h-3.5" />
+												<span>Tandai Acara Selesai</span>
+											</button>
+										) : null}
+									</div>
+								</div>
+
+								{/* Cancellation Section */}
 								{isRealUuidEvent && currentLifecycleStatus !== "cancelled" ? (
-									<>
-										<Divider variant="subtle" />
-										<HStack justify="end">
-											<Button
-												variant="destructive"
-												size="sm"
-												label="Batalkan Pengumuman"
-												icon={<Icon icon={Trash2} size="sm" />}
-												isLoading={cancelMutation.isPending}
-												onClick={() => {
-													void cancelMutation.mutateAsync();
-												}}
+									<div className="pt-4 border-t border-[#F0EFEA] space-y-2">
+										<label className="block text-xs font-semibold text-[#585854]">
+											Alasan Pembatalan Pengumuman (Jika Dibatalkan)
+										</label>
+										<div className="flex flex-col sm:flex-row gap-2">
+											<input
+												type="text"
+												value={cancelReason}
+												onChange={(e) => setCancelReason(e.target.value)}
+												className="flex-1 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
 											/>
-										</HStack>
-									</>
+											<button
+												type="button"
+												disabled={cancelMutation.isPending}
+												onClick={() => void cancelMutation.mutateAsync()}
+												className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E8B4B4] bg-[#FDF2F2] text-xs font-semibold text-[#9E2A2B] hover:bg-[#fae5e5] shrink-0"
+											>
+												<Trash2 className="w-3.5 h-3.5" />
+												<span>Batalkan Pengumuman</span>
+											</button>
+										</div>
+									</div>
 								) : null}
-							</VStack>
-						) : null}
-					</VStack>
+							</div>
 
-					<AlertDialog
-						isOpen={isPublishDialogOpen}
-						onOpenChange={setIsPublishDialogOpen}
-						onAction={() => {
-							void publishMutation.mutateAsync();
-						}}
-						title={
-							hasOperationalAuthority
-								? "Umumkan Kegiatan ke Warga?"
-								: "Publikasikan Sebagai Simulasi?"
-						}
-						description={
-							hasOperationalAuthority
-								? "Jadwal upacara dan status penutupan jalan akan resmi diterbitkan ke portal publik desa. Pastikan data telah sesuai dengan surat edaran."
-								: "Kegiatan akan diterbitkan ke portal publik dengan label SIMULASI untuk latihan koordinasi internal desa adat."
-						}
-						actionLabel={
-							hasOperationalAuthority
-								? "Ya, Terbitkan Resmi"
-								: "Ya, Terbitkan Simulasi"
-						}
-						cancelLabel="Batal"
-						actionVariant="primary"
-						isActionLoading={publishMutation.isPending}
-					/>
-				</LayoutContent>
-			}
-			footer={
-				<LayoutFooter hasDivider>
-					<HStack justify="between" vAlign="center" width="100%">
-						<Button
-							variant="secondary"
-							size="md"
-							label="Sebelumnya"
-							icon={<Icon icon={ArrowLeft} size="sm" />}
-							isDisabled={activeStep === 0}
-							onClick={() => setActiveStep((prev) => Math.max(0, prev - 1))}
-						/>
 
-						<HStack gap={2}>
-							<Button
-								variant="secondary"
-								size="md"
-								label="Simpan Draf"
-								icon={<Icon icon={Save} size="sm" />}
-								isLoading={saveDraftMutation.isPending}
-								onClick={() => {
-									void saveDraftMutation.mutateAsync();
-								}}
-							/>
+							{/* Right Column: Operational Modules Shortcuts */}
+							<div className="xl:col-span-5 space-y-4">
+								<div className="teduh-workspace-card space-y-4">
+									<h3 className="teduh-workspace-card-title">
+										Modul Operasional Lanjutan
+									</h3>
+									<p className="text-xs text-[#585854]">
+										Setelah draf disimpan, Anda dapat langsung menugaskan
+										Pecalang, membagikan tautan undangan petugas, memperbarui
+										status jalan saat acara berlangsung, dan mencatat kebersihan
+										pasca-acara.
+									</p>
 
-							{activeStep < WIZARD_STEPS.length - 1 ? (
-								<Button
-									variant="primary"
-									size="md"
-									label="Lanjut"
-									icon={<Icon icon={ArrowRight} size="sm" />}
-									onClick={() =>
-										setActiveStep((prev) =>
-											Math.min(WIZARD_STEPS.length - 1, prev + 1),
-										)
-									}
-								/>
-							) : (
-								<Button
-									variant="primary"
-									size="md"
-									label={
-										hasOperationalAuthority
-											? "Terbitkan"
-											: "Terbitkan Simulasi"
-									}
-									icon={<Icon icon={Send} size="sm" />}
-									isDisabled={!isRealUuidEvent}
-									onClick={() => setIsPublishDialogOpen(true)}
-								/>
-							)}
-						</HStack>
-					</HStack>
-				</LayoutFooter>
-			}
-		/>
+
+									{isRealUuidEvent && routeEventId ? (
+										<div className="space-y-2.5">
+											<Link
+												to={`/dashboard/events/${routeEventId}/team`}
+												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
+											>
+												<div className="flex items-center gap-3">
+													<Users className="w-4 h-4 text-[#264D3B]" />
+													<div>
+														<p className="text-xs font-bold text-[#181817]">
+															Tim Lapangan &amp; Tautan Undangan
+														</p>
+														<p className="text-[11px] text-[#585854]">
+															Buat tautan undangan Pecalang &amp; petugas
+															kebersihan
+														</p>
+													</div>
+												</div>
+												<ArrowRight className="w-4 h-4 text-[#585854]" />
+											</Link>
+
+
+											<Link
+												to={`/field/events/${routeEventId}`}
+												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
+											>
+												<div className="flex items-center gap-3">
+													<Radio className="w-4 h-4 text-[#264D3B]" />
+													<div>
+														<p className="text-xs font-bold text-[#181817]">
+															Pos Pecalang (Status Jalan Live)
+														</p>
+														<p className="text-[11px] text-[#585854]">
+															Perbarui status OPEN / INTERMITTENT / CLOSED
+														</p>
+													</div>
+												</div>
+												<ArrowRight className="w-4 h-4 text-[#585854]" />
+											</Link>
+
+											<Link
+												to={`/dashboard/events/${routeEventId}/cleanup`}
+												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
+											>
+												<div className="flex items-center gap-3">
+													<ClipboardCheck className="w-4 h-4 text-[#264D3B]" />
+													<div>
+														<p className="text-xs font-bold text-[#181817]">
+															Kebersihan &amp; Pencatatan Sampah
+														</p>
+														<p className="text-[11px] text-[#585854]">
+															Unggah bukti foto &amp; catat timbangan sampah
+														</p>
+													</div>
+												</div>
+												<ArrowRight className="w-4 h-4 text-[#585854]" />
+											</Link>
+										</div>
+									) : (
+										<div className="rounded-xl border border-dashed border-[#D5D3CB] p-4 text-xs text-[#585854]">
+											Klik tombol <strong>Simpan Draf</strong> terlebih dahulu
+											untuk mengaktifkan modul penugasan tim, pos Pecalang, dan
+											kebersihan.
+										</div>
+									)}
+								</div>
+							</div>
+						</div>
+					) : null}
+				</>
+			)}
+
+			<AlertDialog
+				isOpen={isPublishDialogOpen}
+				onOpenChange={setIsPublishDialogOpen}
+				onAction={() => {
+					void publishMutation.mutateAsync();
+				}}
+				title="Umumkan Kegiatan ke Warga?"
+				description="Jadwal upacara dan peta ruas jalan terdampak akan resmi diterbitkan ke portal publik desa. Pastikan seluruh data telah sesuai dengan surat edaran."
+				actionLabel="Ya, Terbitkan"
+				cancelLabel="Batal"
+				actionVariant="primary"
+				isActionLoading={publishMutation.isPending}
+			/>
+		</div>
+
 	);
 }
