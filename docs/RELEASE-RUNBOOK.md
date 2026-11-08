@@ -36,6 +36,27 @@ This runbook establishes the fail-closed operational procedure for provisioning,
 
 ---
 
+### 2.3 Workers Builds toolchain
+
+`package.json` pins `pnpm@10.22.0` through `packageManager`, which
+[Workers Builds uses to select pnpm](https://developers.cloudflare.com/workers/ci-cd/builds/build-image/).
+Keep `packages: ['.']` in `pnpm-workspace.yaml` for this single-package
+repository. Its `onlyBuiltDependencies` list approves the required install
+scripts using the configuration supported by the pinned pnpm version.
+
+Use these commands in the connected production Worker's build settings:
+
+- Dependency installation: `pnpm install --frozen-lockfile` (automatic).
+- Build: `pnpm run build:prod`.
+- Deploy: `pnpm exec wrangler deploy --config dist/rangkai/wrangler.json`.
+
+Confirm the install step uses pnpm 10.22.0 when investigating a failed build.
+Changing the build command cannot fix failures in the earlier dependency
+installation step. A successful install does not satisfy the production
+resource and approval gates below.
+
+---
+
 ## 3. Pre-Deployment Validation & Gate Checks
 
 Before executing any migration or deployment, run the fail-closed release validation checks:
