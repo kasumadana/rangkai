@@ -235,6 +235,7 @@ export interface PublicEventItem {
 	organizationName: string;
 	village: string;
 	district: string;
+	isSimulation?: boolean;
 	organization?: {
 		name: string;
 		village: string;
@@ -419,12 +420,13 @@ export async function transitionEventToReview(
 
 export async function publishVerifiedEvent(
 	eventId: string,
+	options?: { isSimulation?: boolean },
 ): Promise<{ event: EventRecord }> {
 	return apiFetch<{ event: EventRecord }>(
 		`/api/events/${encodeURIComponent(eventId)}/publish`,
 		{
 			method: "POST",
-			body: {},
+			body: options?.isSimulation !== undefined ? { isSimulation: options.isSimulation } : {},
 		},
 	);
 }
@@ -712,6 +714,7 @@ interface RawPublicEventPayload {
 	organizationName?: string;
 	village?: string;
 	district?: string;
+	isSimulation?: boolean;
 	organization?: {
 		name?: string;
 		village?: string;
@@ -752,6 +755,7 @@ function normalizePublicEvent(raw: RawPublicEventPayload): PublicEventItem & {
 		organizationName: orgName,
 		village,
 		district,
+		isSimulation: Boolean(raw.isSimulation),
 		organization: {
 			name: orgName,
 			village,
@@ -1283,4 +1287,59 @@ export function buildDistrictFeaturesFromEvents(
 			};
 		}),
 	};
+}
+
+// ---------------------------------------------------------------------------
+// 7. Field Officer Operational APIs (Ticket 04)
+// ---------------------------------------------------------------------------
+
+export interface FieldTaskItem {
+	assignmentId: string | null;
+	eventId: string;
+	eventTitle: string;
+	eventStatus: string;
+	venueName: string | null;
+	startsAt: string | null;
+	endsAt: string | null;
+	isSimulation: boolean;
+	organizationId: string;
+	organizationName: string;
+	canUpdateTraffic: boolean;
+	canUpdateCleanup: boolean;
+	isOrganizerOversight: boolean;
+}
+
+export interface FieldEventDetailResponse {
+	event: EventRecord & { isSimulation: boolean };
+	permissions: {
+		canUpdateTraffic: boolean;
+		canUpdateCleanup: boolean;
+		isOrganizer: boolean;
+	};
+	roadImpacts: Array<{
+		id: string;
+		displayName: string;
+		plannedFrom: string | null;
+		plannedTo: string | null;
+		coverageArea: string | null;
+		status: "open" | "intermittent" | "closed" | "unknown";
+		expiresAt: string | null;
+		isStale: boolean;
+	}>;
+	cleanupTasks: CleanupTaskRecord[];
+}
+
+export async function fetchFieldTasks(): Promise<{ assignments: FieldTaskItem[] }> {
+	return apiFetch<{ assignments: FieldTaskItem[] }>("/api/field/tasks", {
+		method: "GET",
+	});
+}
+
+export async function fetchFieldEventDetail(
+	eventId: string,
+): Promise<FieldEventDetailResponse> {
+	return apiFetch<FieldEventDetailResponse>(
+		`/api/field/events/${encodeURIComponent(eventId)}`,
+		{ method: "GET" },
+	);
 }

@@ -91,6 +91,7 @@ publicRouter.get("/events", async (c) => {
 			startsAt: events.startsAt,
 			endsAt: events.endsAt,
 			status: events.status,
+			isSimulation: events.isSimulation,
 			publishedAt: events.publishedAt,
 			organizationName: organizations.name,
 			village: organizations.village,
@@ -160,6 +161,7 @@ publicRouter.get("/events/:slug", async (c) => {
 			startsAt: events.startsAt,
 			endsAt: events.endsAt,
 			status: events.status,
+			isSimulation: events.isSimulation,
 			publishedAt: events.publishedAt,
 			updatedAt: events.updatedAt,
 			organizationName: organizations.name,
@@ -197,6 +199,7 @@ publicRouter.get("/events/:slug", async (c) => {
 				startsAt: event.startsAt ? event.startsAt.toISOString() : null,
 				endsAt: event.endsAt ? event.endsAt.toISOString() : null,
 				status: event.status,
+				isSimulation: Boolean(event.isSimulation),
 				publishedAt: event.publishedAt ? event.publishedAt.toISOString() : null,
 				updatedAt: event.updatedAt.toISOString(),
 				organization: {

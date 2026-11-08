@@ -39,6 +39,7 @@ domain diagram for clarity.
 - name: text NOT NULL
 - village: text NULL
 - district: text NULL
+- has_operational_authority: boolean DEFAULT false
 - created_at: timestamptz
 
 ### memberships
@@ -69,6 +70,7 @@ UNIQUE (organization_id, user_id)
 - verified_by: text NULL
 - verified_at: timestamptz NULL
 - published_at: timestamptz NULL
+- is_simulation: boolean DEFAULT true
 - created_at: timestamptz
 - updated_at: timestamptz
 
@@ -150,6 +152,24 @@ Do not silently insert an OPEN update on expiry.
 - created_at: timestamptz
 
 UNIQUE (event_id, user_id)
+
+### invitations
+
+- id: uuid PK
+- organization_id: uuid FK
+- event_id: uuid FK NULL
+- invitation_role: organizer | officer
+- recipient_email: text NULL
+- token_hash: text UNIQUE
+- can_update_traffic: boolean DEFAULT false
+- can_update_cleanup: boolean DEFAULT false
+- status: pending | accepted | revoked | expired
+- accepted_by: text FK NULL
+- revoked_by: text FK NULL
+- created_by: text FK
+- expires_at: timestamptz
+- created_at: timestamptz
+- updated_at: timestamptz
 
 ### cleanup_tasks
 

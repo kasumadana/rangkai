@@ -198,5 +198,17 @@ FR-050..056 -> Cleanup module -> Workflow tests
 FR-060..065 -> Public module -> Anonymous E2E tests
 FR-070..073 -> Audit module -> Audit integration tests
 
+### FR-023: Safe Organization Onboarding
+The system shall atomically provision a new organization, assign the creating user as an organizer member, and record an initial audit log entry in a single transactional database CTE. Repeated creation attempts with identical names shall return the existing record idempotently without creating duplicate organizations.
+
+### FR-024: Secure Invitation Lifecycle & Token Hashing
+The system shall store invitation tokens as SHA-256 hashes, enforce recipient-email binding when specified, and execute acceptance via atomic single-consumption compare-and-swap (CAS) to eliminate double-claim race conditions.
+
+### FR-025: Operational Authority Publication Gate
+The system shall enforce that only organizations possessing verified operational authority (`hasOperationalAuthority: true`) may publish live operational road restrictions. Organizations without operational authority shall publish in simulation mode (`isSimulation: true`), publicly flagged as simulated.
+
+### FR-026: Field Task & Scoped Permission Access
+The system shall provide a dedicated field task endpoint (`/api/field/tasks`) returning only events assigned to the authenticated officer, scoped strictly to granted permissions (`canUpdateTraffic`, `canUpdateCleanup`). Unassigned officers receive an empty list and are rejected with 403 Forbidden on operational endpoints.
+
 Every P0 requirement must have at least one automated
 or documented manual acceptance test before release.

@@ -493,7 +493,7 @@ export function PublicShellLayout() {
 										<RouterLinkBridge href="/dashboard">Panel Panitia Desa</RouterLinkBridge>
 									</li>
 									<li>
-										<RouterLinkBridge href="/field/events/evt-pilot">Pos Komando Lapangan</RouterLinkBridge>
+										<RouterLinkBridge href="/field">Pos Komando Lapangan</RouterLinkBridge>
 									</li>
 									<li>
 										<RouterLinkBridge href="/login">Akses Masuk Petugas</RouterLinkBridge>
@@ -535,7 +535,7 @@ export function WorkspaceShellLayout() {
 	// Extract active event ID from current path if present (e.g. /dashboard/events/:id or /field/events/:id)
 	const eventIdMatch = pathname.match(/(?:dashboard|field)\/events\/([^/]+)/);
 	const activeNavEventId =
-		eventIdMatch && eventIdMatch[1] !== "new" ? eventIdMatch[1] : "evt-pilot";
+		eventIdMatch && eventIdMatch[1] !== "new" ? eventIdMatch[1] : null;
 
 	const topNav = (
 		<TopNav
@@ -561,7 +561,7 @@ export function WorkspaceShellLayout() {
 			/>
 			<TopNavItem
 				as={RouterLinkBridge}
-				href={`/field/events/${activeNavEventId}`}
+				href={activeNavEventId ? `/field/events/${activeNavEventId}` : "/field"}
 				label="Pos Pecalang"
 				icon={<Icon icon={Radio} size="sm" />}
 				isSelected={
@@ -599,7 +599,11 @@ export function WorkspaceShellLayout() {
 				/>
 				<SideNavItem
 					as={RouterLinkBridge}
-					href={`/dashboard/events/${activeNavEventId}/review`}
+					href={
+						activeNavEventId
+							? `/dashboard/events/${activeNavEventId}/review`
+							: "/dashboard"
+					}
 					label="Surat Edaran"
 					icon={ShieldCheck}
 					isSelected={
@@ -608,7 +612,11 @@ export function WorkspaceShellLayout() {
 				/>
 				<SideNavItem
 					as={RouterLinkBridge}
-					href={`/dashboard/events/${activeNavEventId}/roads`}
+					href={
+						activeNavEventId
+							? `/dashboard/events/${activeNavEventId}/roads`
+							: "/dashboard"
+					}
 					label="Rute & Jalan"
 					icon={MapPinned}
 					isSelected={pathname.endsWith("/roads")}
@@ -618,14 +626,18 @@ export function WorkspaceShellLayout() {
 			<SideNavSection title="Lapangan">
 				<SideNavItem
 					as={RouterLinkBridge}
-					href={`/field/events/${activeNavEventId}`}
+					href={activeNavEventId ? `/field/events/${activeNavEventId}` : "/field"}
 					label="Status Jalan Pecalang"
 					icon={Radio}
 					isSelected={pathname.startsWith("/field")}
 				/>
 				<SideNavItem
 					as={RouterLinkBridge}
-					href={`/dashboard/events/${activeNavEventId}/cleanup`}
+					href={
+						activeNavEventId
+							? `/dashboard/events/${activeNavEventId}/cleanup`
+							: "/field"
+					}
 					label="Kebersihan Pasca-Karya"
 					icon={ClipboardCheck}
 					isSelected={pathname.endsWith("/cleanup")}

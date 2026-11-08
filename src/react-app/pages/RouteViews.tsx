@@ -30,9 +30,11 @@ import {
 	ArrowLeft,
 	ArrowRight,
 	Calendar,
+	Check,
 	CheckCircle2,
 	ClipboardCheck,
 	Clock,
+	Copy,
 	FileText,
 	Info,
 	MapPin,
@@ -45,6 +47,7 @@ import {
 	Scale,
 	Search,
 	ShieldCheck,
+	UserPlus,
 	Users,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
@@ -75,6 +78,7 @@ import {
 	fetchPublicEventDetail,
 	fetchPublicEventRoads,
 	fetchPublicEvents,
+	fetchFieldEventDetail,
 	formatWitaEventSchedule,
 	mapPublicEventToCeremonyProfile,
 	reopenCleanupTask,
@@ -83,6 +87,13 @@ import {
 	uploadCleanupEvidence,
 	verifyCleanupTask,
 } from "../lib/events-api";
+import {
+	fetchEventAssignments,
+	revokeEventAssignment,
+	fetchInvitations,
+	createInvitation,
+	revokeInvitation,
+} from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
 import type { OperationalRoadStatus } from "../lib/road-status";
 import { formatWitaRange } from "../lib/wita";
@@ -306,11 +317,16 @@ export function PublicEventsListPage() {
 												{evt.organizationName || evt.village} •{" "}
 												{evt.district || "Bali"}
 											</span>
-											<span
-												className={`road-status-badge ${statusBadgeClass}`}
-											>
-												{statusBadgeText}
-											</span>
+											<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+												{evt.isSimulation ? (
+													<Token color="orange" size="sm" label="SIMULASI" />
+												) : null}
+												<span
+													className={`road-status-badge ${statusBadgeClass}`}
+												>
+													{statusBadgeText}
+												</span>
+											</div>
 										</div>
 
 										<h2 className="schedule-card-title">{evt.title}</h2>
@@ -627,6 +643,17 @@ export function PublicEventDetailPage({
 							<RoadStatusBadge status={spatialProfile.primaryStatus} />
 						</div>
 					</div>
+
+					{apiEvent.isSimulation ? (
+						<div style={{ marginBottom: 16 }}>
+							<Banner
+								status="warning"
+								collapsible={false}
+								title="SIMULASI — Bukan Penutupan Jalan Sebenarnya"
+								description="Kegiatan ini dipublikasikan dalam mode simulasi atau latihan koordinasi desa adat. Ruas jalan dan status buka-tutup tidak mencerminkan penutupan operasional resmi di lapangan."
+							/>
+						</div>
+					) : null}
 
 					<h1 className="teduh-detail-title">{apiEvent.title}</h1>
 
@@ -1057,6 +1084,127 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 		retry: false,
 	});
 
+	const fieldDetailQuery = useQuery({
+		queryKey: ["field", "events", eventId],
+		queryFn: () => fetchFieldEventDetail(eventId),
+		enabled: Boolean(eventId && isRealUuidEvent),
+		retry: false,
+	});
+
+	const permissions = fieldDetailQuery.data?.permissions;
+	const isOrganizer = permissions?.isOrganizer ?? true;
+	const canTraffic = permissions?.canUpdateTraffic ?? true;
+	const canCleanup = permissions?.canUpdateCleanup ?? true;
+
+	const [selectedCleanupTaskId, setSelectedCleanupTaskId] = useState<string>("");
+
+	// Team Management state & queries (Ticket 02)
+	const [isInvitingMember, setIsInvitingMember] = useState(false);
+	const [inviteRole, setInviteRole] = useState<"officer" | "organizer">("officer");
+	const [inviteEmail, setInviteEmail] = useState("");
+	const [inviteCanTraffic, setInviteCanTraffic] = useState(true);
+	const [inviteCanCleanup, setInviteCanCleanup] = useState(true);
+	const [copiedTokenId, setCopiedTokenId] = useState<string | null>(null);
+	const [manualCopyUrl, setManualCopyUrl] = useState<string | null>(null);
+	const [teamFeedback, setTeamFeedback] = useState<string | null>(null);
+
+	const eventOrgId =
+		eventDetailQuery.data?.event?.organizationId ||
+		fieldDetailQuery.data?.event?.organizationId;
+
+	const assignmentsQuery = useQuery({
+		queryKey: ["event", eventId, "assignments"],
+		queryFn: () => fetchEventAssignments(eventId),
+		enabled: Boolean(eventId && isRealUuidEvent && (pathname.endsWith("/team") || !permissions)),
+		retry: false,
+	});
+
+	const invitationsQuery = useQuery({
+		queryKey: ["event", eventId, "invitations"],
+		queryFn: () => fetchInvitations(eventOrgId),
+		enabled: Boolean(eventOrgId && pathname.endsWith("/team")),
+		retry: false,
+	});
+
+	const createInviteMutation = useMutation({
+		mutationFn: async () => {
+			return createInvitation({
+				eventId,
+				organizationId: eventOrgId,
+				role: inviteRole,
+				recipientEmail: inviteEmail.trim() || undefined,
+				canUpdateTraffic: inviteRole === "officer" ? inviteCanTraffic : undefined,
+				canUpdateCleanup: inviteRole === "officer" ? inviteCanCleanup : undefined,
+			});
+		},
+		onSuccess: (data) => {
+			void invitationsQuery.refetch();
+			setIsInvitingMember(false);
+			setInviteEmail("");
+			const token = data.invitation.token;
+			const inviteUrl =
+				data.invitation.inviteUrl ||
+				(token ? `${window.location.origin}/invite/${token}` : "");
+			if (inviteUrl) {
+				setManualCopyUrl(inviteUrl);
+			}
+			setTeamFeedback(
+				"Tautan undangan berhasil dibuat. Salin dan kirimkan langsung kepada calon petugas.",
+			);
+		},
+		onError: (err) => {
+			setTeamFeedback(
+				err instanceof Error ? err.message : "Gagal membuat undangan.",
+			);
+		},
+	});
+
+	const revokeInviteMutation = useMutation({
+		mutationFn: async (invId: string) => {
+			return revokeInvitation(invId);
+		},
+		onSuccess: () => {
+			void invitationsQuery.refetch();
+			setTeamFeedback("Undangan berhasil dibatalkan.");
+		},
+		onError: (err) => {
+			setTeamFeedback(
+				err instanceof Error ? err.message : "Gagal membatalkan undangan.",
+			);
+		},
+	});
+
+	const revokeAssignmentMutation = useMutation({
+		mutationFn: async (assignmentId: string) => {
+			return revokeEventAssignment(eventId, assignmentId);
+		},
+		onSuccess: () => {
+			void assignmentsQuery.refetch();
+			setTeamFeedback("Penugasan petugas berhasil dicabut.");
+		},
+		onError: (err) => {
+			setTeamFeedback(
+				err instanceof Error ? err.message : "Gagal mencabut penugasan.",
+			);
+		},
+	});
+
+	async function copyInviteLink(url: string, id: string) {
+		try {
+			if (navigator?.clipboard?.writeText) {
+				await navigator.clipboard.writeText(url);
+				setCopiedTokenId(id);
+				setTeamFeedback("Tautan undangan berhasil disalin ke papan klip!");
+				setTimeout(() => setCopiedTokenId(null), 3000);
+				return;
+			}
+			throw new Error("Clipboard API unavailable");
+		} catch {
+			setManualCopyUrl(url);
+			setTeamFeedback("Salin tautan secara manual dari kolom di bawah.");
+		}
+	}
+
 	const [evidenceStage, setEvidenceStage] = useState<"before" | "after">("after");
 	const [newTaskTitle, setNewTaskTitle] = useState("");
 	const [newTaskLocation, setNewTaskLocation] = useState("");
@@ -1172,7 +1320,8 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 	const uploadCleanupEvidenceMutation = useMutation({
 		mutationFn: async (file: File) => {
 			const tasks = cleanupTasksQuery.data?.cleanupTasks ?? [];
-			const targetTask = tasks[0];
+			const targetTask =
+				tasks.find((t) => t.id === selectedCleanupTaskId) || tasks[0];
 			if (!targetTask) {
 				throw new Error("Belum ada tugas kebersihan terdaftar pada kegiatan ini. Buat tugas terlebih dahulu.");
 			}
@@ -1238,7 +1387,10 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 	const verifyCleanupMutation = useMutation({
 		mutationFn: async (params?: { taskId?: string }) => {
 			const tasks = cleanupTasksQuery.data?.cleanupTasks ?? [];
-			const targetTask = tasks.find((t) => t.id === params?.taskId) || tasks[0];
+			const targetTask =
+				tasks.find((t) => t.id === params?.taskId) ||
+				tasks.find((t) => t.id === selectedCleanupTaskId) ||
+				tasks[0];
 			if (targetTask && isRealUuidEvent) {
 				await verifyCleanupTask(targetTask.id, "Diverifikasi oleh Prajuru Adat.");
 			}
@@ -1262,11 +1414,16 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 			return "document";
 		}
 		if (pathname.endsWith("/roads")) return "roads";
-		if (pathname.startsWith("/field")) return "field";
 		if (pathname.endsWith("/cleanup")) return "cleanup";
 		if (pathname.endsWith("/team")) return "team";
+		if (pathname.startsWith("/field")) {
+			if (!isOrganizer && !canTraffic && canCleanup) {
+				return "cleanup";
+			}
+			return "field";
+		}
 		return "field";
-	}, [pathname]);
+	}, [pathname, isOrganizer, canTraffic, canCleanup]);
 
 	function handleTabChange(nextTab: string) {
 		switch (nextTab) {
@@ -1349,15 +1506,69 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 					size="sm"
 					isFullBleed
 				>
-					<Tab value="document" label="Surat Edaran" />
-					<Tab value="roads" label="Rute & Jalan" />
-					<Tab value="field" label="Pos Pecalang" />
-					<Tab value="cleanup" label="Kebersihan" />
-					<Tab value="team" label="Petugas" />
+					{isOrganizer ? <Tab value="document" label="Surat Edaran" /> : null}
+					{isOrganizer ? <Tab value="roads" label="Rute & Jalan" /> : null}
+					{isOrganizer || canTraffic ? (
+						<Tab value="field" label="Pos Pecalang" />
+					) : null}
+					{isOrganizer || canCleanup ? (
+						<Tab value="cleanup" label="Kebersihan" />
+					) : null}
+					{isOrganizer ? <Tab value="team" label="Petugas" /> : null}
 				</TabList>
 			</VStack>
 		</LayoutHeader>
 	);
+
+	// Ticket 04 / TC-010: Handle 403 Forbidden for unassigned field officers
+	if (
+		pathname.startsWith("/field") &&
+		isRealUuidEvent &&
+		fieldDetailQuery.isError
+	) {
+		return (
+			<Layout
+				defaultHasDividers
+				height="fill"
+				contentWidth={720}
+				header={
+					<LayoutHeader hasDivider>
+						<HStack gap={2} vAlign="center">
+							<Button
+								as={RouterLinkBridge}
+								href="/field"
+								variant="ghost"
+								size="sm"
+								label="Daftar Tugas"
+								icon={<Icon icon={ArrowLeft} size="sm" />}
+							/>
+							<Heading level={1}>Akses Ditolak (403 Forbidden)</Heading>
+						</HStack>
+					</LayoutHeader>
+				}
+				content={
+					<LayoutContent>
+						<VStack gap={4}>
+							<Banner
+								status="error"
+								collapsible={false}
+								title="Akses Ditolak: Anda Tidak Memiliki Hak Akses"
+								description="Akun Anda belum terdaftar dalam penugasan resmi untuk kegiatan ini. Pembaruan kondisi jalan dan kebersihan hanya dapat dilakukan oleh petugas yang ditugaskan."
+							/>
+							<HStack gap={2}>
+								<Button
+									variant="primary"
+									size="md"
+									label="Kembali ke Penugasan Lapangan"
+									onClick={() => navigate("/field")}
+								/>
+							</HStack>
+						</VStack>
+					</LayoutContent>
+				}
+			/>
+		);
+	}
 
 	if (isMapSplitMode) {
 		return (
@@ -1767,6 +1978,24 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 
 							<Heading level={2}>Unggah Bukti Foto Lapangan</Heading>
 
+							{cleanupTasksQuery.data?.cleanupTasks &&
+							cleanupTasksQuery.data.cleanupTasks.length > 1 ? (
+								<SegmentedControl
+									label="Pilih Tugas Sasaran Bukti Foto"
+									value={
+										selectedCleanupTaskId ||
+										cleanupTasksQuery.data.cleanupTasks[0]?.id ||
+										""
+									}
+									onChange={(v) => setSelectedCleanupTaskId(v)}
+									size="sm"
+								>
+									{cleanupTasksQuery.data.cleanupTasks.map((t) => (
+										<SegmentedControlItem key={t.id} value={t.id} label={t.title} />
+									))}
+								</SegmentedControl>
+							) : null}
+
 							<SegmentedControl
 								label="Tahap Dokumentasi Foto"
 								value={evidenceStage}
@@ -1855,23 +2084,257 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 						</VStack>
 					) : null}
 
-					{/* TAB: PETUGAS LAPANGAN */}
+					{/* TAB: PETUGAS LAPANGAN & PENGELOLA */}
 					{currentTabValue === "team" ? (
 						<VStack gap={4}>
-							<Heading level={2}>Daftar Pos & Petugas Pecalang</Heading>
-							<List hasDividers density="spacious">
-								{activeVillage.pecalangPosts.map((post) => (
-									<ListItem
-										key={post.id}
-										startContent={<Icon icon={Users} size="sm" />}
-										label={post.name}
-										description={`${post.officerInCharge} (${post.phone}) • ${post.assignedRole}`}
-										endContent={
-											<Token color="green" size="sm" label="Ditugaskan" />
-										}
+							<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
+								<VStack gap={1}>
+									<Heading level={2}>Tim Operasional & Petugas Lapangan</Heading>
+									<Text type="supporting" size="sm">
+										Kelola penugasan pos pecalang, tim kebersihan, dan prajuru adat untuk kegiatan ini.
+									</Text>
+								</VStack>
+								<Button
+									variant="primary"
+									size="sm"
+									label="Undang Petugas Baru"
+									icon={<Icon icon={UserPlus} size="sm" />}
+									onClick={() => setIsInvitingMember(true)}
+								/>
+							</HStack>
+
+							{teamFeedback ? (
+								<Banner
+									status="info"
+									collapsible={false}
+									title="Pemberitahuan"
+									description={teamFeedback}
+								/>
+							) : null}
+
+							<Banner
+								status="info"
+								collapsible={false}
+								title="Pengiriman Tautan Undangan Langsung"
+								description="Rangkai tidak mengirimkan email otomatis. Silakan salin tautan undangan dan kirimkan secara langsung melalui WhatsApp atau pesan singkat kepada calon petugas."
+							/>
+
+							{manualCopyUrl ? (
+								<VStack
+									gap={2}
+									style={{
+										padding: 16,
+										border: "1px solid #E5E7EB",
+										borderRadius: 8,
+										background: "#F9FAFB",
+									}}
+								>
+									<TextInput
+										label="Tautan Undangan Terakhir (Kirimkan ke Petugas)"
+										value={manualCopyUrl}
+										isReadOnly
+										width="100%"
 									/>
-								))}
-							</List>
+									<HStack gap={2}>
+										<Button
+											variant="secondary"
+											size="sm"
+											label="Salin Tautan"
+											icon={<Icon icon={Copy} size="sm" />}
+											onClick={() => void copyInviteLink(manualCopyUrl, "last-created")}
+										/>
+									</HStack>
+								</VStack>
+							) : null}
+
+							{/* FORM TAMBAH UNDANGAN */}
+							{isInvitingMember ? (
+								<VStack
+									gap={3}
+									style={{
+										padding: 16,
+										border: "1px solid #E5E7EB",
+										borderRadius: 8,
+										background: "#F9FAFB",
+									}}
+								>
+									<Heading level={3}>Buat Tautan Undangan Baru</Heading>
+
+									<SegmentedControl
+										label="Peran Akun"
+										value={inviteRole}
+										onChange={(val) => setInviteRole(val as "officer" | "organizer")}
+										size="sm"
+									>
+										<SegmentedControlItem value="officer" label="Petugas Lapangan" />
+										<SegmentedControlItem value="organizer" label="Prajuru Adat (Penyelenggara)" />
+									</SegmentedControl>
+
+									<TextInput
+										label="Email Penerima (Opsional)"
+										placeholder="contoh: pecalang.desa@gmail.com"
+										value={inviteEmail}
+										onChange={setInviteEmail}
+										description="Bila diisi, hanya akun dengan email ini yang dapat menerima undangan."
+										width="100%"
+									/>
+
+									{inviteRole === "officer" ? (
+										<VStack gap={2}>
+											<Text weight="medium" size="sm">
+												Izin Penugasan Lapangan
+											</Text>
+											<HStack gap={3} wrap="wrap">
+												<label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 14, cursor: "pointer" }}>
+													<input
+														type="checkbox"
+														checked={inviteCanTraffic}
+														onChange={(e) => setInviteCanTraffic(e.target.checked)}
+													/>
+													<span>Pos Pecalang (Pembaruan Status Jalan)</span>
+												</label>
+												<label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 14, cursor: "pointer" }}>
+													<input
+														type="checkbox"
+														checked={inviteCanCleanup}
+														onChange={(e) => setInviteCanCleanup(e.target.checked)}
+													/>
+													<span>Tim Kebersihan (Dokumentasi Foto & Sampah)</span>
+												</label>
+											</HStack>
+										</VStack>
+									) : null}
+
+									<HStack gap={2} justify="end">
+										<Button
+											variant="secondary"
+											size="sm"
+											label="Batal"
+											onClick={() => setIsInvitingMember(false)}
+										/>
+										<Button
+											variant="primary"
+											size="sm"
+											label="Buat Tautan Undangan"
+											isLoading={createInviteMutation.isPending}
+											isDisabled={inviteRole === "officer" && !inviteCanTraffic && !inviteCanCleanup}
+											onClick={() => {
+												void createInviteMutation.mutateAsync();
+											}}
+										/>
+									</HStack>
+								</VStack>
+							) : null}
+
+							{/* DAFTAR PETUGAS AKTIF */}
+							<VStack gap={2}>
+								<Heading level={3}>Petugas Aktif Ditugaskan</Heading>
+								{assignmentsQuery.isLoading ? (
+									<LoadingStateBlock label="Memuat petugas aktif..." rows={2} />
+								) : !assignmentsQuery.data?.assignments?.length ? (
+									<EmptyStateCard
+										title="Belum Ada Petugas Terdaftar"
+										description="Kegiatan ini belum memiliki petugas pecalang atau tim kebersihan yang ditugaskan. Buat undangan di atas untuk menugaskan petugas."
+									/>
+								) : (
+									<List hasDividers density="balanced">
+										{assignmentsQuery.data.assignments.map((assignment) => (
+											<ListItem
+												key={assignment.id}
+												startContent={<Icon icon={Users} size="sm" />}
+												label={assignment.userName || "Petugas Lapangan"}
+												description={
+													<VStack gap={1}>
+														<Text type="supporting" size="xsm">
+															{assignment.userEmail}
+														</Text>
+														<HStack gap={1} wrap="wrap">
+															{assignment.canUpdateTraffic ? (
+																<Token color="blue" size="sm" label="Pos Pecalang (Jalan)" />
+															) : null}
+															{assignment.canUpdateCleanup ? (
+																<Token color="green" size="sm" label="Tim Kebersihan" />
+															) : null}
+														</HStack>
+													</VStack>
+												}
+												endContent={
+													<Button
+														variant="destructive"
+														size="sm"
+														label="Cabut Penugasan"
+														isLoading={revokeAssignmentMutation.isPending}
+														onClick={() => {
+															void revokeAssignmentMutation.mutateAsync(assignment.id);
+														}}
+													/>
+												}
+											/>
+										))}
+									</List>
+								)}
+							</VStack>
+
+							<Divider variant="subtle" />
+
+							{/* DAFTAR UNDANGAN PENDING */}
+							<VStack gap={2}>
+								<Heading level={3}>Undangan Menunggu Konfirmasi</Heading>
+								{invitationsQuery.isLoading ? (
+									<LoadingStateBlock label="Memuat daftar undangan..." rows={2} />
+								) : !invitationsQuery.data?.invitations?.filter((i) => i.status === "pending" && (!i.eventId || i.eventId === eventId))?.length ? (
+									<Text type="supporting" size="sm">
+										Tidak ada undangan aktif yang menunggu konfirmasi saat ini.
+									</Text>
+								) : (
+									<List hasDividers density="balanced">
+										{invitationsQuery.data.invitations
+											.filter((i) => i.status === "pending" && (!i.eventId || i.eventId === eventId))
+											.map((inv) => {
+												const invUrl = inv.inviteUrl || (inv.token ? `${window.location.origin}/invite/${inv.token}` : "");
+												return (
+													<ListItem
+														key={inv.id}
+														startContent={<Icon icon={Users} size="sm" />}
+														label={
+															<HStack gap={2} vAlign="center" wrap="wrap">
+																<span>{inv.recipientEmail ? `Untuk: ${inv.recipientEmail}` : "Tautan Terbuka"}</span>
+																<Token
+																	color={inv.role === "organizer" ? "purple" : "blue"}
+																	size="sm"
+																	label={inv.role === "organizer" ? "Prajuru Desa" : "Petugas Lapangan"}
+																/>
+															</HStack>
+														}
+														description={`Dibuat oleh ${inv.createdByName || "Prajuru"} • Berlaku hingga ${new Date(inv.expiresAt).toLocaleDateString("id-ID")}`}
+														endContent={
+															<HStack gap={1.5} vAlign="center">
+																{invUrl ? (
+																	<Button
+																		variant="secondary"
+																		size="sm"
+																		label={copiedTokenId === inv.id ? "Tersalin!" : "Salin Tautan"}
+																		icon={<Icon icon={copiedTokenId === inv.id ? Check : Copy} size="sm" />}
+																		onClick={() => void copyInviteLink(invUrl, inv.id)}
+																	/>
+																) : null}
+																<Button
+																	variant="destructive"
+																	size="sm"
+																	label="Batalkan"
+																	isLoading={revokeInviteMutation.isPending}
+																	onClick={() => {
+																		void revokeInviteMutation.mutateAsync(inv.id);
+																	}}
+																/>
+															</HStack>
+														}
+													/>
+												);
+											})}
+									</List>
+								)}
+							</VStack>
 						</VStack>
 					) : null}
 				</LayoutContent>

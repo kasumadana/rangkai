@@ -55,7 +55,132 @@ Organizer and officer sessions are cookie-based (`HttpOnly`, `SameSite=Lax`, `Se
 Missing or invalid authentication configuration (`BETTER_AUTH_SECRET` < 32 chars, missing `BETTER_AUTH_URL`) fails closed with HTTP 503.
 Public endpoints never require a session.
 
-## 4. Events
+## 4. Organizations & Onboarding
+
+### POST /api/organizations
+Permission: authenticated user  
+Requires: `Content-Type: application/json`
+
+Request:
+```json
+{
+  "name": "Banjar Kaja Sesetan",
+  "village": "Sesetan",
+  "district": "Denpasar Selatan"
+}
+```
+
+Behavior:
+- Atomically creates organization, assigns caller as `organizer` member, and writes initial audit log in a single CTE.
+- Idempotent: If caller already created an organization with identical name, returns existing organization (200 OK) without error or duplicates.
+- Default authority: `hasOperationalAuthority` defaults to `false`. Operational authority can only be granted by external authority.
+- Sanitized errors: Database constraint errors are mapped into standardized error envelopes without exposing internal table or SQL details.
+
+Response: 201 Created (or 200 OK if existing):
+```json
+{
+  "organization": {
+    "id": "uuid",
+    "name": "Banjar Kaja Sesetan",
+    "village": "Sesetan",
+    "district": "Denpasar Selatan",
+    "hasOperationalAuthority": false,
+    "createdAt": "2026-11-08T10:00:00Z"
+  }
+}
+```
+
+### GET /api/organizations
+Permission: authenticated user  
+Returns organizations where the caller has active membership.
+
+---
+
+## 5. Invitations & Officer Onboarding
+
+### POST /api/invitations
+Permission: organizer of the organization  
+Requires: `Content-Type: application/json`
+
+Request:
+```json
+{
+  "organizationId": "uuid",
+  "eventId": "uuid (optional)",
+  "role": "officer" | "organizer",
+  "recipientEmail": "pecalang@desaadat.id (optional)",
+  "canUpdateTraffic": true,
+  "canUpdateCleanup": false,
+  "expiresInDays": 7
+}
+```
+
+Behavior:
+- Generates cryptographically secure token and stores only its SHA-256 hash (`token_hash`).
+- If `recipientEmail` is provided, binding is strictly enforced at acceptance time (case-insensitive, trimmed).
+- Atomically creates invitation and audit log.
+
+Response: 201 Created:
+```json
+{
+  "invitation": {
+    "id": "uuid",
+    "token": "raw-ephemeral-token-64-hex",
+    "inviteUrl": "https://rangkai.id/invite/raw-ephemeral-token-64-hex",
+    "role": "officer",
+    "status": "pending",
+    "recipientEmail": "pecalang@desaadat.id",
+    "expiresAt": "2026-11-15T10:00:00Z"
+  }
+}
+```
+
+### GET /api/invitations/:token
+Permission: public (no auth required)  
+Returns public invitation details (organization name, event title, permissions, recipient email) without revealing token hash or private document data. Returns 404/410 if expired or revoked.
+
+### POST /api/invitations/:token/accept
+Permission: authenticated user  
+Behavior:
+- Enforces recipient email match if `recipientEmail` was bound.
+- Re-verifies creator's current active organizer authority in the organization.
+- Atomically executes single-consumption compare-and-swap (CAS) via SQL CTE (`UPDATE invitations SET status = 'accepted' WHERE status = 'pending'`).
+- Grants membership and event assignments atomically with audit log. Concurrent double-acceptance yields exactly one 200 OK and one 409 Conflict.
+
+Response: 200 OK:
+```json
+{
+  "success": true,
+  "role": "officer",
+  "organizationId": "uuid",
+  "eventId": "uuid"
+}
+```
+
+### POST /api/invitations/:id/revoke
+Permission: organizer of the organization  
+Atomically revokes pending invitation via CAS (`UPDATE ... WHERE status = 'pending'`). Subsequent acceptance attempts return 410 Gone / 404.
+
+---
+
+## 6. Field Operations
+
+### GET /api/field/tasks
+Permission: authenticated user  
+Returns active event assignments for the authenticated officer:
+- Assigned officers receive ONLY events they are assigned to with scoped permissions (`canUpdateTraffic`, `canUpdateCleanup`).
+- Unassigned officers receive an empty array (`{ "assignments": [] }`).
+- Organizers receive oversight entries for all active events in their organization.
+
+### GET /api/field/events/:id
+Permission: assigned officer or organizer  
+Behavior:
+- Returns scoped operational detail for the event, including verified road impacts, active statuses, and cleanup tasks.
+- If caller is an unassigned officer, returns HTTP 403 Forbidden with standard access denied error.
+
+---
+
+## 7. Events
 
 POST /api/events
 Permission: organizer
@@ -144,9 +269,10 @@ Prerequisites:
 - Event must have explicit human review verification (`verifiedBy` and `verifiedAt` non-null).
 - Confirmed core fields (`title`, `startsAt`, `endsAt`, `venueName`).
 - At least one road impact referencing a verified road segment (`road_segments.verified_by` and `verified_at` non-null) with `plannedTo > plannedFrom`.
+- Operational Authority Gate (AGENTS §1): If publishing an operational event (`isSimulation: false`), the host organization must have `hasOperationalAuthority: true`. Otherwise, returns 403 Forbidden (`OPERATIONAL_AUTHORITY_REQUIRED`). Simulation events (`isSimulation: true`) may be published by any verified organization and are publicly tagged with `[SIMULATED]`.
 Idempotency:
 - If event is already published, returns 200 OK immediately without generating duplicate slugs or audit rows.
-Response: 200 OK with publicSlug, publishedAt, status "published". Atomic audit log recorded.
+Response: 200 OK with publicSlug, publishedAt, isSimulation, status "published". Atomic audit log recorded.
 
 POST /api/events/:eventId/cancel
 Permission: organizer

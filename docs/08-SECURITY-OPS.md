@@ -211,3 +211,14 @@ Track:
 - Unauthorized mutation attempts.
 
 Do not log sensitive document contents.
+
+## 15. Production Release & Deployment Runbook
+
+Detailed fail-closed operational runbook for production release gating, migration backup/recovery, and candidate commit binding is maintained in `docs/RELEASE-RUNBOOK.md`.
+
+Key gates:
+- Target Cloudflare Worker `rangkai-production` and R2 `rangkai-documents-prod`.
+- Target Neon production database with PostGIS (separate from development branch).
+- Strict release validator checking candidate commit pin and pre-deployment backups.
+- No production migrations or deployments without external approval and verified pilot authority.
+

@@ -13,6 +13,7 @@ import {
 	useAcceptInvitationMutation,
 	useAuthSession,
 	useInvitationQuery,
+	useSignOutMutation,
 } from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
 
@@ -23,6 +24,7 @@ export function AcceptInvitationPage() {
 	const pageRef = useRef<HTMLDivElement>(null);
 
 	const { data: sessionData, isLoading: isSessionLoading } = useAuthSession();
+	const signOutMutation = useSignOutMutation();
 	const { data: inviteData, isLoading: isInviteLoading, error: inviteError } =
 		useInvitationQuery(token);
 	const acceptMutation = useAcceptInvitationMutation();
@@ -31,11 +33,21 @@ export function AcceptInvitationPage() {
 
 	useGsapPageReveal(pageRef, [isInviteLoading, Boolean(inviteData?.valid)]);
 
+	const sessionEmail = sessionData?.user?.email?.trim().toLowerCase();
+	const targetEmail = inviteData?.recipientEmail?.trim().toLowerCase();
+	const isEmailMismatch = Boolean(
+		sessionEmail && targetEmail && sessionEmail !== targetEmail,
+	);
+
 	async function handleAccept() {
 		setActionError(null);
 		try {
 			const res = await acceptMutation.mutateAsync(token);
-			navigate(`/field/events/${res.eventId}`);
+			if (res.role === "organizer" || !res.eventId) {
+				navigate("/dashboard");
+			} else {
+				navigate(`/field/events/${res.eventId}`);
+			}
 		} catch (err) {
 			if (err instanceof ApiClientError) {
 				setActionError(err.message);
@@ -184,43 +196,83 @@ export function AcceptInvitationPage() {
 
 							{/* Actions: Logged In vs Logged Out */}
 							{!isSessionLoading && sessionData?.user ? (
-								<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+								isEmailMismatch ? (
 									<div
 										style={{
-											fontSize: 13,
-											color: "#545B67",
-											background: "#F4F4F3",
-											borderRadius: 12,
-											padding: "10px 14px",
-										}}
-									>
-										Masuk sebagai: <strong>{sessionData.user.name}</strong> ({sessionData.user.email})
-									</div>
-									<button
-										type="button"
-										onClick={handleAccept}
-										disabled={acceptMutation.isPending}
-										style={{
-											background: "#264D3B",
-											color: "#FFFFFF",
-											border: "none",
-											borderRadius: 9999,
-											padding: "12px 20px",
-											fontSize: 14,
-											fontWeight: 500,
+											background: "#FEF2F2",
+											border: "1px solid rgba(185, 28, 28, 0.3)",
+											borderRadius: 14,
+											padding: "16px 18px",
 											display: "flex",
-											alignItems: "center",
-											justifyContent: "center",
-											gap: 8,
-											cursor: acceptMutation.isPending ? "not-allowed" : "pointer",
-											opacity: acceptMutation.isPending ? 0.75 : 1,
-											transition: "all var(--transition-fast)",
+											flexDirection: "column",
+											gap: 10,
 										}}
 									>
-										<CheckCircle2 size={16} />
-										<span>{acceptMutation.isPending ? "Menerima..." : "Terima Undangan & Mulai Bertugas"}</span>
-									</button>
-								</div>
+										<div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9E2A2B", fontWeight: 600, fontSize: 14 }}>
+											<AlertCircle size={18} />
+											<span>Alamat Email Tidak Cocok</span>
+										</div>
+										<p style={{ margin: 0, fontSize: 13, color: "#545B67", lineHeight: 1.5 }}>
+											Undangan ini ditujukan untuk email: <strong>{targetEmail}</strong>. Saat ini Anda masuk sebagai: <strong>{sessionEmail}</strong>.
+										</p>
+										<div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+											<button
+												type="button"
+												onClick={() => signOutMutation.mutate()}
+												style={{
+													background: "#9E2A2B",
+													color: "#FFFFFF",
+													border: "none",
+													borderRadius: 9999,
+													padding: "8px 16px",
+													fontSize: 12.5,
+													cursor: "pointer",
+													fontWeight: 500,
+												}}
+											>
+												Keluar Akun & Ganti Email
+											</button>
+										</div>
+									</div>
+								) : (
+									<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+										<div
+											style={{
+												fontSize: 13,
+												color: "#545B67",
+												background: "#F4F4F3",
+												borderRadius: 12,
+												padding: "10px 14px",
+											}}
+										>
+											Masuk sebagai: <strong>{sessionData.user.name}</strong> ({sessionData.user.email})
+										</div>
+										<button
+											type="button"
+											onClick={handleAccept}
+											disabled={acceptMutation.isPending}
+											style={{
+												background: "#264D3B",
+												color: "#FFFFFF",
+												border: "none",
+												borderRadius: 9999,
+												padding: "12px 20px",
+												fontSize: 14,
+												fontWeight: 500,
+												display: "flex",
+												alignItems: "center",
+												justifyContent: "center",
+												gap: 8,
+												cursor: acceptMutation.isPending ? "not-allowed" : "pointer",
+												opacity: acceptMutation.isPending ? 0.75 : 1,
+												transition: "all var(--transition-fast)",
+											}}
+										>
+											<CheckCircle2 size={16} />
+											<span>{acceptMutation.isPending ? "Menerima..." : "Terima Undangan & Mulai Bertugas"}</span>
+										</button>
+									</div>
+								)
 							) : (
 								<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 									<p style={{ margin: 0, fontSize: 13.5, color: "#545B67", lineHeight: 1.5 }}>
@@ -238,6 +290,7 @@ export function AcceptInvitationPage() {
 										</Link>
 										<Link
 											to="/register"
+											state={{ from: `/invite/${token}`, email: inviteData.recipientEmail }}
 											className="teduh-back-link"
 											style={{ flex: 1, justifyContent: "center" }}
 										>

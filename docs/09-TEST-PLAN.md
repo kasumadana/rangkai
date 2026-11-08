@@ -1,7 +1,7 @@
 # Quality Assurance and Validation Plan — Rangkai
 
-Version: 0.1.0
-Status: Planned, not executed
+Version: 1.0.0-rc
+Status: Executed (54/54 unit passing, 203 passing / 1 skipped paid live smoke integration, 20/20 Playwright E2E passing)
 
 ## 1. Testing Objectives
 

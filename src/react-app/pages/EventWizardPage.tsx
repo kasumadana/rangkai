@@ -78,6 +78,7 @@ import {
 } from "../lib/events-api";
 import { formatWitaDateTime, formatWitaRange } from "../lib/wita";
 import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
+import { useMyOrganizationsQuery } from "../lib/auth";
 
 const DRAFT_STORAGE_KEY = "rangkai:event-wizard-draft-v1";
 const UUID_REGEX =
@@ -314,6 +315,14 @@ export function EventWizardPage() {
 		enabled: Boolean(routeEventId && isRealUuidEvent),
 		retry: false,
 	});
+
+	const myOrgsQuery = useMyOrganizationsQuery();
+	const activeOrg = useMemo(() => {
+		const orgs = myOrgsQuery.data?.organizations ?? [];
+		return orgs.find((o) => o.id === formState.organizationId) || orgs[0];
+	}, [myOrgsQuery.data, formState.organizationId]);
+
+	const hasOperationalAuthority = Boolean(activeOrg?.hasOperationalAuthority);
 
 	const loadedEvent = eventDetailQuery.data?.event;
 
@@ -625,7 +634,9 @@ export function EventWizardPage() {
 			if (!routeEventId || !isRealUuidEvent) {
 				throw new Error("Simpan draf terlebih dahulu.");
 			}
-			return publishVerifiedEvent(routeEventId);
+			return publishVerifiedEvent(routeEventId, {
+				isSimulation: !hasOperationalAuthority,
+			});
 		},
 		onSuccess: async (result) => {
 			setIsPublishDialogOpen(false);
@@ -635,8 +646,10 @@ export function EventWizardPage() {
 			});
 			setBannerFeedback({
 				status: "success",
-				title: "Resmi Diumumkan",
-				description: `Diterbitkan pada ${formatWitaDateTime(result.event.publishedAt)}. Publik dapat melihat status penutupan di portal desa.`,
+				title: hasOperationalAuthority ? "Resmi Diumumkan" : "Simulasi Diumumkan",
+				description: hasOperationalAuthority
+					? `Diterbitkan pada ${formatWitaDateTime(result.event.publishedAt)}. Publik dapat melihat status penutupan di portal desa.`
+					: `Diterbitkan dalam mode simulasi pada ${formatWitaDateTime(result.event.publishedAt)}. Publik dapat melihat tanda simulasi di portal desa.`,
 			});
 		},
 		onError: (err) => {
@@ -1311,6 +1324,15 @@ export function EventWizardPage() {
 									/>
 								) : null}
 
+								{!hasOperationalAuthority ? (
+									<Banner
+										status="info"
+										collapsible={false}
+										title="Publikasi Dalam Mode Simulasi Latihan"
+										description="Organisasi desa adat ini belum memiliki wewenang operasional penutupan jalan resmi. Kegiatan akan dipublikasikan dengan penanda tegas 'SIMULASI' agar warga memahami ini adalah latihan koordinasi dan bukan penutupan jalan resmi Dishub/Kepolisian."
+									/>
+								) : null}
+
 								<Divider variant="subtle" />
 
 								<HStack gap={2} wrap="wrap" justify="between" vAlign="center">
@@ -1339,7 +1361,11 @@ export function EventWizardPage() {
 										<Button
 											variant="primary"
 											size="md"
-											label="Terbitkan ke Warga"
+											label={
+												hasOperationalAuthority
+													? "Terbitkan ke Warga"
+													: "Publikasikan Simulasi"
+											}
 											icon={<Icon icon={Send} size="sm" />}
 											isDisabled={
 												!isRealUuidEvent ||
@@ -1380,9 +1406,21 @@ export function EventWizardPage() {
 						onAction={() => {
 							void publishMutation.mutateAsync();
 						}}
-						title="Umumkan Kegiatan ke Warga?"
-						description="Jadwal upacara dan status penutupan jalan akan resmi diterbitkan ke portal publik desa. Pastikan data telah sesuai dengan surat edaran."
-						actionLabel="Ya, Terbitkan"
+						title={
+							hasOperationalAuthority
+								? "Umumkan Kegiatan ke Warga?"
+								: "Publikasikan Sebagai Simulasi?"
+						}
+						description={
+							hasOperationalAuthority
+								? "Jadwal upacara dan status penutupan jalan akan resmi diterbitkan ke portal publik desa. Pastikan data telah sesuai dengan surat edaran."
+								: "Kegiatan akan diterbitkan ke portal publik dengan label SIMULASI untuk latihan koordinasi internal desa adat."
+						}
+						actionLabel={
+							hasOperationalAuthority
+								? "Ya, Terbitkan Resmi"
+								: "Ya, Terbitkan Simulasi"
+						}
 						cancelLabel="Batal"
 						actionVariant="primary"
 						isActionLoading={publishMutation.isPending}
@@ -1429,7 +1467,11 @@ export function EventWizardPage() {
 								<Button
 									variant="primary"
 									size="md"
-									label="Terbitkan"
+									label={
+										hasOperationalAuthority
+											? "Terbitkan"
+											: "Terbitkan Simulasi"
+									}
 									icon={<Icon icon={Send} size="sm" />}
 									isDisabled={!isRealUuidEvent}
 									onClick={() => setIsPublishDialogOpen(true)}

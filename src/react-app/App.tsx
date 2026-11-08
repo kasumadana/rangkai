@@ -17,6 +17,7 @@ import { RegisterPage } from "./pages/RegisterPage";
 import { OrganizationOnboardingPage } from "./pages/OrganizationOnboardingPage";
 import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
 import { OrganizerDashboardPage } from "./pages/OrganizerDashboardPage";
+import { FieldTaskListPage } from "./pages/FieldTaskListPage";
 import {
 	PublicEventDetailPage,
 	PublicEventsListPage,
@@ -140,7 +141,7 @@ export function App() {
 								/>
 								<Route
 									path="/field"
-									element={<Navigate to="/field/events/evt-pilot" replace />}
+									element={<FieldTaskListPage />}
 								/>
 								<Route
 									path="/field/events/:id"

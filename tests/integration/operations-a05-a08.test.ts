@@ -2336,7 +2336,7 @@ describe("A05-A08 Integrated Operations: Documents, Extraction, Roads & Public A
 			}
 		});
 
-		it(
+		it.skipIf(!process.env.RUN_LIVE_GEMINI_SMOKE)(
 			"LIVE SYNTHETIC GEMINI SMOKE: Calls real Gemini model (gemini-3.5-flash-lite) on synthetic announcement fixture SYNTH_AI_001 without fetch mocking",
 			async () => {
 				resetUploadRateLimits();

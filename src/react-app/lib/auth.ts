@@ -94,6 +94,7 @@ export interface UserOrganization {
 	district: string | null;
 	createdAt: string;
 	role: "organizer" | "officer";
+	hasOperationalAuthority?: boolean;
 }
 
 export interface CreateOrganizationInput {
@@ -141,6 +142,7 @@ export interface InvitationDetails {
 		canUpdateTraffic: boolean;
 		canUpdateCleanup: boolean;
 	};
+	recipientEmail?: string | null;
 	expiresAt: string;
 }
 
@@ -247,4 +249,90 @@ export function useSignOutMutation() {
 			await queryClient.invalidateQueries({ queryKey: ["events"] });
 		},
 	});
+}
+
+export interface EventAssignmentItem {
+	id: string;
+	eventId: string;
+	userId: string;
+	userName: string;
+	userEmail: string;
+	canUpdateTraffic: boolean;
+	canUpdateCleanup: boolean;
+	createdAt: string;
+}
+
+export interface InvitationItem {
+	id: string;
+	role: "organizer" | "officer";
+	organizationId: string;
+	eventId?: string | null;
+	eventTitle?: string | null;
+	recipientEmail?: string | null;
+	canUpdateTraffic: boolean;
+	canUpdateCleanup: boolean;
+	status: "pending" | "accepted" | "revoked" | "expired";
+	expiresAt: string;
+	createdAt: string;
+	createdByName?: string | null;
+	token?: string | null;
+	inviteUrl?: string;
+}
+
+export interface CreateInvitationInput {
+	organizationId?: string;
+	eventId?: string;
+	role: "organizer" | "officer";
+	recipientEmail?: string;
+	canUpdateTraffic?: boolean;
+	canUpdateCleanup?: boolean;
+}
+
+export async function fetchEventAssignments(
+	eventId: string,
+): Promise<{ assignments: EventAssignmentItem[] }> {
+	return apiFetch<{ assignments: EventAssignmentItem[] }>(
+		`/api/events/${encodeURIComponent(eventId)}/assignments`,
+		{ method: "GET" },
+	);
+}
+
+export async function revokeEventAssignment(
+	eventId: string,
+	assignmentId: string,
+): Promise<{ success: boolean; revokedAssignmentId: string }> {
+	return apiFetch<{ success: boolean; revokedAssignmentId: string }>(
+		`/api/events/${encodeURIComponent(eventId)}/assignments/${encodeURIComponent(assignmentId)}`,
+		{ method: "DELETE" },
+	);
+}
+
+export async function fetchInvitations(
+	organizationId?: string,
+): Promise<{ invitations: InvitationItem[] }> {
+	const query = organizationId
+		? `?organizationId=${encodeURIComponent(organizationId)}`
+		: "";
+	return apiFetch<{ invitations: InvitationItem[] }>(
+		`/api/invitations${query}`,
+		{ method: "GET" },
+	);
+}
+
+export async function createInvitation(
+	input: CreateInvitationInput,
+): Promise<{ invitation: InvitationItem }> {
+	return apiFetch<{ invitation: InvitationItem }>("/api/invitations", {
+		method: "POST",
+		body: input,
+	});
+}
+
+export async function revokeInvitation(
+	invitationId: string,
+): Promise<{ success: boolean; revokedId: string }> {
+	return apiFetch<{ success: boolean; revokedId: string }>(
+		`/api/invitations/${encodeURIComponent(invitationId)}`,
+		{ method: "DELETE" },
+	);
 }

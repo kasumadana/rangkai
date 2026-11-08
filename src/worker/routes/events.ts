@@ -4,6 +4,7 @@ import {
 	eventAssignments,
 	events,
 	memberships,
+	organizations,
 	roadImpacts,
 	roadSegments,
 } from "../../db/schema";
@@ -40,6 +41,7 @@ function mapEventRow(row: Record<string, unknown>) {
 		startsAt: row.startsAt ? new Date(row.startsAt as string) : null,
 		endsAt: row.endsAt ? new Date(row.endsAt as string) : null,
 		status: row.status as string,
+		isSimulation: row.isSimulation !== undefined ? Boolean(row.isSimulation) : true,
 		publicSlug: (row.publicSlug ?? null) as string | null,
 		permitReference: (row.permitReference ?? null) as string | null,
 		verifiedBy: (row.verifiedBy ?? null) as string | null,
@@ -149,6 +151,24 @@ eventsRouter.post("/", async (c) => {
 		);
 	}
 
+	const isSimulation = data.isSimulation !== false;
+	if (!isSimulation) {
+		const orgRows = await db
+			.select({ hasOperationalAuthority: organizations.hasOperationalAuthority })
+			.from(organizations)
+			.where(eq(organizations.id, data.organizationId))
+			.limit(1);
+
+		if (!orgRows[0]?.hasOperationalAuthority) {
+			return sendError(
+				c,
+				"FORBIDDEN",
+				"Organisasi belum memiliki otoritas operasional resmi. Kegiatan hanya dapat dibuat dalam mode simulasi.",
+				403,
+			);
+		}
+	}
+
 	const eventId = crypto.randomUUID();
 	const auditId = crypto.randomUUID();
 	const now = new Date();
@@ -160,12 +180,12 @@ eventsRouter.post("/", async (c) => {
 		WITH inserted AS (
 			INSERT INTO events (
 				id, organization_id, created_by, title, category, description,
-				venue_name, starts_at, ends_at, permit_reference, status, created_at, updated_at
+				venue_name, starts_at, ends_at, permit_reference, status, is_simulation, created_at, updated_at
 			)
 			VALUES (
 				${eventId}, ${data.organizationId}, ${currentUser.id}, ${data.title},
 				${data.category ?? null}, ${data.description ?? null}, ${data.venueName ?? null},
-				${startsAtDate}, ${endsAtDate}, ${data.permitReference ?? null}, 'draft', ${now}, ${now}
+				${startsAtDate}, ${endsAtDate}, ${data.permitReference ?? null}, 'draft', ${isSimulation}, ${now}, ${now}
 			)
 			RETURNING *
 		),
@@ -178,6 +198,7 @@ eventsRouter.post("/", async (c) => {
 				json_build_object(
 					'title', title,
 					'status', status,
+					'isSimulation', is_simulation,
 					'startsAt', starts_at,
 					'endsAt', ends_at
 				),
@@ -196,6 +217,7 @@ eventsRouter.post("/", async (c) => {
 			starts_at AS "startsAt",
 			ends_at AS "endsAt",
 			status,
+			is_simulation AS "isSimulation",
 			public_slug AS "publicSlug",
 			permit_reference AS "permitReference",
 			verified_by AS "verifiedBy",
@@ -837,19 +859,57 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 		}
 	}
 
-	// 5. Generate unique public slug (preserving existing slug if set)
+	// 5. Operational authority gate (Ticket 03, SRS FR-014–017, FR-060–064)
+	let publishAsSimulation = event.isSimulation !== false;
+	try {
+		const publishBody = await c.req.json();
+		if (
+			typeof publishBody === "object" &&
+			publishBody !== null &&
+			"isSimulation" in publishBody
+		) {
+			publishAsSimulation = Boolean(
+				(publishBody as { isSimulation?: boolean }).isSimulation,
+			);
+		}
+	} catch {
+		// Empty body is allowed, defaults to event.isSimulation
+	}
+
+	if (!publishAsSimulation) {
+		const orgRows = await db
+			.select({
+				id: organizations.id,
+				hasOperationalAuthority: organizations.hasOperationalAuthority,
+			})
+			.from(organizations)
+			.where(eq(organizations.id, event.organizationId))
+			.limit(1);
+
+		if (!orgRows[0] || !orgRows[0].hasOperationalAuthority) {
+			return sendError(
+				c,
+				"FORBIDDEN",
+				"Organisasi belum memiliki hak publikasi operasional resmi untuk penutupan jalan nyata. Publikasikan kegiatan sebagai simulasi atau ajukan permohonan otoritas percontohan resmi ke administrator.",
+				403,
+			);
+		}
+	}
+
+	// 6. Generate unique public slug (preserving existing slug if set)
 	const publicSlug =
 		event.publicSlug || (await generateUniquePublicSlug(db, event.title));
 	const now = new Date();
 	const auditId = crypto.randomUUID();
 
-	// 6. Atomic conditional publication via single CTE:
+	// 7. Atomic conditional publication via single CTE:
 	// Only updates if still in review status; audit is ONLY inserted if a row was actually updated!
 	const query = sql`
 		WITH updated AS (
 			UPDATE events
 			SET
 				status = 'published',
+				is_simulation = ${publishAsSimulation},
 				public_slug = COALESCE(events.public_slug, ${publicSlug}),
 				published_at = COALESCE(events.published_at, ${now}),
 				updated_at = ${now}
@@ -868,9 +928,10 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 				'event.published',
 				'event',
 				id,
-				${JSON.stringify({ status: "review", publicSlug: event.publicSlug })}::jsonb,
+				${JSON.stringify({ status: "review", publicSlug: event.publicSlug, isSimulation: event.isSimulation })}::jsonb,
 				json_build_object(
 					'status', 'published',
+					'isSimulation', is_simulation,
 					'publicSlug', public_slug,
 					'publishedAt', published_at
 				)::jsonb,
@@ -889,6 +950,7 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 			starts_at AS "startsAt",
 			ends_at AS "endsAt",
 			status,
+			is_simulation AS "isSimulation",
 			public_slug AS "publicSlug",
 			permit_reference AS "permitReference",
 			verified_by AS "verifiedBy",
