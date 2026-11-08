@@ -172,10 +172,10 @@ test.describe("C09 Regression Suite: Mobile Usability & Responsiveness (Pilar 5)
 
 		// Periksa tidak ada horizontal scroll overflow pada viewport
 		const scrollWidth = await publicPage.evaluate(
-			() => (globalThis as any).document.documentElement.scrollWidth,
+			() => (globalThis as unknown as { document: { documentElement: { scrollWidth: number } } }).document.documentElement.scrollWidth,
 		);
 		const clientWidth = await publicPage.evaluate(
-			() => (globalThis as any).document.documentElement.clientWidth,
+			() => (globalThis as unknown as { document: { documentElement: { clientWidth: number } } }).document.documentElement.clientWidth,
 		);
 		expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 5);
 
