@@ -1,6 +1,5 @@
 import {
 	ArrowLeft,
-	Building2,
 	CheckCircle2,
 	Clock,
 	Database,
@@ -8,9 +7,7 @@ import {
 	KeyRound,
 	LogOut,
 	PlusCircle,
-	ShieldCheck,
 	Sparkles,
-	UserCheck,
 } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
@@ -111,7 +108,6 @@ export function SettingsPage() {
 			<div className="teduh-workspace-header">
 				<div>
 					<div className="teduh-workspace-eyebrow">
-						<ShieldCheck className="w-3.5 h-3.5" />
 						<span>Konfigurasi Akun, Peran &amp; Desa Adat</span>
 					</div>
 					<h1 className="teduh-workspace-title">
@@ -146,15 +142,12 @@ export function SettingsPage() {
 				<div className="xl:col-span-7 space-y-6">
 					{/* 1. Profil Pengguna */}
 					<div className="teduh-workspace-card space-y-4">
-						<div className="flex items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
-							<div className="flex items-center gap-2">
-								<UserCheck className="w-4 h-4 text-[#264D3B]" />
-								<h2 className="teduh-workspace-card-title">
-									Profil Petugas &amp; Sesi Otentikasi
-								</h2>
-							</div>
+						<div className="flex items-center justify-between gap-2">
+							<h2 className="teduh-workspace-card-title">
+								Profil Petugas &amp; Sesi Otentikasi
+							</h2>
 							<span
-								className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+								className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
 									sessionData?.user
 										? "bg-[#EBF3EE] text-[#264D3B]"
 										: "bg-[#F3F1EC] text-[#585854]"
@@ -167,7 +160,7 @@ export function SettingsPage() {
 						{!isSessionLoading && sessionData?.user ? (
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
 								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-1">
-									<span className="text-[11px] font-semibold uppercase tracking-wider text-[#585854]">
+									<span className="text-[11px] font-medium text-[#585854]">
 										Nama Lengkap Petugas
 									</span>
 									<p className="text-sm font-bold text-[#181817]">
@@ -175,7 +168,7 @@ export function SettingsPage() {
 									</p>
 								</div>
 								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-1">
-									<span className="text-[11px] font-semibold uppercase tracking-wider text-[#585854]">
+									<span className="text-[11px] font-medium text-[#585854]">
 										Alamat Surel Resmi
 									</span>
 									<p className="text-sm font-bold text-[#181817]">
@@ -183,7 +176,7 @@ export function SettingsPage() {
 									</p>
 								</div>
 								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-1">
-									<span className="text-[11px] font-semibold uppercase tracking-wider text-[#585854]">
+									<span className="text-[11px] font-medium text-[#585854]">
 										ID Akun Sistem
 									</span>
 									<p className="text-xs font-mono text-[#585854] break-all">
@@ -191,7 +184,7 @@ export function SettingsPage() {
 									</p>
 								</div>
 								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-1">
-									<span className="text-[11px] font-semibold uppercase tracking-wider text-[#585854]">
+									<span className="text-[11px] font-medium text-[#585854]">
 										Peran Aktif di Desa Terpilih
 									</span>
 									<p className="text-sm font-bold text-[#264D3B]">
@@ -255,13 +248,10 @@ export function SettingsPage() {
 
 					{/* 2. Pemilihan & Pendaftaran Desa Adat */}
 					<div className="teduh-workspace-card space-y-4">
-						<div className="flex items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
-							<div className="flex items-center gap-2">
-								<Building2 className="w-4 h-4 text-[#264D3B]" />
-								<h2 className="teduh-workspace-card-title">
-									Desa Adat &amp; Organisasi Kerja
-								</h2>
-							</div>
+						<div className="flex items-center justify-between gap-2">
+							<h2 className="teduh-workspace-card-title">
+								Desa Adat &amp; Organisasi Kerja
+							</h2>
 							<span className="text-xs font-semibold text-[#585854]">
 								{myOrganizations.length} Desa Terhubung
 							</span>
@@ -351,7 +341,7 @@ export function SettingsPage() {
 						{sessionData?.user ? (
 							<form
 								onSubmit={(e) => void handleCreateOrganization(e)}
-								className="pt-4 border-t border-[#F0EFEA] space-y-3"
+								className="pt-2 space-y-3"
 							>
 								<div className="flex items-center gap-1.5">
 									<PlusCircle className="w-3.5 h-3.5 text-[#264D3B]" />

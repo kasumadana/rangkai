@@ -34,11 +34,10 @@ export function FieldTaskListPage() {
 
 	return (
 		<Layout
-			defaultHasDividers
 			height="fill"
 			contentWidth={760}
 			header={
-				<LayoutHeader hasDivider>
+				<LayoutHeader>
 					<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
 						<VStack gap={1}>
 							<Heading level={1}>Penugasan Lapangan Desa Adat</Heading>

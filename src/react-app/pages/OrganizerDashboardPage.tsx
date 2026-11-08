@@ -1,7 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import {
 	Building2,
-	CalendarDays,
 	CheckCircle2,
 	ClipboardCheck,
 	Clock,
@@ -11,7 +10,6 @@ import {
 	Radio,
 	RefreshCw,
 	Search,
-	ShieldCheck,
 	Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -24,6 +22,7 @@ import {
 	RoadStatusBadge,
 } from "../components/rangkai";
 import { DashboardRoadMapInput } from "../features/map/DashboardRoadMapInput";
+import { getImpactTypeLabel } from "./EventWizardPage";
 import type { EventLifecycleStatus } from "../lib/api-client";
 import { useAuthSession, useMyOrganizationsQuery } from "../lib/auth";
 import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
@@ -163,7 +162,6 @@ export function OrganizerDashboardPage() {
 			<div className="teduh-workspace-header">
 				<div>
 					<div className="teduh-workspace-eyebrow">
-						<ShieldCheck className="w-3.5 h-3.5" />
 						<span>Pusat Koordinasi Desa Adat • Zona Waktu WITA</span>
 					</div>
 					<h1 className="teduh-workspace-title">
@@ -210,9 +208,8 @@ export function OrganizerDashboardPage() {
 			organizations.length === 0 ? (
 				<div className="mb-6 rounded-2xl border border-[#F3D9A4] bg-[#FDF7EB] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 					<div className="space-y-1">
-						<div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#9A5B13]">
-							<Building2 className="w-4 h-4" />
-							<span>Belum Terhubung ke Desa Adat</span>
+						<div className="text-xs font-semibold text-[#9A5B13]">
+							<span>Belum terhubung ke desa adat</span>
 						</div>
 						<p className="text-sm font-medium text-[#181817]">
 							Akun Anda ({sessionData.user.email}) belum terdaftar sebagai
@@ -417,7 +414,7 @@ export function OrganizerDashboardPage() {
 										<div className="flex flex-wrap items-start justify-between gap-2">
 											<div className="space-y-1">
 												<div className="flex flex-wrap items-center gap-2">
-													<span className="text-[11px] font-semibold uppercase tracking-wider text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full">
+													<span className="text-xs font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full">
 														{categoryLabel}
 													</span>
 													<EventLifecycleBadge status={evt.status} />
@@ -521,11 +518,8 @@ export function OrganizerDashboardPage() {
 							<>
 								<div className="flex items-start justify-between gap-3">
 									<div className="space-y-1">
-										<span className="text-[11px] font-bold uppercase tracking-wider text-[#264D3B]">
-											Inspektur Spasial Kegiatan
-										</span>
 										<h3 className="teduh-workspace-card-title">
-											{activeEvent.title}
+											Peta kegiatan: {activeEvent.title}
 										</h3>
 										<p className="text-xs text-[#585854]">
 											{activeEvent.venueName || "Lokasi belum ditetapkan"} •{" "}
@@ -597,8 +591,8 @@ export function OrganizerDashboardPage() {
 															</p>
 															<p className="text-[11px] text-[#585854] truncate">
 																Tipe:{" "}
-																<span className="font-medium uppercase">
-																	{ri.impactType}
+																<span className="font-medium">
+																	{getImpactTypeLabel(ri.impactType)}
 																</span>
 																{ri.diversionNote
 																	? ` • Alihan: ${ri.diversionNote}`
@@ -617,7 +611,7 @@ export function OrganizerDashboardPage() {
 								</div>
 
 								{/* Quick Action Buttons */}
-								<div className="pt-3 border-t border-[#E5E3DC] grid grid-cols-2 gap-2">
+								<div className="pt-2 grid grid-cols-2 gap-2">
 									<Link
 										to={`/dashboard/events/${activeEvent.id}`}
 										className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
@@ -650,9 +644,8 @@ export function OrganizerDashboardPage() {
 							</>
 						) : (
 							<div className="py-8 text-center space-y-2">
-								<CalendarDays className="w-8 h-8 text-[#8A8984] mx-auto" />
 								<h3 className="teduh-workspace-card-title">
-									Inspektur Spasial
+									Peta kegiatan
 								</h3>
 								<p className="text-xs text-[#585854] max-w-xs mx-auto">
 									Pilih salah satu kegiatan upacara di daftar kiri atau buat

@@ -89,11 +89,6 @@ export function LandingPage() {
 			<section className="hero">
 				<div className="hero-left">
 					<div className="hero-left-inner">
-						<div className="hero-label" data-gsap="hero-item">
-							<span className="hero-label-diamond" aria-hidden="true" />
-							<span>Sistem Koordinasi Upacara Adat Bali</span>
-						</div>
-
 						<h1 className="hero-title" data-gsap="hero-item">
 							Koordinasi Upacara Adat & Jalur Publik Lebih Teratur
 						</h1>

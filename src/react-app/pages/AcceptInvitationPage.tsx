@@ -152,8 +152,8 @@ export function AcceptInvitationPage() {
 								}}
 							>
 								{inviteData.event ? <div>
-									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500, textTransform: "uppercase" }}>
-										Kegiatan yang Ditugaskan
+									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 600 }}>
+										Kegiatan yang ditugaskan
 									</div>
 									<div style={{ fontSize: 15, fontWeight: 600, color: "#181B20", marginTop: 2 }}>
 										{inviteData.event.title}
@@ -161,8 +161,8 @@ export function AcceptInvitationPage() {
 								</div> : null}
 
 								{inviteData.invitationRole === "officer" ? <div>
-									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500, textTransform: "uppercase", marginBottom: 6 }}>
-										Izin Hak Tugas Lapangan
+									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 600, marginBottom: 6 }}>
+										Izin hak tugas lapangan
 									</div>
 									<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 										{inviteData.permissions.canUpdateTraffic && (

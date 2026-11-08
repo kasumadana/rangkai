@@ -937,7 +937,6 @@ export function EventWizardPage() {
 			<div className="teduh-workspace-header">
 				<div>
 					<div className="teduh-workspace-eyebrow">
-						<Sparkles className="w-3.5 h-3.5" />
 						<span>
 							{isCreateMode
 								? "Penyusunan Draf Pengumuman Baru"

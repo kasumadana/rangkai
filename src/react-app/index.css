@@ -2,13 +2,13 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-@import "@astryxdesign/theme-neutral/fonts.css";
+@import "@astryxdesign/theme-stone/fonts.css";
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/preflight.css" layer(base);
 
 @import "@astryxdesign/core/reset.css";
 @import "@astryxdesign/core/astryx.css";
-@import "@astryxdesign/theme-neutral/theme.css";
+@import "@astryxdesign/theme-stone/theme.css";
 @import "@astryxdesign/core/tailwind-theme.css";
 
 @import "tailwindcss/utilities.css" layer(utilities);
@@ -654,8 +654,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
 		margin-bottom: 16px;
 		background: transparent !important;
 		padding: 0 !important;
@@ -1121,10 +1119,8 @@
 		align-items: center;
 		gap: 8px;
 		font-size: 12.5px;
-		font-weight: 500;
+		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
 		margin-bottom: 16px;
 	}
 
@@ -1598,10 +1594,8 @@
 
 	.schedule-village-label {
 		font-size: 12px;
-		font-weight: 500;
+		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
 	}
 
 	.schedule-card-title {
@@ -2511,8 +2505,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.drawer-title {
@@ -2580,8 +2572,6 @@
 		font-size: 11.5px;
 		font-weight: 600;
 		color: #64748B;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.drawer-info-value {
@@ -2810,8 +2800,6 @@
 		flex: 1;
 		min-width: 0;
 		text-align: right;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.map-popup-title,
@@ -3014,8 +3002,6 @@
 		font-size: 11.5px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 		margin-bottom: 4px;
 	}
 
@@ -3076,12 +3062,10 @@
 	}
 
 	.map-detail-summary-label {
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 		color: #71717A;
 		line-height: 1.2;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.map-detail-summary-val {
@@ -3481,8 +3465,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.teduh-empty-surface {
@@ -3563,8 +3545,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.teduh-detail-title {
@@ -3648,8 +3628,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.teduh-card-body {
@@ -4377,8 +4355,6 @@
 .teduh-sidebar-group-label {
 	font-size: 11px;
 	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.06em;
 	color: #71717A;
 	padding: 0 12px 6px;
 }
@@ -4435,8 +4411,7 @@
 	justify-content: space-between;
 	gap: 16px;
 	flex-wrap: wrap;
-	padding-bottom: 18px;
-	border-bottom: 1px solid #E6E4DF;
+	padding-bottom: 8px;
 }
 
 .teduh-workspace-title {
@@ -4507,8 +4482,6 @@
 	font-size: 12px;
 	font-weight: 600;
 	color: #64748B;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
 }
 
 .teduh-kpi-value {

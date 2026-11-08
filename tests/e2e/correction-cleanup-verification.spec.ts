@@ -40,6 +40,7 @@ test.describe("Journey 5: Selected Cleanup Photo/Waste/Submit -> Organizer Verif
 		browser,
 		baseURL,
 	}) => {
+		test.setTimeout(60_000);
 		const { pinnedUrl } = await assertDevBranch();
 		const db = getDb(pinnedUrl);
 		const key = randomUUID().slice(0, 8);

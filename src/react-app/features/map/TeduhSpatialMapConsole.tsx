@@ -282,10 +282,8 @@ export function TeduhSpatialMapConsole() {
 							style={{
 								padding: "8px 18px 4px",
 								fontSize: 11,
-								fontWeight: 500,
+								fontWeight: 600,
 								color: "#64748B",
-								textTransform: "uppercase",
-								letterSpacing: "0.05em",
 							}}
 						>
 							Wilayah Kecamatan
@@ -344,10 +342,8 @@ export function TeduhSpatialMapConsole() {
 							style={{
 								padding: "8px 18px 4px",
 								fontSize: 11,
-								fontWeight: 500,
+								fontWeight: 600,
 								color: "#64748B",
-								textTransform: "uppercase",
-								letterSpacing: "0.05em",
 							}}
 						>
 							Upacara Terpublikasi
@@ -395,10 +391,8 @@ export function TeduhSpatialMapConsole() {
 							style={{
 								padding: "8px 18px 4px",
 								fontSize: 11,
-								fontWeight: 500,
+								fontWeight: 600,
 								color: "#64748B",
-								textTransform: "uppercase",
-								letterSpacing: "0.05em",
 							}}
 						>
 							Ruas Jalan Terdampak

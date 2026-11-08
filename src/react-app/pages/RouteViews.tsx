@@ -13,7 +13,6 @@ import {
 	Copy,
 	FileText,
 	Info,
-	Link2,
 	MapPin,
 	MapPinned,
 	Milestone,
@@ -1781,7 +1780,6 @@ export function WorkflowRouteShellPage({
 			<div className="teduh-workspace-header">
 				<div>
 					<div className="teduh-workspace-eyebrow">
-						<ShieldCheck className="w-3.5 h-3.5" />
 						<span>
 							Ruang Kerja Operasional Upacara •{" "}
 							{rawEvent?.venueName || "Desa Adat Bali"}
@@ -1798,12 +1796,10 @@ export function WorkflowRouteShellPage({
 					<p className="teduh-workspace-subtitle">{subtitle}</p>
 				</div>
 
-
 				<div className="flex flex-wrap items-center gap-2">
 					<Link
 						to="/dashboard"
 						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
-
 					>
 						<ArrowLeft className="w-3.5 h-3.5" />
 						<span>Daftar Upacara</span>
@@ -1821,7 +1817,7 @@ export function WorkflowRouteShellPage({
 			</div>
 
 			{/* Workflow Module Navigation Tabs */}
-			<div className="flex flex-wrap items-center gap-2 mb-6 border-b border-[#E5E3DC] pb-3">
+			<div className="flex flex-wrap items-center gap-2 mb-6">
 				{WORKFLOW_TABS.map((tab) => {
 					const IconComp = tab.icon;
 					const active = currentTabValue === tab.id;
@@ -1872,7 +1868,7 @@ export function WorkflowRouteShellPage({
 			{currentTabValue === "document" ? (
 				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 					<div className="xl:col-span-5 teduh-workspace-card space-y-4">
-						<div className="border-b border-[#F0EFEA] pb-3">
+						<div className="space-y-1">
 							<h2 className="teduh-workspace-card-title">
 								Unggah Surat Edaran &amp; Ekstraksi AI
 							</h2>
@@ -1922,7 +1918,7 @@ export function WorkflowRouteShellPage({
 					</div>
 
 					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
-						<div className="flex items-center justify-between border-b border-[#F0EFEA] pb-3">
+						<div className="flex items-center justify-between">
 							<h2 className="teduh-workspace-card-title">
 								Periksa &amp; Konfirmasi Rincian Upacara
 							</h2>
@@ -2011,7 +2007,7 @@ export function WorkflowRouteShellPage({
 							</div>
 						</div>
 
-						<div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#F0EFEA]">
+						<div className="flex flex-wrap items-center justify-between gap-2 pt-2">
 							<button
 								type="button"
 								disabled={saveDocReviewMutation.isPending}
@@ -2055,7 +2051,7 @@ export function WorkflowRouteShellPage({
 				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 					{/* Left: Dedicated Dashboard Road Map Input */}
 					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
-						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
+						<div className="flex flex-wrap items-center justify-between gap-2">
 							<div>
 								<h2 className="teduh-workspace-card-title">
 									Peta Input Ruas Jalan Terdampak
@@ -2351,7 +2347,7 @@ export function WorkflowRouteShellPage({
 			{currentTabValue === "field" && (isOrganizer || canTraffic) ? (
 				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
-						<div className="border-b border-[#F0EFEA] pb-3">
+						<div className="space-y-1">
 							<h2 className="teduh-workspace-card-title">
 								Peta Operasional Pos Pecalang
 							</h2>
@@ -2371,7 +2367,7 @@ export function WorkflowRouteShellPage({
 					</div>
 
 					<div className="xl:col-span-5 teduh-workspace-card space-y-4">
-						<div className="border-b border-[#F0EFEA] pb-3">
+						<div className="space-y-1">
 							<h2 className="teduh-workspace-card-title">
 								Kendali Status Ruas Jalan (Pecalang)
 							</h2>
@@ -2547,7 +2543,7 @@ export function WorkflowRouteShellPage({
 						{/* Left Column: Cleanup Tasks & Photo Evidence */}
 						<div className="xl:col-span-7 space-y-6">
 							<div className="teduh-workspace-card space-y-4">
-								<div className="flex items-center justify-between border-b border-[#F0EFEA] pb-3">
+								<div className="flex items-center justify-between">
 									<h2 className="teduh-workspace-card-title">
 										Daftar Tugas Kebersihan Area Upacara
 									</h2>
@@ -2764,7 +2760,7 @@ export function WorkflowRouteShellPage({
 
 						{/* Right Column: Waste Quantity Recording */}
 						<div className="xl:col-span-5 teduh-workspace-card space-y-4">
-							<div className="border-b border-[#F0EFEA] pb-3">
+							<div className="space-y-1">
 								<h2 className="teduh-workspace-card-title">
 									Pencatatan Timbunan Sampah Pasca-Upacara
 								</h2>
@@ -2875,13 +2871,10 @@ export function WorkflowRouteShellPage({
 					{/* Left Column: Generate One-Time Invitation Link & Direct Assign */}
 					<div className="xl:col-span-5 space-y-6">
 						<div className="teduh-workspace-card space-y-4">
-							<div className="border-b border-[#F0EFEA] pb-3">
-								<div className="flex items-center gap-2">
-									<Link2 className="w-4 h-4 text-[#264D3B]" />
-									<h2 className="teduh-workspace-card-title">
-										Buat Tautan Undangan Petugas Lapangan
-									</h2>
-								</div>
+							<div className="space-y-1">
+								<h2 className="teduh-workspace-card-title">
+									Buat Tautan Undangan Petugas Lapangan
+								</h2>
 								<p className="text-xs text-[#585854] mt-1">
 									Hasilkan tautan undangan resmi sekali pakai (berlaku 7 hari)
 									untuk dibagikan kepada Pecalang atau petugas kebersihan via
@@ -2957,8 +2950,8 @@ export function WorkflowRouteShellPage({
 
 							{generatedInviteUrl ? (
 								<div className="rounded-xl border border-[#A6D9B8] bg-[#EBF7F0] p-3.5 space-y-2">
-									<span className="text-[11px] font-bold uppercase tracking-wider text-[#1D5E3A] block">
-										Tautan Undangan Siap Dibagikan:
+									<span className="text-xs font-semibold text-[#1D5E3A] block">
+										Tautan undangan siap dibagikan:
 									</span>
 									<div className="flex items-center gap-2">
 										<input
@@ -3027,7 +3020,7 @@ export function WorkflowRouteShellPage({
 
 					{/* Right Column: Assigned Officers List */}
 					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
-						<div className="flex items-center justify-between border-b border-[#F0EFEA] pb-3">
+						<div className="flex items-center justify-between">
 							<h2 className="teduh-workspace-card-title">
 								Daftar Petugas Lapangan Terdaftar (
 								{assignmentsQuery.data?.assignments?.length ?? 0})

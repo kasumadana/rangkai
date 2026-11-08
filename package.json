@@ -14,7 +14,7 @@
 	"dependencies": {
 		"@astryxdesign/core": "^0.7.7",
 		"@astryxdesign/theme-neutral": "^0.7.7",
-		"@astryxdesign/theme-stone": "^0.7.6",
+		"@astryxdesign/theme-stone": "^0.7.7",
 		"@gsap/react": "^2.1.2",
 		"@hookform/resolvers": "^7.0.1",
 		"@neondatabase/serverless": "^1.2.0",
