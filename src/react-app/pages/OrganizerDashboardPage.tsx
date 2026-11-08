@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Token } from "@astryxdesign/core/Token";
 import {
 	Building2,
 	CheckCircle2,
@@ -418,6 +419,9 @@ export function OrganizerDashboardPage() {
 														{categoryLabel}
 													</span>
 													<EventLifecycleBadge status={evt.status} />
+													{evt.isSimulation ? (
+														<Token color="orange" size="sm" label="SIMULASI" />
+													) : null}
 													{evt.permitReference ? (
 														<span className="text-[11px] text-[#585854] font-mono">
 															No: {evt.permitReference}
@@ -517,11 +521,16 @@ export function OrganizerDashboardPage() {
 						{activeEvent ? (
 							<>
 								<div className="flex items-start justify-between gap-3">
-									<div className="space-y-1">
-										<h3 className="teduh-workspace-card-title">
-											Peta kegiatan: {activeEvent.title}
-										</h3>
-										<p className="text-xs text-[#585854]">
+									<div className="space-y-1 min-w-0">
+										<div className="flex items-center gap-2 flex-wrap">
+											<h3 className="teduh-workspace-card-title truncate">
+												Peta kegiatan: {activeEvent.title}
+											</h3>
+											{activeEvent.isSimulation ? (
+												<Token color="orange" size="sm" label="SIMULASI" />
+											) : null}
+										</div>
+										<p className="text-xs text-[#585854] truncate">
 											{activeEvent.venueName || "Lokasi belum ditetapkan"} •{" "}
 											{activeEvent.startsAt && activeEvent.endsAt
 												? formatWitaRange(

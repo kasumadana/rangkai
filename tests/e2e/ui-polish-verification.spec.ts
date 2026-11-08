@@ -1,5 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
 import { assertDevBranch } from "../../src/db/guard";
 import { getDb } from "../../src/db";
 import {
@@ -12,9 +13,10 @@ import {
 	eventAssignments,
 	invitations,
 } from "../../src/db/schema";
+import { user, account, session } from "../../src/db/auth-schema";
 import { eq, inArray } from "drizzle-orm";
 
-const EVIDENCE_DIR = "D:/Development/Lomba/rangkai/.scratch/production-readiness/ui-polish-evidence";
+const EVIDENCE_DIR = "D:/Development/Lomba/rangkai/.scratch/ui-refinement-20261108/evidence";
 
 const getScrollWidth = () =>
 	(globalThis as unknown as { document: { documentElement: { scrollWidth: number } } }).document
@@ -25,7 +27,8 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 		browser,
 		baseURL,
 	}) => {
-		test.setTimeout(90_000);
+		test.setTimeout(120_000);
+		fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
 		const { pinnedUrl } = await assertDevBranch();
 		const db = getDb(pinnedUrl);
 		const key = randomUUID().slice(0, 8);
@@ -36,7 +39,11 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 		const eventTitle = `Upacara Tawur Labuh Gentuh ${key}`;
 		const roadName = `Jalan Raya Suweta Simpang Puri ${key}`;
 
-		// Setup Contexts for Desktop, Tablet, and 390px Mobile
+		// Setup Contexts for 1440px Wide Desktop, 1280px Desktop, 768px Tablet, 390px Mobile, and 320px Mobile
+		const desktop1440Context = await browser.newContext({
+			viewport: { width: 1440, height: 900 },
+			extraHTTPHeaders: { Origin: baseURL || "http://localhost:5173" },
+		});
 		const desktopContext = await browser.newContext({
 			viewport: { width: 1280, height: 800 },
 			extraHTTPHeaders: { Origin: baseURL || "http://localhost:5173" },
@@ -49,10 +56,16 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			viewport: { width: 390, height: 844 },
 			extraHTTPHeaders: { Origin: baseURL || "http://localhost:5173" },
 		});
+		const mobile320Context = await browser.newContext({
+			viewport: { width: 320, height: 568 },
+			extraHTTPHeaders: { Origin: baseURL || "http://localhost:5173" },
+		});
 
+		const desktop1440Page = await desktop1440Context.newPage();
 		const desktopPage = await desktopContext.newPage();
 		const tabletPage = await tabletContext.newPage();
 		const mobilePage = await mobileContext.newPage();
+		const mobile320Page = await mobile320Context.newPage();
 
 		try {
 			// -------------------------------------------------------------------
@@ -61,6 +74,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 
 			// 1.A Landing Page (/)
 			await desktopPage.goto("/");
+			await desktopPage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await expect(desktopPage.locator("body")).toBeVisible();
 			// Redundant text "Sistem Koordinasi Upacara Adat Bali" must be removed
 			const redundantEyebrow = desktopPage.locator(".hero-label");
@@ -73,9 +87,17 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 				fullPage: true,
 			});
 
+			// Wide 1440px Landing
+			await desktop1440Page.goto("/");
+			await desktop1440Page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			await desktop1440Page.screenshot({
+				path: `${EVIDENCE_DIR}/landing-1440px-desktop.png`,
+				fullPage: true,
+			});
+
 			// Tablet Landing
 			await tabletPage.goto("/");
-			await tabletPage.waitForTimeout(500);
+			await tabletPage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await tabletPage.screenshot({
 				path: `${EVIDENCE_DIR}/landing-768px-tablet.png`,
 				fullPage: true,
@@ -83,7 +105,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 
 			// Mobile Landing (390px)
 			await mobilePage.goto("/");
-			await mobilePage.waitForTimeout(500);
+			await mobilePage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			const mobileScrollWidth = await mobilePage.evaluate(getScrollWidth);
 			expect(mobileScrollWidth).toBeLessThanOrEqual(390);
 
@@ -92,11 +114,28 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 				fullPage: true,
 			});
 
+			// Mobile Landing (320px)
+			await mobile320Page.goto("/");
+			await mobile320Page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			const mobile320ScrollWidth = await mobile320Page.evaluate(getScrollWidth);
+			expect(mobile320ScrollWidth).toBeLessThanOrEqual(320);
+
+			await mobile320Page.screenshot({
+				path: `${EVIDENCE_DIR}/landing-320px-mobile.png`,
+				fullPage: true,
+			});
+
 			// 1.B Public Events List (/events)
 			await desktopPage.goto("/events");
 			await expect(desktopPage.getByText(/Jadwal Upacara & Rekayasa Jalur Bali/i)).toBeVisible();
 			await desktopPage.screenshot({
 				path: `${EVIDENCE_DIR}/events-list-1280px-desktop.png`,
+				fullPage: true,
+			});
+
+			await desktop1440Page.goto("/events");
+			await desktop1440Page.screenshot({
+				path: `${EVIDENCE_DIR}/events-list-1440px-desktop.png`,
 				fullPage: true,
 			});
 
@@ -117,46 +156,106 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 				fullPage: true,
 			});
 
+			await mobile320Page.goto("/events");
+			const mobile320EventsWidth = await mobile320Page.evaluate(getScrollWidth);
+			expect(mobile320EventsWidth).toBeLessThanOrEqual(320);
+			await mobile320Page.screenshot({
+				path: `${EVIDENCE_DIR}/events-list-320px-mobile.png`,
+				fullPage: true,
+			});
+
 			// 1.C Public Map View (/peta)
 			await desktopPage.goto("/peta");
+			await desktopPage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			await expect(desktopPage.locator(".map-viewport")).toBeVisible({ timeout: 15000 });
 			await desktopPage.waitForTimeout(1000);
 			await desktopPage.screenshot({
 				path: `${EVIDENCE_DIR}/map-1280px-desktop.png`,
 			});
 
 			await mobilePage.goto("/peta");
+			await mobilePage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			await expect(mobilePage.locator(".map-viewport")).toBeVisible({ timeout: 15000 });
 			await mobilePage.waitForTimeout(1000);
+			const mobileMapWidth = await mobilePage.evaluate(getScrollWidth);
+			expect(mobileMapWidth).toBeLessThanOrEqual(390);
 			await mobilePage.screenshot({
 				path: `${EVIDENCE_DIR}/map-390px-mobile.png`,
+			});
+
+			await mobile320Page.goto("/peta");
+			await mobile320Page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			await expect(mobile320Page.locator(".map-viewport")).toBeVisible({ timeout: 15000 });
+			await mobile320Page.waitForTimeout(1000);
+			const mobile320MapWidth = await mobile320Page.evaluate(getScrollWidth);
+			expect(mobile320MapWidth).toBeLessThanOrEqual(320);
+			await mobile320Page.screenshot({
+				path: `${EVIDENCE_DIR}/map-320px-mobile.png`,
 			});
 
 			// -------------------------------------------------------------------
 			// 2. AUTHENTICATION PAGES AUDIT
 			// -------------------------------------------------------------------
 			await desktopPage.goto("/login");
-			await expect(desktopPage.getByRole("heading", { name: "Masuk Petugas Desa" })).toBeVisible();
+			await desktopPage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			await expect(desktopPage.getByRole("heading", { name: "Masuk Petugas Desa" })).toBeVisible({ timeout: 10000 });
+			await expect(desktopPage.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
 			await desktopPage.screenshot({
 				path: `${EVIDENCE_DIR}/login-1280px-desktop.png`,
+				fullPage: true,
 			});
 
 			await mobilePage.goto("/login");
+			await mobilePage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			await expect(mobilePage.getByRole("heading", { name: "Masuk Petugas Desa" })).toBeVisible({ timeout: 10000 });
+			await expect(mobilePage.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
 			const mobileLoginWidth = await mobilePage.evaluate(getScrollWidth);
 			expect(mobileLoginWidth).toBeLessThanOrEqual(390);
 			await mobilePage.screenshot({
 				path: `${EVIDENCE_DIR}/login-390px-mobile.png`,
+				fullPage: true,
+			});
+
+			await mobile320Page.goto("/login");
+			await mobile320Page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			await expect(mobile320Page.getByRole("heading", { name: "Masuk Petugas Desa" })).toBeVisible({ timeout: 10000 });
+			await expect(mobile320Page.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
+			const mobile320LoginWidth = await mobile320Page.evaluate(getScrollWidth);
+			expect(mobile320LoginWidth).toBeLessThanOrEqual(320);
+			await mobile320Page.screenshot({
+				path: `${EVIDENCE_DIR}/login-320px-mobile.png`,
+				fullPage: true,
 			});
 
 			await desktopPage.goto("/register");
-			await expect(desktopPage.getByRole("heading", { name: "Daftar Akun Petugas" })).toBeVisible();
+			await desktopPage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			await expect(desktopPage.getByRole("heading", { name: "Daftar Akun Petugas" })).toBeVisible({ timeout: 10000 });
+			await expect(desktopPage.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
 			await desktopPage.screenshot({
 				path: `${EVIDENCE_DIR}/register-1280px-desktop.png`,
+				fullPage: true,
 			});
 
 			await mobilePage.goto("/register");
+			await mobilePage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			await expect(mobilePage.getByRole("heading", { name: "Daftar Akun Petugas" })).toBeVisible({ timeout: 10000 });
+			await expect(mobilePage.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
 			const mobileRegisterWidth = await mobilePage.evaluate(getScrollWidth);
 			expect(mobileRegisterWidth).toBeLessThanOrEqual(390);
 			await mobilePage.screenshot({
 				path: `${EVIDENCE_DIR}/register-390px-mobile.png`,
+				fullPage: true,
+			});
+
+			await mobile320Page.goto("/register");
+			await mobile320Page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			await expect(mobile320Page.getByRole("heading", { name: "Daftar Akun Petugas" })).toBeVisible({ timeout: 10000 });
+			await expect(mobile320Page.locator('input[type="email"]')).toBeVisible({ timeout: 10000 });
+			const mobile320RegisterWidth = await mobile320Page.evaluate(getScrollWidth);
+			expect(mobile320RegisterWidth).toBeLessThanOrEqual(320);
+			await mobile320Page.screenshot({
+				path: `${EVIDENCE_DIR}/register-320px-mobile.png`,
+				fullPage: true,
 			});
 
 			// -------------------------------------------------------------------
@@ -211,8 +310,10 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 
 			// Synchronize cookies to tablet and mobile contexts
 			const authCookies = await desktopContext.cookies();
+			await desktop1440Context.addCookies(authCookies);
 			await tabletContext.addCookies(authCookies);
 			await mobileContext.addCookies(authCookies);
+			await mobile320Context.addCookies(authCookies);
 
 			// Visit Dashboard on Desktop
 			await desktopPage.goto("/dashboard");
@@ -224,6 +325,14 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 
 			await desktopPage.screenshot({
 				path: `${EVIDENCE_DIR}/dashboard-1280px-desktop.png`,
+				fullPage: true,
+			});
+
+			// Wide 1440px Dashboard
+			await desktop1440Page.goto("/dashboard");
+			await expect(desktop1440Page.getByText(eventTitle).first()).toBeVisible();
+			await desktop1440Page.screenshot({
+				path: `${EVIDENCE_DIR}/dashboard-1440px-desktop.png`,
 				fullPage: true,
 			});
 
@@ -243,6 +352,17 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 
 			await mobilePage.screenshot({
 				path: `${EVIDENCE_DIR}/dashboard-390px-mobile.png`,
+				fullPage: true,
+			});
+
+			// Mobile Dashboard (320px)
+			await mobile320Page.goto("/dashboard");
+			await expect(mobile320Page.getByText(eventTitle).first()).toBeVisible();
+			const mobile320DashWidth = await mobile320Page.evaluate(getScrollWidth);
+			expect(mobile320DashWidth).toBeLessThanOrEqual(320);
+
+			await mobile320Page.screenshot({
+				path: `${EVIDENCE_DIR}/dashboard-320px-mobile.png`,
 				fullPage: true,
 			});
 
@@ -267,6 +387,16 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 				fullPage: true,
 			});
 
+			await mobile320Page.goto(`/dashboard/events/${eventId}/roads`);
+			await expect(mobile320Page.getByText(roadName).first()).toBeVisible();
+			const mobile320RoadsWidth = await mobile320Page.evaluate(getScrollWidth);
+			expect(mobile320RoadsWidth).toBeLessThanOrEqual(320);
+
+			await mobile320Page.screenshot({
+				path: `${EVIDENCE_DIR}/roads-editor-320px-mobile.png`,
+				fullPage: true,
+			});
+
 			// -------------------------------------------------------------------
 			// 5. SETTINGS PAGE AUDIT & POLISH
 			// -------------------------------------------------------------------
@@ -285,6 +415,15 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 
 			await mobilePage.screenshot({
 				path: `${EVIDENCE_DIR}/settings-390px-mobile.png`,
+				fullPage: true,
+			});
+
+			await mobile320Page.goto("/settings");
+			const mobile320SettingsWidth = await mobile320Page.evaluate(getScrollWidth);
+			expect(mobile320SettingsWidth).toBeLessThanOrEqual(320);
+
+			await mobile320Page.screenshot({
+				path: `${EVIDENCE_DIR}/settings-320px-mobile.png`,
 				fullPage: true,
 			});
 
@@ -350,15 +489,36 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 				fullPage: true,
 			});
 
+			// Mobile Field Tasks (320px)
+			const officerMobile320Context = await browser.newContext({
+				viewport: { width: 320, height: 568 },
+				extraHTTPHeaders: { Origin: baseURL || "http://localhost:5173" },
+			});
+			await officerMobile320Context.addCookies(officerCookies);
+			const officerMobile320Page = await officerMobile320Context.newPage();
+
+			await officerMobile320Page.goto("/field");
+			await expect(officerMobile320Page.getByText(eventTitle).first()).toBeVisible();
+			const mobile320FieldWidth = await officerMobile320Page.evaluate(getScrollWidth);
+			expect(mobile320FieldWidth).toBeLessThanOrEqual(320);
+
+			await officerMobile320Page.screenshot({
+				path: `${EVIDENCE_DIR}/field-tasks-320px-mobile.png`,
+				fullPage: true,
+			});
+
+			await officerMobile320Context.close();
 			await officerMobileContext.close();
 			await officerContext.close();
 
 		} finally {
 			await desktopContext.close();
+			await desktop1440Context.close();
 			await tabletContext.close();
 			await mobileContext.close();
+			await mobile320Context.close();
 
-			// Database cleanup
+			// Database cleanup - strict complete teardown to avoid test artifact leakage
 			const [org] = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.name, orgName));
 			if (org) {
 				const owned = await db.select({ id: events.id }).from(events).where(eq(events.organizationId, org.id));
@@ -372,10 +532,20 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 						await db.delete(roadImpacts).where(inArray(roadImpacts.eventId, eventIds));
 					}
 					await db.delete(eventAssignments).where(inArray(eventAssignments.eventId, eventIds));
+					await db.delete(events).where(inArray(events.id, eventIds));
 				}
 				await db.delete(roadSegments).where(eq(roadSegments.organizationId, org.id));
 				await db.delete(invitations).where(eq(invitations.organizationId, org.id));
 				await db.delete(organizations).where(eq(organizations.id, org.id));
+			}
+
+			// Clean up test users, accounts, and sessions
+			const testUsers = await db.select({ id: user.id }).from(user).where(inArray(user.email, [orgEmail, officerEmail]));
+			if (testUsers.length) {
+				const userIds = testUsers.map((u) => u.id);
+				await db.delete(session).where(inArray(session.userId, userIds));
+				await db.delete(account).where(inArray(account.userId, userIds));
+				await db.delete(user).where(inArray(user.id, userIds));
 			}
 		}
 	});

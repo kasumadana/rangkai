@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Token } from "@astryxdesign/core/Token";
 import {
 	ArrowRight,
 	Calendar,
@@ -201,12 +202,17 @@ export function LandingPage() {
 									<div>
 										<div className="schedule-card-header">
 											<span className="schedule-village-label">{evt.village} • {evt.regency}</span>
-											<span className={`road-status-badge ${statusClass}`}>
-												{statusText}
-											</span>
+											<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+												{evt.isSimulation ? (
+													<Token color="orange" size="sm" label="SIMULASI" />
+												) : null}
+												<span className={`road-status-badge ${statusClass}`}>
+													{statusText}
+												</span>
+											</div>
 										</div>
 
-										<h3 className="schedule-card-title">{evt.isSimulation ? "SIMULASI — " : ""}{evt.title}</h3>
+										<h3 className="schedule-card-title">{evt.title}</h3>
 
 										<div className="schedule-card-meta">
 											<div className="schedule-meta-row">

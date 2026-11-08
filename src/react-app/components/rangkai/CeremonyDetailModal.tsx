@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
+import { Token } from "@astryxdesign/core/Token";
 import type { OperationalRoadStatus } from "../../lib/road-status";
 
 export interface CeremonyDetailItem {
@@ -14,6 +15,7 @@ export interface CeremonyDetailItem {
 	sacredCenterName: string;
 	roadName?: string;
 	detourRoute?: string;
+	isSimulation?: boolean;
 }
 
 interface CeremonyDetailModalProps {
@@ -102,10 +104,13 @@ export function CeremonyDetailModal({
 					</button>
 				</div>
 
-				<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+				<div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
 					<span className={`map-popup-badge ${statusBadge.className}`}>
 						{statusBadge.label}
 					</span>
+					{ceremony.isSimulation ? (
+						<Token color="orange" size="sm" label="SIMULASI" />
+					) : null}
 					<span style={{ fontSize: 12, color: "#71717A", fontWeight: 500 }}>
 						{ceremony.windowWita}
 						{ceremony.dateLabel ? ` • ${ceremony.dateLabel}` : ""}

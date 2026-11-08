@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Token } from "@astryxdesign/core/Token";
 import {
 	ArrowRight,
 	Clock,
@@ -364,9 +365,16 @@ export function TeduhSpatialMapConsole() {
 											fontSize: 14,
 											fontWeight: 500,
 											color: "#181B20",
+											display: "flex",
+											alignItems: "center",
+											gap: 6,
+											flexWrap: "wrap",
 										}}
 									>
-										{c.isSimulation ? "SIMULASI — " : ""}{c.ceremonyTitle}
+										<span>{c.ceremonyTitle}</span>
+										{c.isSimulation ? (
+											<Token color="orange" size="sm" label="SIMULASI" />
+										) : null}
 									</div>
 									<div style={{ fontSize: 12, color: "#545B67" }}>
 										{c.desaAdatName} • {c.kabupaten}
@@ -961,10 +969,13 @@ export function TeduhSpatialMapConsole() {
 									<span className="drawer-location-tag">
 										{activeVillage.desaAdatName} • {activeVillage.kabupaten}
 									</span>
+									{activeVillage.isSimulation ? (
+										<Token color="orange" size="sm" label="SIMULASI" />
+									) : null}
 									<RoadStatusBadge status={activeVillage.primaryStatus} />
 								</div>
 								<h3 className="drawer-title">
-									{activeVillage.isSimulation ? "SIMULASI — " : ""}{activeVillage.ceremonyTitle}
+									{activeVillage.ceremonyTitle}
 								</h3>
 							</div>
 

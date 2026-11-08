@@ -2958,6 +2958,12 @@
 		color: var(--status-unknown);
 	}
 
+	.map-popup-badge.simulation-token {
+		background: #FEF3C7;
+		color: #92400E;
+		border: 1px solid #FDE68A !important;
+	}
+
 	/* Ceremony Detail Modal Backdrop & Card */
 	.map-detail-modal-backdrop {
 		position: fixed;
