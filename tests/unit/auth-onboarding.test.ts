@@ -27,6 +27,7 @@ describe("Rangkai Auth & Onboarding Domain Validations (message (2).txt)", () =>
 	it("validates officer invitation creation payload", () => {
 		const valid = createInvitationSchema.safeParse({
 			eventId: "123e4567-e89b-12d3-a456-426614174000",
+			recipientEmail: "officer@example.com",
 			canUpdateTraffic: true,
 			canUpdateCleanup: false,
 			expiresInDays: 7,
@@ -37,6 +38,10 @@ describe("Rangkai Auth & Onboarding Domain Validations (message (2).txt)", () =>
 			expect(valid.data.canUpdateCleanup).toBe(false);
 			expect(valid.data.expiresInDays).toBe(7);
 		}
+	});
+
+	it("rejects invitations without a recipient email", () => {
+		expect(createInvitationSchema.safeParse({ role: "organizer" }).success).toBe(false);
 	});
 
 	it("rejects invitation creation with invalid eventId format", () => {

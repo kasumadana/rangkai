@@ -19,6 +19,9 @@ const publicRouter = new Hono<{
 
 const PUBLIC_EVENT_STATUSES = ["published", "active", "completed"] as const;
 const PUBLIC_LIST_STATUSES = ["published", "active"] as const;
+const publicAuthority = sql`(${events.isSimulation} IS DISTINCT FROM FALSE OR EXISTS (
+	SELECT 1 FROM organizations o WHERE o.id = ${events.organizationId} AND o.has_operational_authority = TRUE
+))`;
 
 /**
  * GET /api/public/events
@@ -39,6 +42,7 @@ publicRouter.get("/events", async (c) => {
 
 	const { status, from, to, bbox, page, limit } = queryParse.data;
 	const conditions = [
+		publicAuthority,
 		status
 			? eq(events.status, status)
 			: inArray(events.status, [...PUBLIC_LIST_STATUSES]),
@@ -117,6 +121,7 @@ publicRouter.get("/events", async (c) => {
 				startsAt: r.startsAt ? r.startsAt.toISOString() : null,
 				endsAt: r.endsAt ? r.endsAt.toISOString() : null,
 				status: r.status,
+				isSimulation: r.isSimulation !== false,
 				publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
 				organization: {
 					name: r.organizationName,
@@ -174,6 +179,7 @@ publicRouter.get("/events/:slug", async (c) => {
 			and(
 				eq(events.publicSlug, slug),
 				inArray(events.status, [...PUBLIC_EVENT_STATUSES]),
+				publicAuthority,
 			),
 		)
 		.limit(1);
@@ -199,7 +205,7 @@ publicRouter.get("/events/:slug", async (c) => {
 				startsAt: event.startsAt ? event.startsAt.toISOString() : null,
 				endsAt: event.endsAt ? event.endsAt.toISOString() : null,
 				status: event.status,
-				isSimulation: Boolean(event.isSimulation),
+				isSimulation: event.isSimulation !== false,
 				publishedAt: event.publishedAt ? event.publishedAt.toISOString() : null,
 				updatedAt: event.updatedAt.toISOString(),
 				organization: {
@@ -235,12 +241,14 @@ publicRouter.get("/events/:slug/roads", async (c) => {
 			title: events.title,
 			slug: events.publicSlug,
 			status: events.status,
+			isSimulation: events.isSimulation,
 		})
 		.from(events)
 		.where(
 			and(
 				eq(events.publicSlug, slug),
 				inArray(events.status, [...PUBLIC_EVENT_STATUSES]),
+				publicAuthority,
 			),
 		)
 		.limit(1);
@@ -276,6 +284,7 @@ publicRouter.get("/events/:slug/roads", async (c) => {
 		return c.json(
 			{
 				eventSlug: event.slug,
+				isSimulation: event.isSimulation !== false,
 				roads: [],
 				roadImpacts: [],
 			},
@@ -334,10 +343,12 @@ publicRouter.get("/events/:slug/roads", async (c) => {
 				id: event.id,
 				title: event.title,
 				status: event.status,
+				isSimulation: event.isSimulation !== false,
 				slug: event.slug,
 				publicSlug: event.slug,
 			},
 			eventSlug: event.slug,
+			isSimulation: event.isSimulation !== false,
 			roads,
 			roadImpacts: roads,
 		},
@@ -364,12 +375,14 @@ publicRouter.get("/events/:slug/cleanup-summary", async (c) => {
 			slug: events.publicSlug,
 			title: events.title,
 			status: events.status,
+			isSimulation: events.isSimulation,
 		})
 		.from(events)
 		.where(
 			and(
 				eq(events.publicSlug, slug),
 				inArray(events.status, [...PUBLIC_EVENT_STATUSES]),
+				publicAuthority,
 			),
 		)
 		.limit(1);
@@ -484,10 +497,12 @@ publicRouter.get("/events/:slug/cleanup-summary", async (c) => {
 				id: event.id,
 				title: event.title,
 				status: event.status,
+				isSimulation: event.isSimulation !== false,
 				slug: event.slug,
 				publicSlug: event.slug,
 			},
 			eventSlug: event.slug,
+			isSimulation: event.isSimulation !== false,
 			summary: {
 				totalTasks: taskCounts.total,
 				verifiedTasks: taskCounts.verified,

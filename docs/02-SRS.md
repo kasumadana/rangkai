@@ -202,7 +202,7 @@ FR-070..073 -> Audit module -> Audit integration tests
 The system shall atomically provision a new organization, assign the creating user as an organizer member, and record an initial audit log entry in a single transactional database CTE. Repeated creation attempts with identical names shall return the existing record idempotently without creating duplicate organizations.
 
 ### FR-024: Secure Invitation Lifecycle & Token Hashing
-The system shall store invitation tokens as SHA-256 hashes, enforce recipient-email binding when specified, and execute acceptance via atomic single-consumption compare-and-swap (CAS) to eliminate double-claim race conditions.
+The system shall store invitation tokens as SHA-256 hashes, require and bind a normalized recipient email, and execute acceptance via atomic single-consumption compare-and-swap (CAS) to eliminate double-claim race conditions.
 
 ### FR-025: Operational Authority Publication Gate
 The system shall enforce that only organizations possessing verified operational authority (`hasOperationalAuthority: true`) may publish live operational road restrictions. Organizations without operational authority shall publish in simulation mode (`isSimulation: true`), publicly flagged as simulated.

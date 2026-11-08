@@ -19,8 +19,8 @@ export const createInvitationSchema = z.object({
 		.trim()
 		.min(1, "Email penerima wajib diisi.")
 		.email("Format email penerima tidak valid.")
-		.toLowerCase()
-		.optional(),
+		.max(255)
+		.toLowerCase(),
 	role: z.enum(["officer", "organizer"]).default("officer"),
 	eventId: z.string().uuid("ID kegiatan harus berformat UUID.").optional().nullable(),
 	canUpdateTraffic: z.boolean().default(false),
@@ -99,9 +99,7 @@ invitationsRouter.post("/", requireAuth, async (c) => {
 		);
 	}
 
-	const normalizedRecipientEmail = recipientEmail
-		? recipientEmail.trim().toLowerCase()
-		: "petugas@desaadat.id";
+	const normalizedRecipientEmail = recipientEmail;
 
 	// 1. Verify caller has 'organizer' role in the specified organization
 	const memberRows = await db

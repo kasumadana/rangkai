@@ -13,7 +13,7 @@ interface RateLimitRecord {
 	resetAt: number;
 }
 
-// In-memory sliding window store (Workers isolates share state across requests in the same isolate)
+// ponytail: fixed windows are isolate-local and reset on eviction; use a Cloudflare edge rule for distributed protection.
 const store = new Map<string, RateLimitRecord>();
 
 // Clean expired records periodically
@@ -39,10 +39,7 @@ export function rateLimit(options: RateLimitOptions): MiddlewareHandler<{
 			return next();
 		}
 
-		const ip =
-			c.req.header("cf-connecting-ip") ||
-			c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
-			"unknown-ip";
+		const ip = c.req.header("cf-connecting-ip") || "unknown-ip";
 
 		const key = `${keyPrefix}:${ip}`;
 		const now = Date.now();

@@ -159,14 +159,16 @@ UNIQUE (event_id, user_id)
 - organization_id: uuid FK
 - event_id: uuid FK NULL
 - invitation_role: organizer | officer
-- recipient_email: text NULL
+- recipient_email: text NOT NULL
 - token_hash: text UNIQUE
 - can_update_traffic: boolean DEFAULT false
 - can_update_cleanup: boolean DEFAULT false
 - status: pending | accepted | revoked | expired
 - accepted_by: text FK NULL
 - revoked_by: text FK NULL
-- created_by: text FK
+- invited_by: text FK
+- accepted_at: timestamptz NULL
+- revoked_at: timestamptz NULL
 - expires_at: timestamptz
 - created_at: timestamptz
 - updated_at: timestamptz

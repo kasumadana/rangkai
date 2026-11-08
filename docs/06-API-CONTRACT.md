@@ -90,7 +90,7 @@ Response: 201 Created (or 200 OK if existing):
 }
 ```
 
-### GET /api/organizations
+### GET /api/organizations/my
 Permission: authenticated user  
 Returns organizations where the caller has active membership.
 
@@ -108,7 +108,7 @@ Request:
   "organizationId": "uuid",
   "eventId": "uuid (optional)",
   "role": "officer" | "organizer",
-  "recipientEmail": "pecalang@desaadat.id (optional)",
+  "recipientEmail": "pecalang@desaadat.id",
   "canUpdateTraffic": true,
   "canUpdateCleanup": false,
   "expiresInDays": 7
@@ -117,7 +117,7 @@ Request:
 
 Behavior:
 - Generates cryptographically secure token and stores only its SHA-256 hash (`token_hash`).
-- If `recipientEmail` is provided, binding is strictly enforced at acceptance time (case-insensitive, trimmed).
+- `recipientEmail` is required; missing or invalid values return 422. Binding is enforced at acceptance time (case-insensitive, trimmed).
 - Atomically creates invitation and audit log.
 
 Response: 201 Created:
@@ -142,7 +142,7 @@ Returns public invitation details (organization name, event title, permissions, 
 ### POST /api/invitations/:token/accept
 Permission: authenticated user  
 Behavior:
-- Enforces recipient email match if `recipientEmail` was bound.
+- Enforces recipient email match.
 - Re-verifies creator's current active organizer authority in the organization.
 - Atomically executes single-consumption compare-and-swap (CAS) via SQL CTE (`UPDATE invitations SET status = 'accepted' WHERE status = 'pending'`).
 - Grants membership and event assignments atomically with audit log. Concurrent double-acceptance yields exactly one 200 OK and one 409 Conflict.
@@ -157,7 +157,7 @@ Response: 200 OK:
 }
 ```
 
-### POST /api/invitations/:id/revoke
+### DELETE /api/invitations/:id
 Permission: organizer of the organization  
 Atomically revokes pending invitation via CAS (`UPDATE ... WHERE status = 'pending'`). Subsequent acceptance attempts return 410 Gone / 404.
 
