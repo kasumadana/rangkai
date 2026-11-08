@@ -1,6 +1,8 @@
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Token } from "@astryxdesign/core/Token";
+import { VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -2927,31 +2929,31 @@ export function WorkflowRouteShellPage({
 								<h2 className="teduh-workspace-card-title">
 									Buat Tautan Undangan Petugas
 								</h2>
-								<p className="text-xs text-[#585854] mt-1 leading-relaxed">
+								<Text type="body" color="secondary" className="text-base text-[#545B67] mt-1 leading-relaxed">
 									Hasilkan tautan undangan resmi sekali pakai (berlaku 7 hari)
 									untuk dibagikan kepada Pecalang atau petugas kebersihan via WhatsApp.
-								</p>
+								</Text>
 							</div>
 
-							<div className="space-y-3">
+							<VStack gap={3}>
 								<div>
-									<label className="block text-xs font-semibold text-[#181817] mb-1">
+									<Text type="label" weight="semibold" className="block text-base text-[#181817] mb-1">
 										Email Penerima Undangan *
-									</label>
+									</Text>
 									<input
 										type="email"
 										required
 										value={inviteEmail}
 										onChange={(e) => setInviteEmail(e.target.value)}
 										placeholder="contoh: pecalang.desa@rangkai.local"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-base text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
 									/>
 								</div>
 
 								<div>
-									<label className="block text-xs font-semibold text-[#181817] mb-1">
+									<Text type="label" weight="semibold" className="block text-base text-[#181817] mb-1">
 										Peran Undangan
-									</label>
+									</Text>
 									<select
 										value={inviteRole}
 										onChange={(e) =>
@@ -2959,7 +2961,7 @@ export function WorkflowRouteShellPage({
 												e.target.value === "organizer" ? "organizer" : "officer",
 											)
 										}
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									>
 										<option value="officer">
 											Petugas Lapangan (Pecalang / Kebersihan)
@@ -2971,22 +2973,22 @@ export function WorkflowRouteShellPage({
 								</div>
 
 								{inviteRole === "officer" ? (
-									<div className="space-y-2 pt-1">
-										<span className="block text-xs font-semibold text-[#181817]">
+									<VStack gap={2} className="pt-1">
+										<Text type="label" weight="semibold" className="block text-base text-[#181817]">
 											Hak Akses Penugasan Lapangan:
-										</span>
+										</Text>
 										<label className="flex items-start gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer hover:bg-[#F3F1EC] transition-colors">
 											<input
 												type="checkbox"
 												checked={inviteCanTraffic}
 												onChange={(e) => setInviteCanTraffic(e.target.checked)}
-												className="mt-0.5 rounded border-[#C5C3BC] text-[#264D3B]"
+												className="mt-1 rounded border-[#C5C3BC] text-[#264D3B]"
 											/>
-											<div className="text-xs">
+											<div className="text-base">
 												<span className="font-bold text-[#181817] block">
 													Wewenang Status Jalan (traffic:update)
 												</span>
-												<span className="text-[#585854]">
+												<span className="text-[#585854] text-sm">
 													Dapat memperbarui status buka/tutup ruas jalan di Pos Pecalang
 												</span>
 											</div>
@@ -2997,20 +2999,20 @@ export function WorkflowRouteShellPage({
 												type="checkbox"
 												checked={inviteCanCleanup}
 												onChange={(e) => setInviteCanCleanup(e.target.checked)}
-												className="mt-0.5 rounded border-[#C5C3BC] text-[#264D3B]"
+												className="mt-1 rounded border-[#C5C3BC] text-[#264D3B]"
 											/>
-											<div className="text-xs">
+											<div className="text-base">
 												<span className="font-bold text-[#181817] block">
 													Wewenang Kebersihan (cleanup:update)
 												</span>
-												<span className="text-[#585854]">
+												<span className="text-[#585854] text-sm">
 													Dapat mengunggah foto bukti &amp; menyerahkan tugas kebersihan
 												</span>
 											</div>
 										</label>
-									</div>
+									</VStack>
 								) : null}
-							</div>
+							</VStack>
 
 							<button
 								type="button"
@@ -3021,8 +3023,10 @@ export function WorkflowRouteShellPage({
 										!inviteCanTraffic &&
 										!inviteCanCleanup)
 								}
-								onClick={() => void generateInviteMutation.mutateAsync()}
-								className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 transition-colors shadow-xs"
+								onClick={() => {
+									generateInviteMutation.mutate();
+								}}
+								className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 transition-colors shadow-xs"
 							>
 								<UserPlus className="w-4 h-4" />
 								<span>
@@ -3034,7 +3038,7 @@ export function WorkflowRouteShellPage({
 
 							{generatedInviteUrl ? (
 								<div className="rounded-xl border border-[#A6D9B8] bg-[#EBF7F0] p-3.5 space-y-2">
-									<span className="text-xs font-semibold text-[#1D5E3A] block">
+									<span className="text-base font-semibold text-[#1D5E3A] block">
 										Tautan undangan siap dibagikan:
 									</span>
 									<div className="flex items-center gap-2">
@@ -3042,7 +3046,7 @@ export function WorkflowRouteShellPage({
 											type="text"
 											readOnly
 											value={generatedInviteUrl}
-											className="flex-1 rounded-lg border border-[#A6D9B8] bg-white px-2.5 py-1.5 text-xs font-mono text-[#181817]"
+											className="flex-1 rounded-lg border border-[#A6D9B8] bg-white px-3 py-2 text-base font-mono text-[#181817]"
 										/>
 										<button
 											type="button"

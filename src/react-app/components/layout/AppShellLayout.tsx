@@ -20,6 +20,8 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { forwardRef, useEffect, useMemo, useRef, useState, type AnchorHTMLAttributes } from "react";
 import { Link as RouterLink, Outlet, useLocation } from "react-router";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { EventLifecycleBadge, RangkaiPreloader, shouldPlayPreloader } from "../rangkai";
 import {
 	useAuthSession,
@@ -518,26 +520,6 @@ export function WorkspaceShellLayout() {
 		[myOrgsQuery.data?.organizations],
 	);
 
-	const activeOrg = useMemo(() => {
-		if (organizations.length === 0) return null;
-		if (activeOrgIdState) {
-			const found = organizations.find((o) => o.id === activeOrgIdState);
-			if (found) return found;
-		}
-		const organizerOrg = organizations.find((o) => o.role === "organizer");
-		return organizerOrg ?? organizations[0];
-	}, [organizations, activeOrgIdState]);
-
-	const hasOrganizerRole = useMemo(() => {
-		if (activeOrg?.role === "organizer") return true;
-		return organizations.some((o) => o.role === "organizer");
-	}, [activeOrg, organizations]);
-
-	const effectiveRole =
-		activeOrg?.role ?? (hasOrganizerRole ? "organizer" : organizations[0]?.role);
-
-	const isOrgLoading = isSessionLoading || myOrgsQuery.isLoading;
-
 	// Extract active event ID from URL strictly
 	const eventIdMatch = pathname.match(/(?:dashboard|field)\/events\/([^/]+)/);
 	const urlEventId =
@@ -553,6 +535,26 @@ export function WorkspaceShellLayout() {
 	});
 	const activeEvent = eventDetailQuery.data?.event ?? null;
 
+	const activeOrg = useMemo(() => {
+		if (organizations.length === 0) return null;
+		if (activeOrgIdState && activeOrgIdState !== "all") {
+			const found = organizations.find((o) => o.id === activeOrgIdState);
+			if (found) return found;
+		}
+		if (activeEvent?.organizationId) {
+			const eventOrg = organizations.find((o) => o.id === activeEvent.organizationId);
+			if (eventOrg) return eventOrg;
+		}
+		const organizerOrg = organizations.find((o) => o.role === "organizer");
+		return organizerOrg ?? organizations[0];
+	}, [organizations, activeOrgIdState, activeEvent]);
+
+	const currentOrgRole = activeOrg?.role ?? null;
+	const isCurrentOrgOrganizer = currentOrgRole === "organizer";
+	const isCurrentOrgOfficer = currentOrgRole === "officer";
+
+	const isOrgLoading = isSessionLoading || myOrgsQuery.isLoading;
+
 	return (
 		<div className="teduh-workspace-shell">
 			{/* Top Bar */}
@@ -563,15 +565,15 @@ export function WorkspaceShellLayout() {
 					</RouterLink>
 
 					<span
-						className={`teduh-workspace-role-pill ${effectiveRole === "officer" && !hasOrganizerRole ? "is-officer" : ""}`}
+						className={`teduh-workspace-role-pill ${isCurrentOrgOfficer ? "is-officer" : ""}`}
 					>
-						{!sessionData?.user
-							? "Mode Tamu / Pratinjau"
-							: isOrgLoading
-								? "Memuat keanggotaan..."
-								: effectiveRole === "organizer" || hasOrganizerRole
+						{isOrgLoading
+							? "Memuat keanggotaan..."
+							: !sessionData?.user
+								? "Mode Tamu / Pratinjau"
+								: isCurrentOrgOrganizer
 									? "Panitia Desa (Organizer)"
-									: effectiveRole === "officer"
+									: isCurrentOrgOfficer
 										? "Petugas Lapangan (Pecalang)"
 										: organizations.length === 0
 											? "Belum terdaftar desa adat"
@@ -644,7 +646,158 @@ export function WorkspaceShellLayout() {
 					aria-label="Menu Ruang Kerja"
 				>
 					<div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-						{activeNavEventId ? (
+						{pathname.startsWith("/field") ? (
+							activeNavEventId ? (
+								<>
+									{/* Field Officer Contextual Navigation */}
+									<div className="teduh-sidebar-group">
+										<RouterLink
+											to="/field"
+											className="teduh-sidebar-link font-medium text-[#264D3B]"
+										>
+											<ArrowLeft size={16} />
+											<span>Kembali ke Pos Jaga</span>
+										</RouterLink>
+
+										<VStack gap={1.5} className="p-3 mt-1.5 rounded-xl bg-white border border-[#E2E4E8]">
+											<HStack justify="between" align="center" gap={1.5}>
+												<Text type="label" color="secondary" className="uppercase tracking-wider text-xs font-semibold">
+													Tugas Lapangan
+												</Text>
+												{activeEvent ? (
+													<EventLifecycleBadge status={activeEvent.status} />
+												) : null}
+											</HStack>
+											<Text type="body" weight="bold" maxLines={2} className="text-sm leading-snug m-0 text-[#181B20]">
+												{activeEvent?.title || "Memuat kegiatan..."}
+											</Text>
+										</VStack>
+									</div>
+
+									<div className="teduh-sidebar-group">
+										<div className="teduh-sidebar-group-label">
+											Operasional Pos Jaga
+										</div>
+										<RouterLink
+											to={`/field/events/${activeNavEventId}`}
+											className={`teduh-sidebar-link ${
+												pathname === `/field/events/${activeNavEventId}`
+													? "is-active"
+													: ""
+											}`}
+										>
+											<Radio size={16} />
+											<span>Pos Jaga Lapangan</span>
+										</RouterLink>
+										<RouterLink
+											to={`/field/events/${activeNavEventId}/cleanup`}
+											className={`teduh-sidebar-link ${
+												pathname.endsWith("/cleanup") ? "is-active" : ""
+											}`}
+										>
+											<ClipboardCheck size={16} />
+											<span>Kebersihan &amp; Bukti</span>
+										</RouterLink>
+									</div>
+
+									<div className="teduh-sidebar-group">
+										<div className="teduh-sidebar-group-label">
+											Akses Lapangan
+										</div>
+										<RouterLink
+											to="/field"
+											className={`teduh-sidebar-link ${
+												pathname === "/field" ? "is-active" : ""
+											}`}
+										>
+											<Radio size={16} />
+											<span>Daftar Pos Jaga</span>
+										</RouterLink>
+										<RouterLink
+											to="/settings"
+											className={`teduh-sidebar-link ${
+												pathname === "/settings" ? "is-active" : ""
+											}`}
+										>
+											<Settings size={16} />
+											<span>Pengaturan Akun</span>
+										</RouterLink>
+									</div>
+								</>
+							) : (
+								<>
+									{/* Field Officer Root Navigation */}
+									<div className="teduh-sidebar-group">
+										<div className="teduh-sidebar-group-label">
+											Operasional Lapangan
+										</div>
+										<RouterLink
+											to="/field"
+											className={`teduh-sidebar-link ${
+												pathname === "/field" ? "is-active" : ""
+											}`}
+										>
+											<Radio size={16} />
+											<span>Pos Jaga Lapangan</span>
+										</RouterLink>
+										<RouterLink
+											to="/settings"
+											className={`teduh-sidebar-link ${
+												pathname === "/settings" ? "is-active" : ""
+											}`}
+										>
+											<Settings size={16} />
+											<span>Pengaturan Akun</span>
+										</RouterLink>
+									</div>
+
+									<div className="p-3.5 rounded-xl border border-dashed border-[#D5D3CB] bg-[#FBFBFA] space-y-1">
+										<span className="text-xs font-semibold text-[#181817] block">
+											Pos Jaga Pecalang
+										</span>
+										<p className="text-[12px] text-[#545B67] leading-relaxed m-0">
+											Pantau status jalan dan kirim bukti kebersihan kegiatan yang ditugaskan kepada Anda.
+										</p>
+									</div>
+								</>
+							)
+						) : isCurrentOrgOfficer ? (
+							<>
+								{/* Selected organization is officer role: provide field navigation, no organizer management */}
+								<div className="teduh-sidebar-group">
+									<div className="teduh-sidebar-group-label">
+										Operasional Lapangan
+									</div>
+									<RouterLink
+										to="/field"
+										className={`teduh-sidebar-link ${
+											pathname.startsWith("/field") ? "is-active" : ""
+										}`}
+									>
+										<Radio size={16} />
+										<span>Buka Pos Jaga Lapangan</span>
+									</RouterLink>
+									<RouterLink
+										to="/settings"
+										className={`teduh-sidebar-link ${
+											pathname === "/settings" ? "is-active" : ""
+										}`}
+									>
+										<Building2 size={16} />
+										<span>Pengaturan Akun</span>
+									</RouterLink>
+								</div>
+
+								<div className="p-3.5 rounded-xl border border-dashed border-[#D5D3CB] bg-[#FBFBFA] space-y-1">
+									<span className="text-xs font-semibold text-[#181817] block">
+										Penugasan Petugas Lapangan
+									</span>
+									<p className="text-[12px] text-[#545B67] leading-relaxed m-0">
+										Anda terdaftar sebagai Petugas Lapangan untuk desa adat ini. Buka Pos Jaga Lapangan untuk melaksanakan pembaruan operasional.
+									</p>
+								</div>
+							</>
+						) : activeNavEventId ? (
 							<>
 								{/* Contextual Event Card & Return to List */}
 								<div className="teduh-sidebar-group">
@@ -656,19 +809,19 @@ export function WorkspaceShellLayout() {
 										<span>Kembali ke Daftar</span>
 									</RouterLink>
 
-									<div className="p-3 mt-1.5 rounded-xl bg-white border border-[#E2E4E8] space-y-1.5">
-										<div className="flex items-center justify-between gap-1.5">
-											<span className="text-[11px] font-semibold text-[#545B67] uppercase tracking-wider">
+									<VStack gap={1.5} className="p-3 mt-1.5 rounded-xl bg-white border border-[#E2E4E8]">
+										<HStack justify="between" align="center" gap={1.5}>
+											<Text type="label" color="secondary" className="uppercase tracking-wider text-xs font-semibold">
 												Kegiatan Terpilih
-											</span>
+											</Text>
 											{activeEvent ? (
 												<EventLifecycleBadge status={activeEvent.status} />
 											) : null}
-										</div>
-										<p className="text-xs font-bold text-[#181B20] leading-snug line-clamp-2 m-0">
+										</HStack>
+										<Text type="body" weight="bold" maxLines={2} className="text-sm leading-snug m-0 text-[#181B20]">
 											{activeEvent?.title || "Memuat kegiatan..."}
-										</p>
-									</div>
+										</Text>
+									</VStack>
 								</div>
 
 								<div className="teduh-sidebar-group">

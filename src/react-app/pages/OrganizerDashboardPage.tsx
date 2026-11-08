@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Token } from "@astryxdesign/core/Token";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import {
 	Table,
 	TableBody,
@@ -253,7 +255,7 @@ export function OrganizerDashboardPage() {
 									key={opt.value}
 									type="button"
 									onClick={() => setStatusFilter(opt.value)}
-									className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-colors ${
+									className={`px-3.5 py-2.5 rounded-xl text-base font-semibold transition-colors ${
 										active
 											? "bg-[#264D3B] text-white"
 											: "bg-[#F3F1EC] text-[#585854] hover:text-[#181817]"
@@ -265,7 +267,7 @@ export function OrganizerDashboardPage() {
 						})}
 					</div>
 
-					<div className="flex flex-wrap items-center gap-2.5">
+					<div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
 						{organizations.length > 0 ? (
 							<select
 								aria-label="Filter Desa Adat"
@@ -277,7 +279,7 @@ export function OrganizerDashboardPage() {
 										saveOrganizationId(val);
 									}
 								}}
-								className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs font-medium text-[#181817]"
+								className="w-full sm:w-auto max-w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-base font-medium text-[#181817] truncate focus:outline-none focus:border-[#264D3B]"
 							>
 								<option value="all">Semua Desa Adat Saya</option>
 								{organizations.map((org) => (
@@ -288,14 +290,14 @@ export function OrganizerDashboardPage() {
 							</select>
 						) : null}
 
-						<div className="relative min-w-[240px] flex-1 sm:flex-initial">
+						<div className="relative min-w-[200px] w-full sm:w-auto sm:flex-initial">
 							<Search className="w-4 h-4 text-[#8A8984] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
 							<input
 								type="search"
 								value={searchQuery}
 								onChange={(e) => setSearchQuery(e.target.value)}
 								placeholder="Cari nama upacara, lokasi, surat..."
-								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] pl-9 pr-3.5 py-2 text-xs text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
+								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] pl-9 pr-3.5 py-2.5 text-base text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
 							/>
 						</div>
 					</div>
@@ -353,15 +355,13 @@ export function OrganizerDashboardPage() {
 				) : (
 					<>
 						{/* Desktop / Tablet Table View (Structured Astryx Table) */}
-						<div className="hidden md:block rounded-2xl border border-[#E2E4E8] bg-white overflow-hidden shadow-xs">
+						<div className="hidden md:block rounded-2xl border border-[#E2E4E8] bg-white shadow-xs overflow-x-auto">
 							<Table density="spacious" dividers="rows" hasHover>
 								<TableHeader>
 									<TableRow>
-										<TableHeaderCell>Kegiatan Upacara</TableHeaderCell>
-										<TableHeaderCell>Desa Adat &amp; Lokasi</TableHeaderCell>
-										<TableHeaderCell>Jadwal (WITA)</TableHeaderCell>
-										<TableHeaderCell>Status</TableHeaderCell>
-										<TableHeaderCell>Tindakan</TableHeaderCell>
+										<TableHeaderCell className="min-w-[280px]">Kegiatan Upacara &amp; Lokasi</TableHeaderCell>
+										<TableHeaderCell className="min-w-[180px]">Jadwal &amp; Status</TableHeaderCell>
+										<TableHeaderCell className="min-w-[190px] w-[200px]">Tindakan</TableHeaderCell>
 									</TableRow>
 								</TableHeader>
 								<TableBody>
@@ -384,8 +384,8 @@ export function OrganizerDashboardPage() {
 										return (
 											<TableRow key={evt.id}>
 												<TableCell>
-													<div className="space-y-1.5 py-1">
-														<div className="flex flex-wrap items-center gap-2">
+													<VStack gap={1} className="py-1">
+														<HStack gap={2} align="center" wrap="wrap">
 															<span className="text-xs font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full">
 																{categoryLabel}
 															</span>
@@ -393,49 +393,47 @@ export function OrganizerDashboardPage() {
 																<Token color="orange" size="sm" label="SIMULASI" />
 															) : null}
 															{evt.permitReference ? (
-																<span className="text-xs text-[#585854] font-mono">
+																<Text type="code" color="secondary" className="text-xs font-mono">
 																	No: {evt.permitReference}
-																</span>
+																</Text>
 															) : null}
-														</div>
-														<p className="text-lg font-bold text-[#181817] leading-snug m-0">
+														</HStack>
+														<Text type="large" weight="bold" className="text-lg text-[#181817] leading-snug m-0">
 															{evt.title}
-														</p>
-													</div>
+														</Text>
+														<HStack gap={3} align="center" wrap="wrap" className="text-base text-[#545B67] pt-0.5">
+															<HStack gap={1} align="center" className="shrink-0">
+																<Building2 className="w-4 h-4 text-[#264D3B] shrink-0" />
+																<Text type="body" weight="medium" className="text-[#181817] max-w-[220px] truncate">
+																	{orgLabel}
+																</Text>
+															</HStack>
+															<HStack gap={1} align="center" className="shrink-0">
+																<MapPinned className="w-4 h-4 text-[#545B67] shrink-0" />
+																<Text type="body" color="secondary" className="max-w-[220px] truncate">
+																	{evt.venueName || "Lokasi belum diisi"}
+																</Text>
+															</HStack>
+														</HStack>
+													</VStack>
 												</TableCell>
 
 												<TableCell>
-													<div className="space-y-1 py-1 text-base text-[#545B67]">
-														<div className="flex items-center gap-1.5">
-															<Building2 className="w-4 h-4 text-[#264D3B] shrink-0" />
-															<span className="font-medium text-[#181817] truncate max-w-[200px]">
-																{orgLabel}
-															</span>
+													<VStack gap={1.5} className="py-1">
+														<HStack gap={1.5} align="center" className="text-base text-[#545B67]">
+															<Clock className="w-4 h-4 text-[#264D3B] shrink-0" />
+															<Text type="body" color="secondary" className="tabular-nums">
+																{scheduleText}
+															</Text>
+														</HStack>
+														<div>
+															<EventLifecycleBadge status={evt.status} />
 														</div>
-														<div className="flex items-center gap-1.5">
-															<MapPinned className="w-4 h-4 text-[#545B67] shrink-0" />
-															<span className="truncate max-w-[200px]">
-																{evt.venueName || "Lokasi belum diisi"}
-															</span>
-														</div>
-													</div>
+													</VStack>
 												</TableCell>
 
-												<TableCell>
-													<div className="flex items-center gap-1.5 text-base text-[#545B67] py-1">
-														<Clock className="w-4 h-4 text-[#264D3B] shrink-0" />
-														<span>{scheduleText}</span>
-													</div>
-												</TableCell>
-
-												<TableCell>
-													<div className="py-1">
-														<EventLifecycleBadge status={evt.status} />
-													</div>
-												</TableCell>
-
-												<TableCell>
-													<div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 py-1">
+												<TableCell className="overflow-visible min-w-[190px] w-[200px]">
+													<VStack gap={1.5} align="start" className="py-1 min-w-[180px]">
 														<Link
 															to={`/dashboard/events/${evt.id}`}
 															className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] transition-colors no-underline shadow-xs shrink-0"
@@ -453,7 +451,7 @@ export function OrganizerDashboardPage() {
 																<span>Lihat Publik</span>
 															</Link>
 														) : null}
-													</div>
+													</VStack>
 												</TableCell>
 											</TableRow>
 										);
@@ -485,9 +483,9 @@ export function OrganizerDashboardPage() {
 										key={evt.id}
 										className="rounded-2xl border border-[#E2E4E8] bg-white p-4 space-y-3 shadow-xs"
 									>
-										<div className="space-y-1.5">
-											<div className="flex flex-wrap items-center gap-1.5">
-												<span className="text-xs font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full">
+										<VStack gap={1.5}>
+											<HStack gap={1.5} align="center" wrap="wrap">
+												<span className="text-sm font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full">
 													{categoryLabel}
 												</span>
 												<EventLifecycleBadge status={evt.status} />
@@ -495,32 +493,36 @@ export function OrganizerDashboardPage() {
 													<Token color="orange" size="sm" label="SIMULASI" />
 												) : null}
 												{evt.permitReference ? (
-													<span className="text-xs text-[#585854] font-mono">
+													<Text type="code" color="secondary" className="text-xs font-mono">
 														No: {evt.permitReference}
-													</span>
+													</Text>
 												) : null}
-											</div>
-											<h2 className="text-lg font-bold text-[#181817] leading-snug m-0">
+											</HStack>
+											<Text type="large" weight="bold" as="h2" className="text-lg text-[#181817] leading-snug m-0">
 												{evt.title}
-											</h2>
-										</div>
+											</Text>
+										</VStack>
 
-										<div className="space-y-1.5 text-base text-[#545B67] pt-1 border-t border-[#F0EFEA]">
-											<div className="flex items-center gap-1.5">
+										<VStack gap={1.5} className="text-base text-[#545B67] pt-1 border-t border-[#F0EFEA]">
+											<HStack gap={1.5} align="center">
 												<Building2 className="w-4 h-4 text-[#264D3B] shrink-0" />
-												<span className="truncate">{orgLabel}</span>
-											</div>
-											<div className="flex items-center gap-1.5">
+												<Text type="body" weight="medium" className="truncate text-[#181817]">
+													{orgLabel}
+												</Text>
+											</HStack>
+											<HStack gap={1.5} align="center">
 												<MapPinned className="w-4 h-4 text-[#545B67] shrink-0" />
-												<span className="truncate">
+												<Text type="body" color="secondary" className="truncate">
 													{evt.venueName || "Lokasi belum diisi"}
-												</span>
-											</div>
-											<div className="flex items-center gap-1.5">
+												</Text>
+											</HStack>
+											<HStack gap={1.5} align="center">
 												<Clock className="w-4 h-4 text-[#264D3B] shrink-0" />
-												<span>{scheduleText}</span>
-											</div>
-										</div>
+												<Text type="body" color="secondary">
+													{scheduleText}
+												</Text>
+											</HStack>
+										</VStack>
 
 										<div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[#F0EFEA]">
 											<Link

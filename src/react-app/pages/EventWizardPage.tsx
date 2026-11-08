@@ -1,5 +1,6 @@
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
+import { HStack } from "@astryxdesign/core/Stack";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -991,40 +992,40 @@ export function EventWizardPage() {
 
 			{/* Contextual Event Navigation Tabs for Saved Events */}
 			{isRealUuidEvent && routeEventId ? (
-				<div className="flex flex-wrap items-center gap-2 mb-6">
-					<span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#264D3B] text-white shadow-xs cursor-default">
-						<FileText className="w-3.5 h-3.5" />
+				<HStack gap={2} wrap="wrap" className="mb-6">
+					<span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-[#264D3B] text-white shadow-xs cursor-default">
+						<FileText className="w-4 h-4" />
 						<span>Ringkasan / Wizard</span>
 					</span>
 					<Link
 						to={`/dashboard/events/${routeEventId}/document`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
 					>
-						<FileText className="w-3.5 h-3.5" />
+						<FileText className="w-4 h-4" />
 						<span>Dokumen &amp; AI</span>
 					</Link>
 					<Link
 						to={`/dashboard/events/${routeEventId}/roads`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
 					>
-						<MapPinned className="w-3.5 h-3.5" />
+						<MapPinned className="w-4 h-4" />
 						<span>Dampak Jalan</span>
 					</Link>
 					<Link
 						to={`/dashboard/events/${routeEventId}/cleanup`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
 					>
-						<ClipboardCheck className="w-3.5 h-3.5" />
+						<ClipboardCheck className="w-4 h-4" />
 						<span>Kebersihan</span>
 					</Link>
 					<Link
 						to={`/dashboard/events/${routeEventId}/team`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
 					>
-						<Users className="w-3.5 h-3.5" />
+						<Users className="w-4 h-4" />
 						<span>Tim &amp; Undangan</span>
 					</Link>
-				</div>
+				</HStack>
 			) : null}
 
 			{/* Step Navigation Bar */}
