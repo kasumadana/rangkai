@@ -1219,6 +1219,15 @@ export function EventWizardPage() {
 												onChange={(e) => {
 													const file = e.target.files?.[0];
 													if (!file) return;
+													if (file.size > 8 * 1024 * 1024) {
+														setBannerFeedback({
+															status: "error",
+															title: "Ukuran Berkas Melebihi Batas",
+															description:
+																"Ukuran berkas melebihi batas maksimal 8 MB. Harap unggah dokumen atau foto dengan resolusi yang lebih kecil.",
+														});
+														return;
+													}
 													if (!aiConsentGranted) {
 														setBannerFeedback({
 															status: "warning",
