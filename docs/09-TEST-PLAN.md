@@ -1,7 +1,7 @@
 # Quality Assurance and Validation Plan — Rangkai
 
-Version: 0.1.0
-Status: Planned, not executed
+Version: 0.2.0
+Status: Active / Partially Executed (Unit Tests 53/53 Passed, C06 Integration Suite Passed; see docs/qa/C06-INTEGRATION-QA-REPORT.md)
 
 ## 1. Testing Objectives
 
