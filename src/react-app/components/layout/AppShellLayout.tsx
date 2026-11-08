@@ -582,8 +582,8 @@ export function WorkspaceShellLayout() {
 
 					{activeOrg ? (
 						<span className="teduh-workspace-org-badge" title={activeOrg.name}>
-							<Building2 size={13} />
-							<span>{activeOrg.name}</span>
+							<Building2 size={13} className="shrink-0" />
+							<span className="truncate max-w-[200px] break-words">{activeOrg.name}</span>
 						</span>
 					) : null}
 				</div>

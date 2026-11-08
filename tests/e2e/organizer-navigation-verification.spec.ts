@@ -52,6 +52,8 @@ declare const document: {
 		style: {
 			fontSize: string;
 		};
+		scrollWidth: number;
+		clientWidth: number;
 	};
 };
 
@@ -73,7 +75,7 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 
 		const orgEmail = `organizer.verify.${key}@test.local`;
 		const officerEmail = `officer.verify.${key}@test.local`;
-		const orgNameA = `Desa Adat Verification A ${key}`;
+		const orgNameA = `Desa Adat dengan Nama Organisasi Panjang untuk Pengujian Reflow ${key}`;
 		const orgNameB = `Desa Adat Verification B ${key}`;
 		const eventTitleA = `Upacara Melasti Segara ${key}`;
 		const eventTitleB = `Karya Pujawali Pura Desa ${key}`;
@@ -216,59 +218,108 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			console.log("[VERIFY TYPOGRAPHY] Kelola button font size:", kelolaFontSize);
 			expect(kelolaFontSizePx).toBeGreaterThanOrEqual(13);
 
-			// Check Filter Select font size: at least 13px (no 9px micro text)
+			// Check Filter Select font size: at least 16px (mobile floor compliant)
 			const filterSelect = page.getByRole("combobox", { name: "Filter Desa Adat" });
 			const selectFontSize = await filterSelect.evaluate((el: unknown) => window.getComputedStyle(el).fontSize);
 			console.log("[VERIFY TYPOGRAPHY] Filter Select font size:", selectFontSize);
-			expect(parseFloat(selectFontSize)).toBeGreaterThanOrEqual(13);
+			expect(parseFloat(selectFontSize)).toBeGreaterThanOrEqual(16);
+
+			// Helper to verify that action is within all clipping/scroll ancestors and root does not overflow
+			async function checkBoundsAndAncestors(actionLocator: ReturnType<typeof page.getByRole>, expectedMaxWidth: number) {
+				const data = await actionLocator.evaluate((e: unknown) => {
+					const el = e as BrowserElement;
+					const r = el.getBoundingClientRect();
+					let p = el.parentElement;
+					const ancestors = [];
+					while (p) {
+						const c = window.getComputedStyle(p);
+						const b = p.getBoundingClientRect();
+						if (["hidden", "clip", "auto", "scroll"].includes(c.overflowX)) {
+							ancestors.push({
+								tag: p.tagName,
+								class: p.className,
+								left: b.left,
+								right: b.right,
+								width: b.width,
+								clientWidth: p.clientWidth,
+								scrollWidth: p.scrollWidth,
+								overflowX: c.overflowX,
+							});
+						}
+						p = p.parentElement;
+					}
+					return {
+						link: { left: r.left, right: r.right, width: r.width, height: r.height },
+						rootWidth: document.documentElement.scrollWidth,
+						clientWidth: document.documentElement.clientWidth,
+						ancestors,
+					};
+				});
+				for (const anc of data.ancestors) {
+					expect(data.link.right).toBeLessThanOrEqual(anc.right + 1);
+				}
+				expect(data.rootWidth).toBeLessThanOrEqual(expectedMaxWidth);
+				expect(data.rootWidth).toBeLessThanOrEqual(data.clientWidth + 1);
+				return data;
+			}
 
 			// --- VERIFICATION 6: Bounds & Clipping Verifications across Viewports ---
-			// 1024px: Verify Kelola button is NOT clipped inside TD or Table
+			// 1024px: Verify Kelola button is inside clipping ancestors and root does not overflow 1024px
 			await page.setViewportSize({ width: 1024, height: 768 });
 			await page.waitForTimeout(400);
-			const bounds1024 = await firstKelola.evaluate((e: unknown) => {
-				const target = e as BrowserElement;
-				const r = target.getBoundingClientRect();
-				let p = target.parentElement;
-				let tdRight: number | null = null;
-				while (p) {
-					if (p.tagName === "TD") {
-						tdRight = p.getBoundingClientRect().right;
-						break;
-					}
-					p = p.parentElement;
-				}
-				return { linkRight: r.right, tdRight, clientWidth: target.clientWidth };
-			});
+			const bounds1024 = await checkBoundsAndAncestors(firstKelola, 1024);
 			console.log("[VERIFY BOUNDS 1024px]", bounds1024);
-			if (bounds1024.tdRight !== null) {
-				expect(bounds1024.linkRight).toBeLessThanOrEqual(bounds1024.tdRight + 1);
-			}
 			await page.screenshot({ path: `${EVIDENCE_DIR}/after-dashboard-1024px.png`, fullPage: true });
 
-			// 768px: Verify Kelola button right edge does NOT exceed viewport 768px
+			// 768px: Verify Kelola button is inside clipping ancestors and root does not overflow 768px
 			await page.setViewportSize({ width: 768, height: 1024 });
 			await page.waitForTimeout(400);
-			const bounds768 = await firstKelola.evaluate((e: unknown) => (e as BrowserElement).getBoundingClientRect().right);
-			console.log("[VERIFY BOUNDS 768px] linkRight:", bounds768);
-			expect(bounds768).toBeLessThanOrEqual(768);
+			const bounds768 = await checkBoundsAndAncestors(firstKelola, 768);
+			console.log("[VERIFY BOUNDS 768px]", bounds768);
 			await page.screenshot({ path: `${EVIDENCE_DIR}/after-dashboard-768px.png`, fullPage: true });
 
-			// 390px Mobile Viewport
+			// 390px Mobile Viewport: Verify controls compute >= 16px font and fit viewport
 			await page.setViewportSize({ width: 390, height: 844 });
 			await page.waitForTimeout(400);
+			const controls390 = await page.locator("main input[type=search], main select").evaluateAll((els: unknown[]) =>
+				els.map((e) => {
+					const el = e as BrowserElement;
+					return {
+						tag: el.tagName,
+						font: parseFloat(window.getComputedStyle(el).fontSize),
+						right: el.getBoundingClientRect().right,
+					};
+				})
+			);
+			for (const ctrl of controls390) {
+				console.log(`[VERIFY TYPOGRAPHY] Dashboard control (${ctrl.tag}) at 390px:`, ctrl.font);
+				expect(ctrl.font).toBeGreaterThanOrEqual(16);
+				expect(ctrl.right).toBeLessThanOrEqual(390 + 1);
+			}
+			const root390 = await page.evaluate(() => document.documentElement.scrollWidth);
+			expect(root390).toBeLessThanOrEqual(390);
 			await page.screenshot({ path: `${EVIDENCE_DIR}/after-dashboard-390px.png`, fullPage: true });
 
-			// 320px Small Mobile: Verify Long-Org Filter Select does NOT overflow 320px
+			// 320px Small Mobile: Verify Long-Org Filter Select & search compute >= 16px font and do NOT overflow 320px
 			await page.setViewportSize({ width: 320, height: 568 });
 			await page.waitForTimeout(400);
-			const selectBounds320 = await filterSelect.evaluate((e: unknown) => {
-				const target = e as BrowserElement;
-				const r = target.getBoundingClientRect();
-				return { right: r.right, width: r.width };
-			});
-			console.log("[VERIFY BOUNDS 320px] selectBounds:", selectBounds320);
-			expect(selectBounds320.right).toBeLessThanOrEqual(320);
+			const controls320 = await page.locator("main input[type=search], main select").evaluateAll((els: unknown[]) =>
+				els.map((e) => {
+					const el = e as BrowserElement;
+					return {
+						tag: el.tagName,
+						font: parseFloat(window.getComputedStyle(el).fontSize),
+						right: el.getBoundingClientRect().right,
+					};
+				})
+			);
+			for (const ctrl of controls320) {
+				console.log(`[VERIFY TYPOGRAPHY] Dashboard control (${ctrl.tag}) at 320px:`, ctrl.font);
+				expect(ctrl.font).toBeGreaterThanOrEqual(16);
+				expect(ctrl.right).toBeLessThanOrEqual(320 + 1);
+			}
+			const root320 = await page.evaluate(() => document.documentElement.scrollWidth);
+			expect(root320).toBeLessThanOrEqual(320);
 			await page.screenshot({ path: `${EVIDENCE_DIR}/after-dashboard-320px.png`, fullPage: true });
 
 			// Restore 1440px for interactive workflow testing
@@ -277,7 +328,7 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			await page.screenshot({ path: `${EVIDENCE_DIR}/after-dashboard-1440px.png`, fullPage: true });
 
 			// --- VERIFICATION 7: Click Kelola for Event A -> Verify Contextual Nav ---
-			const eventARowKelola = page.locator(`tr:has-text("${eventTitleA}")`).getByRole("link", { name: "Kelola Kegiatan" }).first();
+			const eventARowKelola = page.locator(`:is(tr, [data-testid="event-row"]):has-text("${eventTitleA}")`).getByRole("link", { name: "Kelola Kegiatan" }).first();
 			await eventARowKelola.click();
 
 			await expect(page).toHaveURL(`/dashboard/events/${eventAId}`);
@@ -323,11 +374,28 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			// Ensure Team Management UI is loaded
 			await expect(page.getByRole("heading", { name: "Buat Tautan Undangan Petugas", exact: true })).toBeVisible({ timeout: 15000 });
 
-			// Verify team form input font size: at least 13px (no 9px)
+			// Verify team form input font size: at least 16px (both mobile and desktop viewports)
+			for (const w of [390, 320]) {
+				await page.setViewportSize({ width: w, height: 844 });
+				await page.waitForTimeout(300);
+				const teamControls = await page.locator("input[type=email], main select").evaluateAll((els: Element[]) =>
+					els.map((e) => ({
+						tag: e.tagName,
+						font: parseFloat(window.getComputedStyle(e).fontSize),
+					}))
+				);
+				for (const ctrl of teamControls) {
+					console.log(`[VERIFY TYPOGRAPHY] Team control (${ctrl.tag}) font size at ${w}px:`, ctrl.font);
+					expect(ctrl.font).toBeGreaterThanOrEqual(16);
+				}
+			}
+			await page.setViewportSize({ width: 1440, height: 900 });
+			await page.waitForTimeout(300);
+
 			const inviteEmailInput = page.getByPlaceholder("contoh: pecalang.desa@rangkai.local");
 			const inputFont = await inviteEmailInput.evaluate((el: unknown) => window.getComputedStyle(el).fontSize);
-			console.log("[VERIFY TYPOGRAPHY] Team invite input font size:", inputFont);
-			expect(parseFloat(inputFont)).toBeGreaterThanOrEqual(13);
+			console.log("[VERIFY TYPOGRAPHY] Team invite input font size at 1440px:", inputFont);
+			expect(parseFloat(inputFont)).toBeGreaterThanOrEqual(16);
 
 			// Test failed creation (invalid email 422) recovers honestly without unhandled promise rejection
 			await inviteEmailInput.fill("not-an-email");
@@ -381,7 +449,7 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			await expect(page).toHaveURL("/dashboard");
 
 			// Open Event B
-			const eventBRowKelola = page.locator(`tr:has-text("${eventTitleB}")`).getByRole("link", { name: "Kelola Kegiatan" }).first();
+			const eventBRowKelola = page.locator(`:is(tr, [data-testid="event-row"]):has-text("${eventTitleB}")`).getByRole("link", { name: "Kelola Kegiatan" }).first();
 			await eventBRowKelola.click();
 			await expect(page).toHaveURL(`/dashboard/events/${eventBId}`);
 
@@ -398,15 +466,15 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 
 			// --- VERIFICATION 13: 200% Text Scaling Bounds Check ---
 			await page.goto("/dashboard");
+			await page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await page.evaluate(() => {
 				document.documentElement.style.fontSize = "200%";
 			});
 			await page.waitForTimeout(500);
 
-			// Verify Kelola button right edge does NOT exceed viewport 1440px
-			const bounds200pct = await firstKelola.evaluate((e: unknown) => (e as BrowserElement).getBoundingClientRect().right);
-			console.log("[VERIFY BOUNDS 200pct] linkRight:", bounds200pct);
-			expect(bounds200pct).toBeLessThanOrEqual(1440);
+			// Verify Kelola button right edge does NOT exceed any clipping ancestors and rootWidth <= 1440
+			const bounds200pct = await checkBoundsAndAncestors(firstKelola, 1440);
+			console.log("[VERIFY BOUNDS 200pct]", bounds200pct);
 
 			await page.screenshot({ path: `${EVIDENCE_DIR}/after-dashboard-200pct-text.png`, fullPage: true });
 

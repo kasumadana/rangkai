@@ -1,17 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Token } from "@astryxdesign/core/Token";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { HStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHeader,
-	TableHeaderCell,
-	TableRow,
-} from "@astryxdesign/core/Table";
-import {
-	ArrowRight,
 	Building2,
 	CheckCircle2,
 	Clock,
@@ -246,8 +237,8 @@ export function OrganizerDashboardPage() {
 
 			{/* Filter & Search Bar */}
 			<div className="teduh-workspace-card p-4">
-				<div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-					<div className="flex flex-wrap items-center gap-1.5">
+				<div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 min-w-0">
+					<div className="flex flex-wrap items-center gap-1.5 min-w-0">
 						{STATUS_FILTER_OPTIONS.map((opt) => {
 							const active = statusFilter === opt.value;
 							return (
@@ -267,7 +258,7 @@ export function OrganizerDashboardPage() {
 						})}
 					</div>
 
-					<div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
+					<div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 w-full xl:w-auto min-w-0">
 						{organizations.length > 0 ? (
 							<select
 								aria-label="Filter Desa Adat"
@@ -279,7 +270,7 @@ export function OrganizerDashboardPage() {
 										saveOrganizationId(val);
 									}
 								}}
-								className="w-full sm:w-auto max-w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-base font-medium text-[#181817] truncate focus:outline-none focus:border-[#264D3B]"
+								className="w-full sm:w-auto sm:max-w-xs max-w-full min-w-0 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-lg font-medium text-[#181817] truncate focus:outline-none focus:border-[#264D3B]"
 							>
 								<option value="all">Semua Desa Adat Saya</option>
 								{organizations.map((org) => (
@@ -290,14 +281,14 @@ export function OrganizerDashboardPage() {
 							</select>
 						) : null}
 
-						<div className="relative min-w-[200px] w-full sm:w-auto sm:flex-initial">
+						<div className="relative min-w-0 sm:min-w-[200px] w-full sm:w-auto sm:flex-initial">
 							<Search className="w-4 h-4 text-[#8A8984] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
 							<input
 								type="search"
 								value={searchQuery}
 								onChange={(e) => setSearchQuery(e.target.value)}
 								placeholder="Cari nama upacara, lokasi, surat..."
-								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] pl-9 pr-3.5 py-2.5 text-base text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
+								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] pl-9 pr-3.5 py-2.5 text-lg text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
 							/>
 						</div>
 					</div>
@@ -353,203 +344,106 @@ export function OrganizerDashboardPage() {
 						/>
 					</div>
 				) : (
-					<>
-						{/* Desktop / Tablet Table View (Structured Astryx Table) */}
-						<div className="hidden md:block rounded-2xl border border-[#E2E4E8] bg-white shadow-xs overflow-x-auto">
-							<Table density="spacious" dividers="rows" hasHover>
-								<TableHeader>
-									<TableRow>
-										<TableHeaderCell className="min-w-[280px]">Kegiatan Upacara &amp; Lokasi</TableHeaderCell>
-										<TableHeaderCell className="min-w-[180px]">Jadwal &amp; Status</TableHeaderCell>
-										<TableHeaderCell className="min-w-[190px] w-[200px]">Tindakan</TableHeaderCell>
-									</TableRow>
-								</TableHeader>
-								<TableBody>
-									{filteredEvents.map((evt) => {
-										const scheduleText =
-											evt.startsAt && evt.endsAt
-												? formatWitaRange(evt.startsAt, evt.endsAt)
-												: evt.startsAt
-													? formatWitaDateTime(evt.startsAt)
-													: "Jadwal belum ditetapkan";
-										const orgLabel =
-											orgNameById.get(evt.organizationId) ||
-											(evt.organizationId === getSavedOrganizationId()
-												? "Desa Adat Aktif"
-												: "Desa Adat Penyelenggara");
-										const categoryLabel = evt.category
-											? CATEGORY_LABELS[evt.category] || evt.category
-											: "Upacara Adat";
+					<div className="space-y-3.5 min-w-0" data-testid="events-list">
+						{filteredEvents.map((evt) => {
+							const scheduleText =
+								evt.startsAt && evt.endsAt
+									? formatWitaRange(evt.startsAt, evt.endsAt)
+									: evt.startsAt
+										? formatWitaDateTime(evt.startsAt)
+										: "Jadwal belum ditetapkan";
+							const orgLabel =
+								orgNameById.get(evt.organizationId) ||
+								(evt.organizationId === getSavedOrganizationId()
+									? "Desa Adat Aktif"
+									: "Desa Adat Penyelenggara");
+							const categoryLabel = evt.category
+								? CATEGORY_LABELS[evt.category] || evt.category
+								: "Upacara Adat";
 
-										return (
-											<TableRow key={evt.id}>
-												<TableCell>
-													<VStack gap={1} className="py-1">
-														<HStack gap={2} align="center" wrap="wrap">
-															<span className="text-xs font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full">
-																{categoryLabel}
-															</span>
-															{evt.isSimulation !== false ? (
-																<Token color="orange" size="sm" label="SIMULASI" />
-															) : null}
-															{evt.permitReference ? (
-																<Text type="code" color="secondary" className="text-xs font-mono">
-																	No: {evt.permitReference}
-																</Text>
-															) : null}
-														</HStack>
-														<Text type="large" weight="bold" className="text-lg text-[#181817] leading-snug m-0">
-															{evt.title}
-														</Text>
-														<HStack gap={3} align="center" wrap="wrap" className="text-base text-[#545B67] pt-0.5">
-															<HStack gap={1} align="center" className="shrink-0">
-																<Building2 className="w-4 h-4 text-[#264D3B] shrink-0" />
-																<Text type="body" weight="medium" className="text-[#181817] max-w-[220px] truncate">
-																	{orgLabel}
-																</Text>
-															</HStack>
-															<HStack gap={1} align="center" className="shrink-0">
-																<MapPinned className="w-4 h-4 text-[#545B67] shrink-0" />
-																<Text type="body" color="secondary" className="max-w-[220px] truncate">
-																	{evt.venueName || "Lokasi belum diisi"}
-																</Text>
-															</HStack>
-														</HStack>
-													</VStack>
-												</TableCell>
-
-												<TableCell>
-													<VStack gap={1.5} className="py-1">
-														<HStack gap={1.5} align="center" className="text-base text-[#545B67]">
-															<Clock className="w-4 h-4 text-[#264D3B] shrink-0" />
-															<Text type="body" color="secondary" className="tabular-nums">
-																{scheduleText}
-															</Text>
-														</HStack>
-														<div>
-															<EventLifecycleBadge status={evt.status} />
-														</div>
-													</VStack>
-												</TableCell>
-
-												<TableCell className="overflow-visible min-w-[190px] w-[200px]">
-													<VStack gap={1.5} align="start" className="py-1 min-w-[180px]">
-														<Link
-															to={`/dashboard/events/${evt.id}`}
-															className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] transition-colors no-underline shadow-xs shrink-0"
-														>
-															<FileText className="w-4 h-4" />
-															<span>Kelola Kegiatan</span>
-														</Link>
-														{evt.publicSlug &&
-														(evt.status === "published" || evt.status === "active") ? (
-															<Link
-																to={`/events/${evt.publicSlug}`}
-																className="inline-flex items-center gap-1 text-base font-semibold text-[#264D3B] hover:underline no-underline shrink-0"
-															>
-																<CheckCircle2 className="w-4 h-4" />
-																<span>Lihat Publik</span>
-															</Link>
-														) : null}
-													</VStack>
-												</TableCell>
-											</TableRow>
-										);
-									})}
-								</TableBody>
-							</Table>
-						</div>
-
-						{/* Mobile Card List View (Clean & Touch-friendly) */}
-						<div className="md:hidden space-y-3">
-							{filteredEvents.map((evt) => {
-								const scheduleText =
-									evt.startsAt && evt.endsAt
-										? formatWitaRange(evt.startsAt, evt.endsAt)
-										: evt.startsAt
-											? formatWitaDateTime(evt.startsAt)
-											: "Jadwal belum ditetapkan";
-								const orgLabel =
-									orgNameById.get(evt.organizationId) ||
-									(evt.organizationId === getSavedOrganizationId()
-										? "Desa Adat Aktif"
-										: "Desa Adat Penyelenggara");
-								const categoryLabel = evt.category
-									? CATEGORY_LABELS[evt.category] || evt.category
-									: "Upacara Adat";
-
-								return (
-									<div
-										key={evt.id}
-										className="rounded-2xl border border-[#E2E4E8] bg-white p-4 space-y-3 shadow-xs"
-									>
-										<VStack gap={1.5}>
-											<HStack gap={1.5} align="center" wrap="wrap">
-												<span className="text-sm font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full">
+							return (
+								<div
+									key={evt.id}
+									data-testid="event-row"
+									data-event-id={evt.id}
+									className="rounded-2xl border border-[#E2E4E8] bg-white p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-sm min-w-0"
+								>
+									<div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 min-w-0">
+										<div className="min-w-0 flex-1 space-y-2">
+											<HStack gap={2} align="center" wrap="wrap">
+												<span className="text-xs sm:text-sm font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full shrink-0">
 													{categoryLabel}
 												</span>
-												<EventLifecycleBadge status={evt.status} />
+												<div className="shrink-0">
+													<EventLifecycleBadge status={evt.status} />
+												</div>
 												{evt.isSimulation !== false ? (
-													<Token color="orange" size="sm" label="SIMULASI" />
+													<div className="shrink-0">
+														<Token color="orange" size="sm" label="SIMULASI" />
+													</div>
 												) : null}
 												{evt.permitReference ? (
-													<Text type="code" color="secondary" className="text-xs font-mono">
+													<Text type="code" color="secondary" className="text-xs font-mono shrink-0">
 														No: {evt.permitReference}
 													</Text>
 												) : null}
 											</HStack>
-											<Text type="large" weight="bold" as="h2" className="text-lg text-[#181817] leading-snug m-0">
+
+											<Text
+												type="large"
+												weight="bold"
+												as="h2"
+												className="text-base sm:text-lg text-[#181817] leading-snug m-0 break-words"
+											>
 												{evt.title}
 											</Text>
-										</VStack>
 
-										<VStack gap={1.5} className="text-base text-[#545B67] pt-1 border-t border-[#F0EFEA]">
-											<HStack gap={1.5} align="center">
-												<Building2 className="w-4 h-4 text-[#264D3B] shrink-0" />
-												<Text type="body" weight="medium" className="truncate text-[#181817]">
-													{orgLabel}
-												</Text>
-											</HStack>
-											<HStack gap={1.5} align="center">
-												<MapPinned className="w-4 h-4 text-[#545B67] shrink-0" />
-												<Text type="body" color="secondary" className="truncate">
-													{evt.venueName || "Lokasi belum diisi"}
-												</Text>
-											</HStack>
-											<HStack gap={1.5} align="center">
-												<Clock className="w-4 h-4 text-[#264D3B] shrink-0" />
-												<Text type="body" color="secondary">
-													{scheduleText}
-												</Text>
-											</HStack>
-										</VStack>
+											<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm sm:text-base text-[#545B67] pt-0.5">
+												<HStack gap={1.5} align="center" className="min-w-0">
+													<Building2 className="w-4 h-4 text-[#264D3B] shrink-0" />
+													<Text type="body" weight="medium" className="text-[#181817] truncate max-w-[260px] break-words">
+														{orgLabel}
+													</Text>
+												</HStack>
+												<HStack gap={1.5} align="center" className="min-w-0">
+													<MapPinned className="w-4 h-4 text-[#545B67] shrink-0" />
+													<Text type="body" color="secondary" className="truncate max-w-[240px] break-words">
+														{evt.venueName || "Lokasi belum diisi"}
+													</Text>
+												</HStack>
+												<HStack gap={1.5} align="center" className="min-w-0 max-w-full">
+													<Clock className="w-4 h-4 text-[#264D3B] shrink-0" />
+													<Text type="body" color="secondary" className="tabular-nums break-words">
+														{scheduleText}
+													</Text>
+												</HStack>
+											</div>
+										</div>
 
-										<div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-[#F0EFEA]">
+										<div className="flex sm:flex-row lg:flex-col items-start sm:items-center lg:items-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-[#F0EFEA]">
 											<Link
 												to={`/dashboard/events/${evt.id}`}
-												className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] transition-colors no-underline shadow-xs w-full sm:w-auto"
+												className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] transition-colors no-underline shadow-xs shrink-0"
 											>
 												<FileText className="w-4 h-4" />
 												<span>Kelola Kegiatan</span>
-												<ArrowRight className="w-4 h-4 ml-1" />
 											</Link>
-
 											{evt.publicSlug &&
 											(evt.status === "published" || evt.status === "active") ? (
 												<Link
 													to={`/events/${evt.publicSlug}`}
-													className="inline-flex items-center gap-1 text-base font-semibold text-[#264D3B] hover:underline no-underline py-1"
+													className="inline-flex items-center gap-1 text-sm sm:text-base font-semibold text-[#264D3B] hover:underline no-underline shrink-0"
 												>
-													<CheckCircle2 className="w-3.5 h-3.5" />
-													<span>Lihat Halaman Publik</span>
+													<CheckCircle2 className="w-4 h-4" />
+													<span>Lihat Publik</span>
 												</Link>
 											) : null}
 										</div>
 									</div>
-								);
-							})}
-						</div>
-					</>
+								</div>
+							);
+						})}
+					</div>
 				)}
 			</div>
 		</div>

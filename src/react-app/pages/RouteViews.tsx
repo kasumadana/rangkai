@@ -2946,7 +2946,7 @@ export function WorkflowRouteShellPage({
 										value={inviteEmail}
 										onChange={(e) => setInviteEmail(e.target.value)}
 										placeholder="contoh: pecalang.desa@rangkai.local"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-base text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-lg text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
 									/>
 								</div>
 
@@ -2961,7 +2961,7 @@ export function WorkflowRouteShellPage({
 												e.target.value === "organizer" ? "organizer" : "officer",
 											)
 										}
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-lg text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									>
 										<option value="officer">
 											Petugas Lapangan (Pecalang / Kebersihan)
