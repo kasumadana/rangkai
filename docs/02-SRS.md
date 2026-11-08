@@ -156,6 +156,25 @@ When the visitor opens a public event,
 Then private documents, internal notes, and user contact
 details are not returned by the API.
 
+### AC-09: Recipient Email & CAS Acceptance
+
+Given an organization invitation,
+When created, a normalized recipient email is required,
+And when accepted, atomic single-consumption CAS revalidates inviter authority and event lifecycle,
+Allowing idempotent same-user replays while rejecting mismatched recipients, expired tokens, or revoked inviter roles.
+
+### AC-10: Simulation Mode Transparency
+
+Given an event published without verified operational authority,
+When viewed publicly, the `isSimulation` flag is propagated across list, detail, roads, and cleanup views,
+And UI banners and map pins visibly distinguish simulation from live operational data.
+
+### AC-11: Road Operational Status Integrity
+
+Given a road status update,
+When its expiry timestamp passes or status is UNKNOWN, public interfaces display it as unconfirmed,
+And post-event cleanup verification never automatically alters road status or triggers road reopening.
+
 ## 4. Non-Functional Requirements
 
 All numerical values are initial engineering TARGETS.
@@ -197,6 +216,18 @@ FR-030..040 -> Traffic module -> Status/RBAC tests
 FR-050..056 -> Cleanup module -> Workflow tests
 FR-060..065 -> Public module -> Anonymous E2E tests
 FR-070..073 -> Audit module -> Audit integration tests
+
+### FR-023: Safe Organization Onboarding
+The system shall atomically provision a new organization, assign the creating user as an organizer member, and record an initial audit log entry in a single transactional database CTE. Repeated creation attempts with identical names shall return the existing record idempotently without creating duplicate organizations.
+
+### FR-024: Secure Invitation Lifecycle & Token Hashing
+The system shall store invitation tokens as SHA-256 hashes, require and bind a normalized recipient email, and execute acceptance via atomic single-consumption compare-and-swap (CAS) to eliminate double-claim race conditions.
+
+### FR-025: Operational Authority Publication Gate
+The system shall enforce that only organizations possessing verified operational authority (`hasOperationalAuthority: true`) may publish live operational road restrictions. Organizations without operational authority shall publish in simulation mode (`isSimulation: true`), publicly flagged as simulated.
+
+### FR-026: Field Task & Scoped Permission Access
+The system shall provide a dedicated field task endpoint (`/api/field/tasks`) returning only events assigned to the authenticated officer, scoped strictly to granted permissions (`canUpdateTraffic`, `canUpdateCleanup`). Unassigned officers receive an empty list and are rejected with 403 Forbidden on operational endpoints.
 
 Every P0 requirement must have at least one automated
 or documented manual acceptance test before release.

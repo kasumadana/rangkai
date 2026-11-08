@@ -32,6 +32,7 @@ guarantee safe routes, or certify environmental compliance.
 | 07-UX-FLOWS.md      | Screens, user journeys, UX states                   |
 | DESIGN.md           | Visual design system, Tri Datu tokens, typography   |
 | 08-SECURITY-OPS.md  | Security, privacy, operational policies             |
+| RELEASE-RUNBOOK.md  | Production release gate, migrations, rollback, DR   |
 | 09-TEST-PLAN.md     | QA, AI evaluation, acceptance testing               |
 | 10-DELIVERY-PLAN.md | Sprints, milestones, demo, competition              |
 | ../AGENTS.md        | Rules for coding agents                             |

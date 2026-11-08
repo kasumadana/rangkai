@@ -25,7 +25,6 @@ import {
 	useSignOutMutation,
 } from "../../lib/auth";
 import {
-	fetchEventsList,
 	fetchPublicEvents,
 	formatWitaEventSchedule,
 	getSavedOrganizationId,
@@ -448,7 +447,9 @@ export function PublicShellLayout() {
 										<RouterLinkBridge href="/dashboard">Panel Panitia Desa</RouterLinkBridge>
 									</li>
 									<li>
-										<RouterLinkBridge href="/dashboard">Pos Komando Lapangan</RouterLinkBridge>
+
+										<RouterLinkBridge href="/field">Pos Komando Lapangan</RouterLinkBridge>
+
 									</li>
 									<li>
 										<RouterLinkBridge href="/login">Akses Masuk Petugas</RouterLinkBridge>
@@ -489,28 +490,20 @@ export function WorkspaceShellLayout() {
 	const signOutMutation = useSignOutMutation();
 	const myOrgsQuery = useMyOrganizationsQuery();
 
-	const eventsQuery = useQuery({
-		queryKey: ["events", "list", { page: 1, limit: 20 }],
-		queryFn: () => fetchEventsList({ page: 1, limit: 20 }),
-		enabled: Boolean(sessionData?.user),
-		retry: false,
-	});
-
 	useGsapRouteTransition(workspaceContentRef, pathname);
 
 	const organizations = myOrgsQuery.data?.organizations ?? [];
 	const savedOrgId = getSavedOrganizationId();
-	const activeOrg =
-		organizations.find((o) => o.id === savedOrgId) ?? organizations[0] ?? null;
-	const hasOrganizerRole = organizations.some((o) => o.role === "organizer");
-	const effectiveRole = activeOrg?.role ?? (hasOrganizerRole ? "organizer" : "officer");
+	const activeOrg = organizations.find((o) => o.id === savedOrgId) ?? null;
+	const hasOrganizerRole = activeOrg?.role === "organizer";
+	const effectiveRole = activeOrg?.role;
 
 	// Extract active event ID from URL or fall back to the first real event from backend
 	const eventIdMatch = pathname.match(/(?:dashboard|field)\/events\/([^/]+)/);
+
 	const urlEventId =
 		eventIdMatch && eventIdMatch[1] !== "new" ? eventIdMatch[1] : null;
-	const firstRealEventId = eventsQuery.data?.events?.[0]?.id ?? null;
-	const activeNavEventId = urlEventId || firstRealEventId;
+	const activeNavEventId = urlEventId;
 
 	const getWorkflowHref = (suffix: string, isFieldRoute = false) => {
 		if (activeNavEventId) {
@@ -518,10 +511,9 @@ export function WorkspaceShellLayout() {
 				? `/field/events/${activeNavEventId}`
 				: `/dashboard/events/${activeNavEventId}${suffix}`;
 		}
-		return hasOrganizerRole || !sessionData?.user
-			? "/dashboard/events/new"
-			: "/dashboard";
+		return isFieldRoute ? "/field" : "/dashboard";
 	};
+
 
 	return (
 		<div className="teduh-workspace-shell">
@@ -539,7 +531,7 @@ export function WorkspaceShellLayout() {
 							? "Mode Tamu / Pratinjau"
 							: effectiveRole === "organizer" || hasOrganizerRole
 								? "Panitia Desa (Organizer)"
-								: "Petugas Lapangan (Pecalang)" }
+								: effectiveRole === "officer" ? "Petugas Lapangan (Pecalang)" : "Pilih organisasi" }
 					</span>
 
 					{activeOrg ? (
@@ -711,6 +703,10 @@ export function WorkspaceShellLayout() {
 
 			{/* Mobile Bottom Navigation */}
 			<nav className="teduh-workspace-mobile-nav" aria-label="Navigasi Bawah Ruang Kerja">
+				{pathname.startsWith("/field") ? <>
+					<RouterLink to="/field" className="teduh-mobile-nav-item is-active"><ClipboardCheck size={18} /><span>Tugas</span></RouterLink>
+					<RouterLink to="/settings" className="teduh-mobile-nav-item"><Settings size={18} /><span>Akun</span></RouterLink>
+				</> : <>
 				<RouterLink
 					to="/dashboard"
 					className={`teduh-mobile-nav-item ${pathname === "/dashboard" || pathname === "/dashboard/events" ? "is-active" : ""}`}
@@ -746,6 +742,7 @@ export function WorkspaceShellLayout() {
 					<Settings size={18} />
 					<span>Akun</span>
 				</RouterLink>
+				</>}
 			</nav>
 		</div>
 	);

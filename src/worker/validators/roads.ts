@@ -114,3 +114,16 @@ export const createRoadSegmentSchema = z
 			path: ["coordinates"],
 		},
 	);
+
+export const createSimulationRoadImpactSchema = createRoadSegmentSchema.and(
+	z.object({
+		mutationId: uuidParamSchema,
+		plannedFrom: isoDateSchema,
+		plannedTo: isoDateSchema,
+		impactType: z.enum(IMPACT_TYPES),
+		diversionNote: z.string().trim().max(1000).optional().nullable(),
+	}).refine((data) => new Date(data.plannedTo) > new Date(data.plannedFrom), {
+		message: "plannedTo must be strictly after plannedFrom",
+		path: ["plannedTo"],
+	}),
+);

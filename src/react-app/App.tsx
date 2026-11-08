@@ -17,6 +17,7 @@ import { RegisterPage } from "./pages/RegisterPage";
 import { OrganizationOnboardingPage } from "./pages/OrganizationOnboardingPage";
 import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
 import { OrganizerDashboardPage } from "./pages/OrganizerDashboardPage";
+import { FieldTaskListPage } from "./pages/FieldTaskListPage";
 import {
 	PublicEventDetailPage,
 	PublicEventsListPage,
@@ -140,7 +141,7 @@ export function App() {
 								/>
 								<Route
 									path="/field"
-									element={<Navigate to="/field/events/evt-pilot" replace />}
+									element={<FieldTaskListPage />}
 								/>
 								<Route
 									path="/field/events/:id"
@@ -153,6 +154,9 @@ export function App() {
 										/>
 									}
 								/>
+								{["/field/events/:id/traffic", "/field/events/:id/cleanup", "/field/events/:id/cleanup/:taskId"].map((path) => (
+									<Route key={path} path={path} element={<WorkflowRouteShellPage stepCode="Tugas Lapangan" title="Tugas Lapangan" subtitle="Perbarui tugas yang ditugaskan kepada Anda." requirementRef="Petugas Lapangan" />} />
+								))}
 								<Route path="/settings" element={<SettingsPage />} />
 								<Route path="/ui-system" element={<UiSystemCatalogPage />} />
 							</Route>

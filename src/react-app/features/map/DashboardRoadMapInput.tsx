@@ -44,6 +44,11 @@ export interface DashboardRoadMapInputProps {
 	/** Optional hint for initial camera location (e.g. Desa Adat / venueName) */
 	locationHint?: string;
 	height?: number | string;
+	isCatalogLoading?: boolean;
+	isCatalogError?: boolean;
+	catalogErrorMessage?: string;
+	catalogRequestId?: string;
+	onRetryCatalog?: () => void;
 }
 
 const STREET_STYLE: maplibregl.StyleSpecification = {
@@ -133,11 +138,15 @@ function extractCoordinatesFromGeometry(
 	return [];
 }
 
-function getImpactColor(impact: RoadImpactRecord): string {
+function getImpactColor(impact: RoadImpactRecord, mode: DashboardMapInteractionMode): string {
 	const eff = impact.operationalStatus?.effectiveStatus;
-	if (eff === "closed") return "#C8322B";
-	if (eff === "intermittent") return "#D97706";
-	if (eff === "open") return "#15803D";
+	if (mode === "operational") {
+		if (impact.operationalStatus?.isStale) return "#6B7280";
+		if (eff === "closed") return "#C8322B";
+		if (eff === "intermittent") return "#D97706";
+		if (eff === "open") return "#15803D";
+		return "#6B7280";
+	}
 
 	const norm = normalizeRoadImpactType(impact.impactType);
 	if (norm === "closure") return "#C8322B";
@@ -174,6 +183,11 @@ export function DashboardRoadMapInput({
 	onSelectImpact,
 	locationHint = "",
 	height = 420,
+	isCatalogLoading = false,
+	isCatalogError = false,
+	catalogErrorMessage = "",
+	catalogRequestId = "",
+	onRetryCatalog,
 }: DashboardRoadMapInputProps) {
 	const drawnCoordinates = useMemo(
 		() => drawnCoordinatesProp ?? draftCoordinates ?? [],
@@ -461,7 +475,7 @@ export function DashboardRoadMapInput({
 						properties: {
 							id: imp.id,
 							displayName: imp.displayName || "Ruas Jalan Terdampak",
-							color: getImpactColor(imp),
+							color: getImpactColor(imp, mode),
 							isSelected: imp.id === selectedImpactId,
 						},
 						geometry: {
@@ -515,7 +529,7 @@ export function DashboardRoadMapInput({
 
 			const badge = document.createElement("button");
 			badge.type = "button";
-			const color = getImpactColor(imp);
+			const color = getImpactColor(imp, mode);
 			const isSelected = imp.id === selectedImpactId;
 			badge.style.cssText = `
 				background: ${isSelected ? color : "#FFFFFF"};
@@ -715,7 +729,14 @@ export function DashboardRoadMapInput({
 								onClick={() => onModeChange("catalog")}
 							>
 								<MapPin size={14} />
-								<span>Pilih Katalog Terverifikasi ({catalogSegments.length})</span>
+								<span>
+									Pilih Katalog Terverifikasi
+									{isCatalogLoading
+										? " (Memuat...)"
+										: isCatalogError
+											? " (Gagal memuat)"
+											: ` (${catalogSegments.length})`}
+								</span>
 							</button>
 						</div>
 					) : (
@@ -795,11 +816,36 @@ export function DashboardRoadMapInput({
 						</>
 					) : mode === "catalog" ? (
 						<>
-							<span className="teduh-hint-dot is-catalog" />
-							<span>
-								Klik garis jalan biru putus-putus pada peta atau pilih dari daftar
-								katalog di bawah.
-							</span>
+							<span className={`teduh-hint-dot ${isCatalogError ? "is-danger" : "is-catalog"}`} />
+							{isCatalogError ? (
+								<span role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+									<strong>{catalogErrorMessage || "Gagal memuat katalog terverifikasi."}</strong>
+									{catalogRequestId ? `(ID: ${catalogRequestId})` : ""}
+									{onRetryCatalog ? (
+										<button
+											type="button"
+											onClick={onRetryCatalog}
+											style={{
+												padding: "2px 8px",
+												borderRadius: 4,
+												background: "#C8322B",
+												color: "#FFFFFF",
+												fontWeight: 600,
+												fontSize: 11,
+												border: "none",
+												cursor: "pointer",
+											}}
+										>
+											Coba Lagi
+										</button>
+									) : null}
+								</span>
+							) : (
+								<span>
+									Klik garis jalan biru putus-putus pada peta atau pilih dari daftar
+									katalog di bawah ({catalogSegments.length} ruas tersedia).
+								</span>
+							)}
 						</>
 					) : (
 						<>
@@ -838,6 +884,7 @@ export function DashboardRoadMapInput({
 
 				{/* Legend Bottom Left */}
 				<div className="teduh-dashboard-map-legend">
+					{mode !== "operational" ? <span className="teduh-legend-item">Rencana dampak:</span> : null}
 					<span className="teduh-legend-item">
 						<i style={{ background: "#C8322B" }} /> Ditutup Penuh
 					</span>
@@ -847,6 +894,7 @@ export function DashboardRoadMapInput({
 					<span className="teduh-legend-item">
 						<i style={{ background: "#15803D" }} /> Terbuka / Normal
 					</span>
+					{mode === "operational" ? <span className="teduh-legend-item"><i style={{ background: "#6B7280" }} /> Belum dikonfirmasi</span> : null}
 					{mode !== "operational" ? (
 						<span className="teduh-legend-item">
 							<i style={{ background: "#0284C7" }} /> Katalog Terverifikasi

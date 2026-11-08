@@ -88,9 +88,8 @@ export function useGsapLandingScroll(
 			if (heroItems.length > 0) {
 				gsap.fromTo(
 					heroItems,
-					{ opacity: 0, y: 22 },
+					{ y: 22 },
 					{
-						opacity: 1,
 						y: 0,
 						duration: 0.64,
 						stagger: 0.08,

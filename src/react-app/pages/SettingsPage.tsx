@@ -25,34 +25,6 @@ import {
 	saveOrganizationId,
 } from "../lib/events-api";
 
-const DESA_ADAT_FALLBACK_OPTIONS = [
-	{
-		value: "11111111-1111-4111-8111-111111111111",
-		label: "Banjar Uji Coba / Desa Adat Simulasi (Pangkalan Data Neon)",
-		role: "organizer" as const,
-	},
-	{
-		value: "00000000-0000-4000-8000-000000000001",
-		label: "Desa Adat Ubud (Gianyar)",
-		role: "organizer" as const,
-	},
-	{
-		value: "550e8400-e29b-41d4-a716-446655440000",
-		label: "Desa Adat Padangtegal (Gianyar)",
-		role: "organizer" as const,
-	},
-	{
-		value: "550e8400-e29b-41d4-a716-446655440001",
-		label: "Desa Adat Intaran Sanur (Denpasar)",
-		role: "organizer" as const,
-	},
-	{
-		value: "550e8400-e29b-41d4-a716-446655440002",
-		label: "Desa Adat Kuta (Badung)",
-		role: "organizer" as const,
-	},
-];
-
 export function SettingsPage() {
 	const navigate = useNavigate();
 	const { data: sessionData, isLoading: isSessionLoading } = useAuthSession();
@@ -75,11 +47,11 @@ export function SettingsPage() {
 				role: org.role,
 			}));
 		}
-		return DESA_ADAT_FALLBACK_OPTIONS;
+		return [];
 	}, [myOrganizations]);
 
 	const [selectedOrgIdState, setSelectedOrgId] = useState(() => {
-		return getSavedOrganizationId() || DESA_ADAT_FALLBACK_OPTIONS[0].value;
+		return getSavedOrganizationId() || "";
 	});
 	const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 	const [createError, setCreateError] = useState<string | null>(null);
@@ -89,15 +61,7 @@ export function SettingsPage() {
 	const [newOrgVillage, setNewOrgVillage] = useState("");
 	const [newOrgDistrict, setNewOrgDistrict] = useState("");
 
-	const selectedOrgId = useMemo(() => {
-		if (myOrganizations.length > 0) {
-			const exists = myOrganizations.some((o) => o.id === selectedOrgIdState);
-			if (!exists) {
-				return myOrganizations[0].id;
-			}
-		}
-		return selectedOrgIdState;
-	}, [myOrganizations, selectedOrgIdState]);
+	const selectedOrgId = myOrganizations.some((org) => org.id === selectedOrgIdState) ? selectedOrgIdState : "";
 
 	function handleOrgChange(nextId: string) {
 		setSelectedOrgId(nextId);
@@ -139,7 +103,7 @@ export function SettingsPage() {
 	}
 
 	const activeOrgOption =
-		orgOptions.find((o) => o.value === selectedOrgId) || orgOptions[0];
+		orgOptions.find((o) => o.value === selectedOrgId);
 
 	return (
 		<div>
@@ -233,7 +197,7 @@ export function SettingsPage() {
 									<p className="text-sm font-bold text-[#264D3B]">
 										{activeOrgOption?.role === "officer"
 											? "Petugas Lapangan (Pecalang / Kebersihan)"
-											: "Panitia Penyelenggara (Organizer)"}
+											: activeOrgOption?.role === "organizer" ? "Panitia Penyelenggara (Organizer)" : "Pilih organisasi"}
 									</p>
 								</div>
 							</div>
@@ -316,6 +280,7 @@ export function SettingsPage() {
 								onChange={(e) => handleOrgChange(e.target.value)}
 								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs font-medium text-[#181817] focus:outline-none focus:border-[#264D3B]"
 							>
+								<option value="">Pilih organisasi</option>
 								{orgOptions.map((opt) => (
 									<option key={opt.value} value={opt.value}>
 										{opt.label} (

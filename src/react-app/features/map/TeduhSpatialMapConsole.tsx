@@ -370,7 +370,7 @@ export function TeduhSpatialMapConsole() {
 											color: "#181B20",
 										}}
 									>
-										{c.ceremonyTitle}
+										{c.isSimulation ? "SIMULASI — " : ""}{c.ceremonyTitle}
 									</div>
 									<div style={{ fontSize: 12, color: "#545B67" }}>
 										{c.desaAdatName} • {c.kabupaten}
@@ -970,7 +970,7 @@ export function TeduhSpatialMapConsole() {
 									<RoadStatusBadge status={activeVillage.primaryStatus} />
 								</div>
 								<h3 className="drawer-title">
-									{activeVillage.ceremonyTitle}
+									{activeVillage.isSimulation ? "SIMULASI — " : ""}{activeVillage.ceremonyTitle}
 								</h3>
 							</div>
 

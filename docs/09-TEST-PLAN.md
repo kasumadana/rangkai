@@ -1,7 +1,7 @@
 # Quality Assurance and Validation Plan — Rangkai
 
-Version: 0.2.0
-Status: Active / Partially Executed (Unit Tests 53/53 Passed, C06 Integration Suite Passed; see docs/qa/C06-INTEGRATION-QA-REPORT.md)
+Version: 1.0.0-rc2
+Status: Executed (58/58 unit passing, 26/26 live Neon readiness batch integration passing, 10/10 Playwright E2E full P0 journeys passing)
 
 ## 1. Testing Objectives
 

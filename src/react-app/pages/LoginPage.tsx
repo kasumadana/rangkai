@@ -9,7 +9,6 @@ import {
 	LogOut,
 	Mail,
 	Radio,
-	ShieldCheck,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
@@ -51,12 +50,14 @@ export function LoginPage() {
 	const [serverErrorMessage, setServerErrorMessage] = useState<string | null>(
 		null,
 	);
-	const [showPilotCredentials, setShowPilotCredentials] = useState(false);
 
 	useGsapPageReveal(pageRef, [isSessionLoading, Boolean(sessionData?.user)]);
 
+	const rawFrom = (location.state as { from?: string } | null)?.from;
 	const redirectTarget =
-		(location.state as { from?: string } | null)?.from || "/dashboard";
+		rawFrom && rawFrom.startsWith("/") && !rawFrom.startsWith("//")
+			? rawFrom
+			: "/dashboard";
 
 	async function handleSignInSubmit(e?: React.FormEvent) {
 		if (e) e.preventDefault();
@@ -91,13 +92,6 @@ export function LoginPage() {
 				);
 			}
 		}
-	}
-
-	function handleFillPilotCredentials(targetEmail: string) {
-		setEmail(targetEmail);
-		setPassword("Prajuru123!");
-		setFieldErrors({});
-		setServerErrorMessage(null);
 	}
 
 	const activeOrg = orgsData?.organizations?.[0];
@@ -206,7 +200,7 @@ export function LoginPage() {
 							</Link>
 
 							<Link
-								to="/field/events/evt-pilot"
+								to="/field"
 								style={{
 									display: "inline-flex",
 									alignItems: "center",
@@ -484,91 +478,6 @@ export function LoginPage() {
 							<div style={{ fontSize: 12.5, color: "#71717A" }}>
 								Menerima tautan undangan dari panitia? Buka tautan langsung untuk bergabung.
 							</div>
-						</div>
-
-						{/* Pilot Credentials Helper for Evaluators / Demo */}
-						<div
-							style={{
-								borderTop: "1px dashed rgba(228, 231, 229, 0.9)",
-								paddingTop: 14,
-							}}
-						>
-							<button
-								type="button"
-								onClick={() => setShowPilotCredentials(!showPilotCredentials)}
-								style={{
-									background: "none",
-									border: "none",
-									fontSize: 12,
-									color: "#64748B",
-									cursor: "pointer",
-									display: "flex",
-									alignItems: "center",
-									justifyContent: "space-between",
-									width: "100%",
-									padding: 0,
-								}}
-							>
-								<span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-									<ShieldCheck size={14} color="#264D3B" />
-									<span>Kredensial Percontohan Pilot (Evaluasi Lomba)</span>
-								</span>
-								<span>{showPilotCredentials ? "▲" : "▼"}</span>
-							</button>
-
-							{showPilotCredentials && (
-								<div
-									style={{
-										marginTop: 10,
-										background: "#F8FAF8",
-										borderRadius: 12,
-										padding: "10px 12px",
-										display: "flex",
-										flexDirection: "column",
-										gap: 6,
-										fontSize: 11.5,
-									}}
-								>
-									<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-										<span style={{ color: "#545B67" }}>Prajuru (Organizer)</span>
-										<button
-											type="button"
-											onClick={() => handleFillPilotCredentials("prajuru@desaadatubud.id")}
-											style={{
-												background: "#ECF3EF",
-												color: "#264D3B",
-												border: "none",
-												borderRadius: 6,
-												padding: "3px 8px",
-												cursor: "pointer",
-												fontSize: 11,
-												fontWeight: 500,
-											}}
-										>
-											Gunakan Akun
-										</button>
-									</div>
-									<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-										<span style={{ color: "#545B67" }}>Pecalang (Petugas Jalan)</span>
-										<button
-											type="button"
-											onClick={() => handleFillPilotCredentials("pecalang@desaadatubud.id")}
-											style={{
-												background: "#ECF3EF",
-												color: "#264D3B",
-												border: "none",
-												borderRadius: 6,
-												padding: "3px 8px",
-												cursor: "pointer",
-												fontSize: 11,
-												fontWeight: 500,
-											}}
-										>
-											Gunakan Akun
-										</button>
-									</div>
-								</div>
-							)}
 						</div>
 					</div>
 				)}

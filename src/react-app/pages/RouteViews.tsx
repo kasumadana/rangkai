@@ -1,5 +1,6 @@
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
+import { Token } from "@astryxdesign/core/Token";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -26,9 +27,11 @@ import {
 	Search,
 	Send,
 	ShieldCheck,
+
 	Sparkles,
 	Trash2,
 	Upload,
+
 	UserPlus,
 	Users,
 } from "lucide-react";
@@ -51,9 +54,8 @@ import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
 import {
 	assignEventOfficer,
 	createCleanupTask,
-	createEventInvitation,
 	createRoadImpact,
-	createRoadSegment,
+	createSimulationRoadImpact,
 	createWasteRecord,
 	deleteRoadImpact,
 	fetchCleanupTasks,
@@ -64,7 +66,11 @@ import {
 	fetchPublicEventDetail,
 	fetchPublicEventRoads,
 	fetchPublicEvents,
+
+	fetchFieldEventDetail,
+
 	fetchRoadSegments,
+
 	formatWitaEventSchedule,
 	fromIsoToWitaInput,
 	mapPublicEventToCeremonyProfile,
@@ -74,6 +80,7 @@ import {
 	revokeEventAssignment,
 	saveExtractedFields,
 	submitCleanupTask,
+	startCleanupTask,
 	toWitaIsoTimestamp,
 	transitionEventToReview,
 	triggerDocumentExtraction,
@@ -82,6 +89,7 @@ import {
 	uploadEventDocument,
 	verifyCleanupTask,
 } from "../lib/events-api";
+import { createInvitation, fetchInvitations, revokeInvitation } from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
 import type { OperationalRoadStatus } from "../lib/road-status";
 import { formatWitaDateTime, formatWitaRange } from "../lib/wita";
@@ -307,11 +315,16 @@ export function PublicEventsListPage() {
 												{evt.organizationName || evt.village} •{" "}
 												{evt.district || "Bali"}
 											</span>
-											<span
-												className={`road-status-badge ${statusBadgeClass}`}
-											>
-												{statusBadgeText}
-											</span>
+											<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+												{evt.isSimulation ? (
+													<Token color="orange" size="sm" label="SIMULASI" />
+												) : null}
+												<span
+													className={`road-status-badge ${statusBadgeClass}`}
+												>
+													{statusBadgeText}
+												</span>
+											</div>
 										</div>
 
 										<h2 className="schedule-card-title">{evt.title}</h2>
@@ -629,6 +642,17 @@ export function PublicEventDetailPage({
 						</div>
 					</div>
 
+					{apiEvent.isSimulation ? (
+						<div style={{ marginBottom: 16 }}>
+							<Banner
+								status="warning"
+								collapsible={false}
+								title="SIMULASI — Bukan Penutupan Jalan Sebenarnya"
+								description="Kegiatan ini dipublikasikan dalam mode simulasi atau latihan koordinasi desa adat. Ruas jalan dan status buka-tutup tidak mencerminkan penutupan operasional resmi di lapangan."
+							/>
+						</div>
+					) : null}
+
 					<h1 className="teduh-detail-title">{apiEvent.title}</h1>
 
 					{/* Core Metadata Grid (Waktu WITA, Lokasi Utama, Penanggung Jawab) */}
@@ -774,7 +798,7 @@ export function PublicEventDetailPage({
 										road.operationalStatus?.effectiveStatus === "unconfirmed"
 											? "unknown"
 											: ((road.operationalStatus?.effectiveStatus ??
-													"intermittent") as OperationalRoadStatus);
+													"unknown") as OperationalRoadStatus);
 
 									return (
 										<button
@@ -953,7 +977,7 @@ export function WorkflowRouteShellPage({
 	title,
 	subtitle,
 }: WorkflowRouteShellProps) {
-	const { id: eventId = "" } = useParams<{ id: string }>();
+	const { id: eventId = "", taskId } = useParams<{ id: string; taskId?: string }>();
 	const { pathname } = useLocation();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
@@ -981,6 +1005,17 @@ export function WorkflowRouteShellPage({
 		refetchInterval: 15_000,
 	});
 
+	const fieldDetailQuery = useQuery({
+		queryKey: ["field", "events", eventId],
+		queryFn: () => fetchFieldEventDetail(eventId),
+		enabled: Boolean(eventId && isRealUuidEvent),
+		retry: false,
+	});
+	const permissions = fieldDetailQuery.data?.permissions;
+	const isOrganizer = permissions?.isOrganizer ?? false;
+	const canTraffic = permissions?.canUpdateTraffic ?? false;
+	const canCleanup = permissions?.canUpdateCleanup ?? false;
+
 	const roadSegmentsCatalogQuery = useQuery({
 		queryKey: ["road-segments", "catalog"],
 		queryFn: () => fetchRoadSegments(),
@@ -991,7 +1026,7 @@ export function WorkflowRouteShellPage({
 	const cleanupTasksQuery = useQuery({
 		queryKey: ["cleanup-tasks", eventId],
 		queryFn: () => fetchCleanupTasks(eventId),
-		enabled: Boolean(isRealUuidEvent && pathname.endsWith("/cleanup")),
+		enabled: Boolean(isRealUuidEvent && /\/cleanup(?:\/[^/]+)?$/.test(pathname)),
 		retry: false,
 	});
 
@@ -1040,7 +1075,8 @@ export function WorkflowRouteShellPage({
 	);
 	const [newSegmentName, setNewSegmentName] = useState("");
 	const [newSegmentArea, setNewSegmentArea] = useState("Bali");
-	const [humanVerifiedRoad, setHumanVerifiedRoad] = useState(true);
+	const [humanVerifiedRoad, setHumanVerifiedRoad] = useState(false);
+	const roadAttempt = useRef<{ fingerprint: string; id: string } | null>(null);
 	const [selectedCatalogSegmentId, setSelectedCatalogSegmentId] =
 		useState<string>("");
 	const [selectedImpactType, setSelectedImpactType] = useState<
@@ -1064,12 +1100,14 @@ export function WorkflowRouteShellPage({
 		message: string;
 	} | null>(null);
 
+
 	// Cleanup & Waste Tab State
 	const [evidenceStage, setEvidenceStage] = useState<"before" | "after">(
 		"after",
 	);
 	const [selectedTaskForEvidence, setSelectedTaskForEvidence] =
-		useState<string>("");
+		useState<string>(taskId ?? "");
+
 	const [newTaskTitle, setNewTaskTitle] = useState("");
 	const [newTaskLocation, setNewTaskLocation] = useState("");
 	const [isAddingTask, setIsAddingTask] = useState(false);
@@ -1087,6 +1125,18 @@ export function WorkflowRouteShellPage({
 	// Team & Invitation Tab State
 	const [inviteCanTraffic, setInviteCanTraffic] = useState(true);
 	const [inviteCanCleanup, setInviteCanCleanup] = useState(true);
+	const [inviteEmail, setInviteEmail] = useState("");
+	const [inviteRole, setInviteRole] = useState<"officer" | "organizer">("officer");
+	const invitationsQuery = useQuery({
+		queryKey: ["invitations", rawEvent?.organizationId],
+		queryFn: () => fetchInvitations(rawEvent?.organizationId),
+		enabled: Boolean(rawEvent?.organizationId && pathname.endsWith("/team") && isOrganizer),
+	});
+	const revokeInvitationMutation = useMutation({
+		mutationFn: revokeInvitation,
+		onSuccess: () => { void invitationsQuery.refetch(); setStatusFeedback({ type: "success", message: "Undangan dibatalkan." }); },
+		onError: () => setStatusFeedback({ type: "error", message: "Undangan gagal dibatalkan. Coba lagi." }),
+	});
 	const [generatedInviteUrl, setGeneratedInviteUrl] = useState<string | null>(
 		null,
 	);
@@ -1182,15 +1232,14 @@ export function WorkflowRouteShellPage({
 			if (!isRealUuidEvent) throw new Error("Kegiatan belum tersimpan.");
 			return publishVerifiedEvent(eventId);
 		},
-		onSuccess: async () => {
+		onSuccess: async (result) => {
 			await queryClient.invalidateQueries({
 				queryKey: ["events", "detail", eventId],
 			});
 			await queryClient.invalidateQueries({ queryKey: ["events"] });
 			setStatusFeedback({
 				type: "success",
-				message:
-					"Pengumuman upacara resmi diterbitkan ke portal publik dan peta warga!",
+				message: result.event.isSimulation === false ? "Kegiatan diterbitkan ke portal publik." : "Kegiatan diterbitkan sebagai SIMULASI.",
 			});
 		},
 		onError: (err) => {
@@ -1224,24 +1273,24 @@ export function WorkflowRouteShellPage({
 				throw new Error("Centang verifikasi lokasi ruas jalan oleh Prajuru.");
 			}
 
-			const segRes = await createRoadSegment({
+			const payload = {
 				displayName: newSegmentName.trim(),
 				coverageArea:
 					newSegmentArea.trim() || rawEvent?.venueName || "Kawasan Desa Adat",
 				coordinates: draftCoordinates,
 				humanVerified: true,
-			});
-
-			await createRoadImpact(eventId, {
-				roadSegmentId: segRes.segment.id,
 				impactType: selectedImpactType,
 				plannedFrom: rawEvent?.startsAt || null,
 				plannedTo: rawEvent?.endsAt || null,
 				diversionNote: impactDiversionNote.trim() || null,
-			});
-			return segRes.segment.displayName;
+			};
+			const fingerprint = JSON.stringify([eventId, payload]);
+			if (roadAttempt.current?.fingerprint !== fingerprint) roadAttempt.current = { fingerprint, id: crypto.randomUUID() };
+			await createSimulationRoadImpact(eventId, { ...payload, mutationId: roadAttempt.current.id });
+			return payload.displayName;
 		},
 		onSuccess: async (segName) => {
+			roadAttempt.current = null;
 			setDraftCoordinates([]);
 			setNewSegmentName("");
 			setImpactDiversionNote("");
@@ -1253,7 +1302,7 @@ export function WorkflowRouteShellPage({
 			});
 			setStatusFeedback({
 				type: "success",
-				message: `Ruas jalan "${segName}" berhasil digambar, diverifikasi, dan ditautkan ke kegiatan ini.`,
+				message: `Ruas "${segName}" tersimpan sebagai garis latihan untuk kegiatan ini.`,
 			});
 		},
 		onError: (err) => {
@@ -1449,7 +1498,9 @@ export function WorkflowRouteShellPage({
 		mutationFn: async (file: File) => {
 			const tasks = cleanupTasksQuery.data?.cleanupTasks ?? [];
 			const targetTask =
-				tasks.find((t) => t.id === selectedTaskForEvidence) || tasks[0];
+
+				tasks.find((t) => t.id === (taskId ?? selectedTaskForEvidence));
+
 			if (!targetTask) {
 				throw new Error(
 					"Buat minimal 1 tugas kebersihan terlebih dahulu sebelum mengunggah foto bukti.",
@@ -1535,9 +1586,11 @@ export function WorkflowRouteShellPage({
 		mutationFn: async (params?: { taskId?: string }) => {
 			const tasks = cleanupTasksQuery.data?.cleanupTasks ?? [];
 			const targetTask =
-				tasks.find((t) => t.id === params?.taskId) || tasks[0];
+
+				tasks.find((t) => t.id === params?.taskId);
 			if (!targetTask) {
 				throw new Error("Belum ada tugas kebersihan yang dapat diverifikasi.");
+
 			}
 			await verifyCleanupTask(targetTask.id, "Diverifikasi oleh Prajuru Adat.");
 		},
@@ -1568,18 +1621,18 @@ export function WorkflowRouteShellPage({
 			if (!isRealUuidEvent) {
 				throw new Error("Simpan kegiatan terlebih dahulu.");
 			}
-			return createEventInvitation({
-				eventId,
-				canUpdateTraffic: inviteCanTraffic,
-				canUpdateCleanup: inviteCanCleanup,
+			return createInvitation({
+				organizationId: rawEvent?.organizationId,
+				eventId: inviteRole === "officer" ? eventId : undefined,
+				role: inviteRole,
+				recipientEmail: inviteEmail,
+				canUpdateTraffic: inviteRole === "officer" && inviteCanTraffic,
+				canUpdateCleanup: inviteRole === "officer" && inviteCanCleanup,
 			});
 		},
 		onSuccess: (res) => {
-			const origin =
-				typeof window !== "undefined" ? window.location.origin : "";
-			setGeneratedInviteUrl(
-				res.inviteUrl || `${origin}${res.invitePath || `/invite/${res.token}`}`,
-			);
+			setGeneratedInviteUrl(res.invitation.inviteUrl ?? null);
+			void invitationsQuery.refetch();
 			setStatusFeedback({
 				type: "success",
 				message:
@@ -1645,16 +1698,27 @@ export function WorkflowRouteShellPage({
 		},
 	});
 
+	const startCleanupMutation = useMutation({
+		mutationFn: startCleanupTask,
+		onSuccess: () => { void cleanupTasksQuery.refetch(); setStatusFeedback({ type: "success", message: "Tugas dimulai." }); },
+		onError: (error) => setStatusFeedback({ type: "error", message: error instanceof Error ? error.message : "Tugas gagal dimulai." }),
+	});
+
 	const currentTabValue = useMemo(() => {
 		if (pathname.endsWith("/document") || pathname.endsWith("/review")) {
 			return "document";
 		}
 		if (pathname.endsWith("/roads")) return "roads";
-		if (pathname.startsWith("/field")) return "field";
-		if (pathname.endsWith("/cleanup")) return "cleanup";
+		if (/\/cleanup(?:\/[^/]+)?$/.test(pathname)) return "cleanup";
 		if (pathname.endsWith("/team")) return "team";
+		if (pathname.startsWith("/field")) {
+			if (!isOrganizer && !canTraffic && canCleanup) {
+				return "cleanup";
+			}
+			return "field";
+		}
 		return "field";
-	}, [pathname]);
+	}, [pathname, isOrganizer, canTraffic, canCleanup]);
 
 	function handleTabChange(nextTab: string) {
 		setStatusFeedback(null);
@@ -1669,7 +1733,7 @@ export function WorkflowRouteShellPage({
 				navigate(`/field/events/${eventId}`);
 				break;
 			case "cleanup":
-				navigate(`/dashboard/events/${eventId}/cleanup`);
+				navigate(pathname.startsWith("/field") ? `/field/events/${eventId}/cleanup` : `/dashboard/events/${eventId}/cleanup`);
 				break;
 			case "team":
 				navigate(`/dashboard/events/${eventId}/team`);
@@ -1709,7 +1773,7 @@ export function WorkflowRouteShellPage({
 		{ id: "field", label: "Pos Pecalang (Live)", icon: Radio },
 		{ id: "cleanup", label: "Kebersihan & Sampah", icon: ClipboardCheck },
 		{ id: "team", label: "Tim & Undangan Petugas", icon: Users },
-	];
+	].filter((tab) => !pathname.startsWith("/field") || (tab.id === "field" && (isOrganizer || canTraffic)) || (tab.id === "cleanup" && (isOrganizer || canCleanup)));
 
 	return (
 		<div>
@@ -1734,10 +1798,12 @@ export function WorkflowRouteShellPage({
 					<p className="teduh-workspace-subtitle">{subtitle}</p>
 				</div>
 
+
 				<div className="flex flex-wrap items-center gap-2">
 					<Link
 						to="/dashboard"
 						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+
 					>
 						<ArrowLeft className="w-3.5 h-3.5" />
 						<span>Daftar Upacara</span>
@@ -2023,11 +2089,12 @@ export function WorkflowRouteShellPage({
 									}`}
 								>
 									<MapPinned className="w-3.5 h-3.5" />
-									<span>Katalog ({catalogSegments.length})</span>
+									<span>Katalog{roadSegmentsCatalogQuery.isSuccess ? ` (${catalogSegments.length})` : ""}</span>
 								</button>
 							</div>
 						</div>
 
+						{roadSegmentsCatalogQuery.isLoading ? <p role="status">Memuat katalog ruas jalan...</p> : roadSegmentsCatalogQuery.isError ? <div role="alert">Katalog ruas jalan tidak tersedia. <button type="button" onClick={() => void roadSegmentsCatalogQuery.refetch()}>Coba lagi</button></div> : catalogSegments.length === 0 ? <p>Katalog ruas jalan kosong.</p> : null}
 						<DashboardRoadMapInput
 							mode={roadInputMode}
 							height={430}
@@ -2115,11 +2182,10 @@ export function WorkflowRouteShellPage({
 											className="mt-0.5 rounded border-[#C5C3BC] text-[#264D3B]"
 										/>
 										<span>
-											Garis ruas jalan ini telah diverifikasi sesuai lokasi
-											lapangan (Human-Verified).
+											Saya memeriksa garis ini untuk latihan. Garis ini bukan ruas operasional terverifikasi.
 										</span>
 									</label>
-									<button
+									{isOrganizer ? <button
 										type="button"
 										disabled={
 											drawRoadOnTabMutation.isPending ||
@@ -2134,7 +2200,7 @@ export function WorkflowRouteShellPage({
 												? "Menyimpan..."
 												: "Simpan & Tautkan Ruas Jalan"}
 										</span>
-									</button>
+									</button> : null}
 								</div>
 							) : (
 								<div className="space-y-3">
@@ -2226,42 +2292,46 @@ export function WorkflowRouteShellPage({
 									{attachedRoadImpacts.map((imp) => (
 										<div
 											key={imp.id}
-											className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-center justify-between gap-2"
+											className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 max-w-full overflow-hidden"
 										>
-											<div className="min-w-0">
-												<p className="text-xs font-bold text-[#181817] truncate">
+											<div className="min-w-0 flex-1 break-words">
+												<p className="text-xs font-bold text-[#181817] break-words">
 													{imp.segment?.displayName ||
 														imp.displayName ||
 														"Ruas Jalan"}
 												</p>
-												<p className="text-[11px] text-[#585854] truncate">
+												<p className="text-[11px] text-[#585854] break-words">
 													{getImpactTypeLabel(imp.impactType)}
 													{imp.diversionNote ? ` • ${imp.diversionNote}` : ""}
 												</p>
 											</div>
-											<div className="flex items-center gap-2 shrink-0">
-												<RoadStatusBadge
-													status={
-														imp.operationalStatus?.effectiveStatus ===
-														"unconfirmed"
-															? "unknown"
-															: (imp.operationalStatus?.effectiveStatus ??
-																"unknown")
-													}
-													expiresAt={imp.operationalStatus?.expiresAt}
-												/>
-												<button
-													type="button"
-													onClick={() =>
-														void deleteRoadImpactOnTabMutation.mutateAsync(
-															imp.id,
-														)
-													}
-													className="p-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-[#9E2A2B] hover:bg-[#fae5e5]"
-													title="Hapus ruas jalan"
-												>
-													<Trash2 className="w-3.5 h-3.5" />
-												</button>
+											<div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-[#E5E3DC]">
+												<div className="max-w-full overflow-hidden">
+													<RoadStatusBadge
+														status={
+															imp.operationalStatus?.effectiveStatus ===
+															"unconfirmed"
+																? "unknown"
+																: (imp.operationalStatus?.effectiveStatus ??
+																	"unknown")
+														}
+														expiresAt={imp.operationalStatus?.expiresAt}
+													/>
+												</div>
+												<div className="flex justify-end shrink-0">
+													<button
+														type="button"
+														onClick={() =>
+															void deleteRoadImpactOnTabMutation.mutateAsync(
+																imp.id,
+															)
+														}
+														className="p-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-[#9E2A2B] hover:bg-[#fae5e5]"
+														title="Hapus ruas jalan"
+													>
+														<Trash2 className="w-3.5 h-3.5" />
+													</button>
+												</div>
 											</div>
 										</div>
 									))}
@@ -2275,7 +2345,10 @@ export function WorkflowRouteShellPage({
 			{/* =================================================================== */}
 			{/* TAB 3: POS PECALANG — STATUS JALAN LIVE (`field`)                   */}
 			{/* =================================================================== */}
-			{currentTabValue === "field" ? (
+			{pathname.startsWith("/field") && fieldDetailQuery.isLoading ? <p role="status">Memeriksa penugasan...</p> : null}
+			{pathname.startsWith("/field") && fieldDetailQuery.isError ? <p role="alert">Penugasan tidak dapat dimuat. <button type="button" onClick={() => void fieldDetailQuery.refetch()}>Coba lagi</button></p> : null}
+			{pathname.startsWith("/field") && fieldDetailQuery.isSuccess && ((currentTabValue === "field" && !canTraffic && !isOrganizer) || (currentTabValue === "cleanup" && !canCleanup && !isOrganizer)) ? <p role="alert">Anda tidak memiliki izin untuk tugas ini.</p> : null}
+			{currentTabValue === "field" && (isOrganizer || canTraffic) ? (
 				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
 						<div className="border-b border-[#F0EFEA] pb-3">
@@ -2461,7 +2534,7 @@ export function WorkflowRouteShellPage({
 			{/* =================================================================== */}
 			{/* TAB 4: KEBERSIHAN & PENCATATAN SAMPAH (`cleanup`)                   */}
 			{/* =================================================================== */}
-			{currentTabValue === "cleanup" ? (
+			{currentTabValue === "cleanup" && (isOrganizer || canCleanup) ? (
 				<div className="space-y-6">
 					<Banner
 						status="info"
@@ -2478,14 +2551,14 @@ export function WorkflowRouteShellPage({
 									<h2 className="teduh-workspace-card-title">
 										Daftar Tugas Kebersihan Area Upacara
 									</h2>
-									<button
+									{isOrganizer ? <button
 										type="button"
 										onClick={() => setIsAddingTask((prev) => !prev)}
 										className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
 									>
 										<Plus className="w-3.5 h-3.5" />
 										<span>Tambah Tugas</span>
-									</button>
+									</button> : null}
 								</div>
 
 								{isAddingTask ? (
@@ -2545,7 +2618,7 @@ export function WorkflowRouteShellPage({
 								{cleanupTasksQuery.data?.cleanupTasks &&
 								cleanupTasksQuery.data.cleanupTasks.length > 0 ? (
 									<div className="space-y-2.5">
-										{cleanupTasksQuery.data.cleanupTasks.map((task) => (
+										{cleanupTasksQuery.data.cleanupTasks.filter((task) => !taskId || task.id === taskId).map((task) => (
 											<div
 												key={task.id}
 												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
@@ -2562,9 +2635,8 @@ export function WorkflowRouteShellPage({
 													<CleanupStatusBadge
 														status={task.status as CleanupTaskStatus}
 													/>
-													{task.status === "todo" ||
-													task.status === "in_progress" ||
-													task.status === "reopened" ? (
+															{(task.status === "todo" || task.status === "reopened") && canCleanup ? <button type="button" disabled={startCleanupMutation.isPending} onClick={() => startCleanupMutation.mutate(task.id)}>Mulai Kerjakan</button> : null}
+															{task.status === "in_progress" && canCleanup ? (
 														<button
 															type="button"
 															onClick={() =>
@@ -2575,7 +2647,7 @@ export function WorkflowRouteShellPage({
 															Serahkan Tugas
 														</button>
 													) : null}
-													{task.status === "submitted" ? (
+														{isOrganizer && task.status === "submitted" ? (
 														<>
 															<button
 																type="button"
@@ -2627,12 +2699,14 @@ export function WorkflowRouteShellPage({
 											Pilih Tugas Kebersihan
 										</label>
 										<select
-											value={selectedTaskForEvidence}
+											value={taskId ?? selectedTaskForEvidence}
+											disabled={Boolean(taskId)}
 											onChange={(e) =>
 												setSelectedTaskForEvidence(e.target.value)
 											}
 											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
 										>
+											<option value="">-- Pilih tugas --</option>
 											{cleanupTasksQuery.data?.cleanupTasks?.map((t) => (
 												<option key={t.id} value={t.id}>
 													{t.title} ({t.status})
@@ -2816,9 +2890,19 @@ export function WorkflowRouteShellPage({
 							</div>
 
 							<div className="space-y-2.5 text-xs">
+								<label>Email penerima
+									<input type="email" required value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className="w-full rounded-xl border border-[#E5E3DC] px-3 py-2" />
+								</label>
+								<label>Peran
+									<select value={inviteRole} onChange={(e) => setInviteRole(e.target.value === "organizer" ? "organizer" : "officer")}>
+										<option value="officer">Petugas lapangan</option>
+										<option value="organizer">Penyelenggara</option>
+									</select>
+								</label>
 								<label className="flex items-center gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer">
 									<input
 										type="checkbox"
+										disabled={inviteRole === "organizer"}
 										checked={inviteCanTraffic}
 										onChange={(e) => setInviteCanTraffic(e.target.checked)}
 										className="rounded border-[#C5C3BC] text-[#264D3B]"
@@ -2836,6 +2920,7 @@ export function WorkflowRouteShellPage({
 								<label className="flex items-center gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer">
 									<input
 										type="checkbox"
+										disabled={inviteRole === "organizer"}
 										checked={inviteCanCleanup}
 										onChange={(e) => setInviteCanCleanup(e.target.checked)}
 										className="rounded border-[#C5C3BC] text-[#264D3B]"
@@ -2856,7 +2941,8 @@ export function WorkflowRouteShellPage({
 								type="button"
 								disabled={
 									generateInviteMutation.isPending ||
-									(!inviteCanTraffic && !inviteCanCleanup)
+									!inviteEmail.trim() ||
+									(inviteRole === "officer" && !inviteCanTraffic && !inviteCanCleanup)
 								}
 								onClick={() => void generateInviteMutation.mutateAsync()}
 								className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
@@ -2883,13 +2969,13 @@ export function WorkflowRouteShellPage({
 										/>
 										<button
 											type="button"
-											onClick={() => {
-												void navigator.clipboard.writeText(generatedInviteUrl);
-												setStatusFeedback({
-													type: "info",
-													message:
-														"Tautan undangan berhasil disalin ke papan klip!",
-												});
+											onClick={async () => {
+												try {
+													await navigator.clipboard.writeText(generatedInviteUrl);
+													setStatusFeedback({ type: "info", message: "Tautan berhasil disalin." });
+												} catch {
+													setStatusFeedback({ type: "error", message: "Gagal menyalin. Pilih dan salin tautan secara manual." });
+												}
 											}}
 											className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#264D3B] text-white text-xs font-semibold"
 										>
@@ -2900,6 +2986,11 @@ export function WorkflowRouteShellPage({
 								</div>
 							) : null}
 						</div>
+						<div className="teduh-workspace-card">
+							<h3>Undangan organisasi</h3>
+							{invitationsQuery.isLoading ? <p>Memuat undangan...</p> : invitationsQuery.isError ? <p role="alert">Undangan tidak dapat dimuat. <button type="button" onClick={() => void invitationsQuery.refetch()}>Coba lagi</button></p> : invitationsQuery.data?.invitations.length ? <ul>{invitationsQuery.data.invitations.map((invitation) => <li key={invitation.id}>{invitation.recipientEmail} · {invitation.status} {invitation.status === "pending" ? <button type="button" disabled={revokeInvitationMutation.isPending} onClick={() => revokeInvitationMutation.mutate(invitation.id)}>Batalkan</button> : null}</li>)}</ul> : <p>Belum ada undangan.</p>}
+						</div>
+
 
 						{/* Direct Assign by User ID */}
 						<div className="teduh-workspace-card space-y-3">
@@ -2923,6 +3014,7 @@ export function WorkflowRouteShellPage({
 									disabled={
 										!directOfficerUserId.trim() ||
 										directAssignMutation.isPending
+
 									}
 									onClick={() => void directAssignMutation.mutateAsync()}
 									className="px-3.5 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4] disabled:opacity-50"
@@ -2986,6 +3078,7 @@ export function WorkflowRouteShellPage({
 											</div>
 										</div>
 
+
 										<button
 											type="button"
 											disabled={revokeAssignmentMutation.isPending}
@@ -3005,5 +3098,6 @@ export function WorkflowRouteShellPage({
 				</div>
 			) : null}
 		</div>
+
 	);
 }

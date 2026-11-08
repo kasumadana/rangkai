@@ -20,7 +20,7 @@ import {
 	Upload,
 	Users,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { z } from "zod";
 import {
@@ -46,7 +46,7 @@ import {
 	completeEvent,
 	createEventDraft,
 	createRoadImpact,
-	createRoadSegment,
+	createSimulationRoadImpact,
 	deleteRoadImpact,
 	fetchEventDetail,
 	fetchEventRoadImpacts,
@@ -68,29 +68,6 @@ import { formatWitaDateTime, formatWitaRange } from "../lib/wita";
 const DRAFT_STORAGE_KEY = "rangkai:event-wizard-draft-v1";
 const UUID_REGEX =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const DESA_ADAT_FALLBACK_OPTIONS = [
-	{
-		value: "11111111-1111-4111-8111-111111111111",
-		label: "Banjar Uji Coba / Desa Adat Simulasi (Pangkalan Data Neon)",
-	},
-	{
-		value: "00000000-0000-4000-8000-000000000001",
-		label: "Desa Adat Ubud (Gianyar)",
-	},
-	{
-		value: "550e8400-e29b-41d4-a716-446655440000",
-		label: "Desa Adat Padangtegal (Gianyar)",
-	},
-	{
-		value: "550e8400-e29b-41d4-a716-446655440001",
-		label: "Desa Adat Intaran Sanur (Denpasar)",
-	},
-	{
-		value: "550e8400-e29b-41d4-a716-446655440002",
-		label: "Desa Adat Kuta (Badung)",
-	},
-];
 
 export const CATEGORY_OPTIONS = [
 	{ value: "upacara_adat", label: "Upacara Adat / Dewa Yadnya" },
@@ -183,9 +160,12 @@ const WIZARD_STEPS = [
 	},
 	{
 		id: 3,
-		label: "4. Verifikasi & Terbitkan",
-		description: "Konfirmasi Prajuru & pengumuman",
+		label: "4. Kebersihan",
+		description: "Atur tugas kebersihan",
 	},
+	{ id: 4, label: "5. Tim", description: "Kelola petugas dan undangan" },
+	{ id: 5, label: "6. Tinjau", description: "Periksa dan konfirmasi data" },
+	{ id: 6, label: "7. Terbitkan", description: "Umumkan kegiatan" },
 ];
 
 const wizardFormSchema = z
@@ -248,7 +228,7 @@ interface DraftFormState {
 
 function loadSessionDraft(): DraftFormState {
 	const fallbackOrg =
-		getSavedOrganizationId() || DESA_ADAT_FALLBACK_OPTIONS[0].value;
+		getSavedOrganizationId() || "";
 	const defaults: DraftFormState = {
 		organizationId: fallbackOrg,
 		title: "",
@@ -307,7 +287,7 @@ export function EventWizardPage() {
 				label: `${org.name}${org.village ? ` (${org.village})` : ""}`,
 			}));
 		}
-		return DESA_ADAT_FALLBACK_OPTIONS;
+		return [];
 	}, [myOrganizations]);
 
 	const [activeStep, setActiveStep] = useState(0);
@@ -330,6 +310,7 @@ export function EventWizardPage() {
 		description: string;
 	} | null>(null);
 	const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+	const [publishSimulation, setPublishSimulation] = useState(true);
 	const [aiConsentGranted, setAiConsentGranted] = useState(true);
 
 	// Inline quick-create Desa Adat state
@@ -345,7 +326,8 @@ export function EventWizardPage() {
 	);
 	const [newSegmentName, setNewSegmentName] = useState("");
 	const [newSegmentArea, setNewSegmentArea] = useState("Bali");
-	const [humanVerifiedRoad, setHumanVerifiedRoad] = useState(true);
+	const [humanVerifiedRoad, setHumanVerifiedRoad] = useState(false);
+	const roadAttempt = useRef<{ fingerprint: string; id: string } | null>(null);
 
 	const [selectedRoadSegmentId, setSelectedRoadSegmentId] =
 		useState<string>("");
@@ -360,20 +342,6 @@ export function EventWizardPage() {
 	const [cancelReason, setCancelReason] = useState(
 		"Jadwal upacara disesuaikan kembali oleh Prajuru Desa Adat.",
 	);
-
-	// Sync organizationId when user's real organizations load
-	const [syncedOrgsCount, setSyncedOrgsCount] = useState(0);
-	if (isCreateMode && myOrganizations.length > 0 && syncedOrgsCount !== myOrganizations.length) {
-		setSyncedOrgsCount(myOrganizations.length);
-		const exists = myOrganizations.some(
-			(o) => o.id === formState.organizationId,
-		);
-		if (!exists) {
-			const firstId = myOrganizations[0].id;
-			setFormState((prev) => ({ ...prev, organizationId: firstId }));
-			saveOrganizationId(firstId);
-		}
-	}
 
 	// 1. Fetch Event Detail if already created
 	const eventDetailQuery = useQuery({
@@ -398,6 +366,13 @@ export function EventWizardPage() {
 		enabled: Boolean(routeEventId && isRealUuidEvent),
 		retry: false,
 	});
+
+	const activeOrg = useMemo(() => {
+		const orgs = myOrgsQuery.data?.organizations ?? [];
+		return orgs.find((o) => o.id === formState.organizationId);
+	}, [myOrgsQuery.data, formState.organizationId]);
+
+	const hasOperationalAuthority = Boolean(activeOrg?.hasOperationalAuthority);
 
 	const loadedEvent = eventDetailQuery.data?.event;
 
@@ -682,8 +657,7 @@ export function EventWizardPage() {
 			);
 			const endsIso = toWitaIsoTimestamp(impactToWita || formState.endsAtWita);
 
-			// 1. Create human-verified road segment in PostGIS catalog
-			const segRes = await createRoadSegment({
+			const payload = {
 				displayName: newSegmentName.trim(),
 				coverageArea:
 					newSegmentArea.trim() ||
@@ -691,11 +665,6 @@ export function EventWizardPage() {
 					"Kawasan Desa Adat",
 				coordinates: draftCoordinates,
 				humanVerified: true,
-			});
-
-			// 2. Attach road segment to event
-			await createRoadImpact(targetEventId, {
-				roadSegmentId: segRes.segment.id,
 				impactType: selectedImpactType,
 				plannedFrom: startsIso,
 				plannedTo: endsIso,
@@ -703,11 +672,14 @@ export function EventWizardPage() {
 					impactDiversionNote.trim() ||
 					formState.trafficImpactDescription.trim() ||
 					null,
-			});
-
-			return { eventId: targetEventId, segmentName: segRes.segment.displayName };
+			};
+			const fingerprint = JSON.stringify([targetEventId, payload]);
+			if (roadAttempt.current?.fingerprint !== fingerprint) roadAttempt.current = { fingerprint, id: crypto.randomUUID() };
+			await createSimulationRoadImpact(targetEventId, { ...payload, mutationId: roadAttempt.current.id });
+			return { eventId: targetEventId, segmentName: payload.displayName };
 		},
 		onSuccess: async (res) => {
+			roadAttempt.current = null;
 			setDraftCoordinates([]);
 			setNewSegmentName("");
 			setImpactDiversionNote("");
@@ -723,7 +695,7 @@ export function EventWizardPage() {
 			setBannerFeedback({
 				status: "success",
 				title: "Ruas Jalan Baru Berhasil Digambar & Ditautkan",
-				description: `Ruas "${res.segmentName}" telah tersimpan sebagai geometri terverifikasi dan ditautkan ke kegiatan ini.`,
+				description: `Ruas "${res.segmentName}" tersimpan sebagai garis latihan untuk kegiatan ini.`,
 			});
 		},
 		onError: (err) => {
@@ -853,7 +825,9 @@ export function EventWizardPage() {
 			if (!routeEventId || !isRealUuidEvent) {
 				throw new Error("Simpan draf terlebih dahulu.");
 			}
-			return publishVerifiedEvent(routeEventId);
+			return publishVerifiedEvent(routeEventId, {
+				isSimulation: publishSimulation,
+			});
 		},
 		onSuccess: async (result) => {
 			setIsPublishDialogOpen(false);
@@ -863,8 +837,12 @@ export function EventWizardPage() {
 			});
 			setBannerFeedback({
 				status: "success",
-				title: "Resmi Diumumkan ke Warga",
-				description: `Diterbitkan pada ${formatWitaDateTime(result.event.publishedAt)}. Publik kini dapat melihat pengumuman dan peta ruas jalan.`,
+
+				title: result.event.isSimulation !== false ? "Simulasi Diumumkan" : "Diumumkan",
+				description: result.event.isSimulation === false
+					? `Diterbitkan pada ${formatWitaDateTime(result.event.publishedAt)}. Publik dapat melihat status penutupan di portal desa.`
+					: `Diterbitkan dalam mode simulasi pada ${formatWitaDateTime(result.event.publishedAt)}. Publik dapat melihat tanda simulasi di portal desa.`,
+
 			});
 		},
 		onError: (err) => {
@@ -947,6 +925,11 @@ export function EventWizardPage() {
 	const previewEndsIso = toWitaIsoTimestamp(formState.endsAtWita);
 	const attachedRoadImpacts = eventRoadImpactsQuery.data?.roadImpacts ?? [];
 	const catalogSegments = roadSegmentsQuery.data?.segments ?? [];
+	const catalogError =
+		roadSegmentsQuery.error instanceof ApiClientError
+			? roadSegmentsQuery.error
+			: null;
+	const catalogRequestId = catalogError?.requestId ?? "";
 
 	return (
 		<div>
@@ -1077,6 +1060,12 @@ export function EventWizardPage() {
 					{activeStep === 0 ? (
 						<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 							<div className="xl:col-span-7 teduh-workspace-card space-y-5">
+								<label>Mode publikasi
+									<select value={publishSimulation ? "simulation" : "operational"} onChange={(e) => setPublishSimulation(e.target.value !== "operational")}>
+										<option value="simulation">Simulasi</option>
+										{hasOperationalAuthority ? <option value="operational">Operasional</option> : null}
+									</select>
+								</label>
 								<div className="border-b border-[#F0EFEA] pb-3">
 									<h2 className="teduh-workspace-card-title">
 										1. Pilih Desa Adat &amp; Unggah Surat Edaran
@@ -1677,12 +1666,56 @@ export function EventWizardPage() {
 											}`}
 										>
 											<MapPinned className="w-3.5 h-3.5" />
-											<span>Pilih dari Katalog ({catalogSegments.length})</span>
+											<span>
+												Pilih dari Katalog
+												{roadSegmentsQuery.isLoading
+													? " (Memuat...)"
+													: roadSegmentsQuery.isError
+														? " (Gagal memuat)"
+														: ` (${catalogSegments.length})`}
+											</span>
 										</button>
 									</div>
 								</div>
 
 								{/* Dedicated Dashboard Road Map Component */}
+								{roadSegmentsQuery.isLoading ? (
+									<div
+										role="status"
+										className="rounded-xl border border-stone-200 bg-[#FBFBFA] p-3 text-xs text-stone-600 flex items-center gap-2"
+									>
+										<span className="w-2 h-2 rounded-full bg-stone-400 animate-pulse" />
+										<span>Memuat katalog ruas jalan terverifikasi...</span>
+									</div>
+								) : roadSegmentsQuery.isError ? (
+									<div
+										role="alert"
+										className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800 flex items-center justify-between gap-3 flex-wrap"
+									>
+										<div>
+											<p className="font-semibold">
+												Katalog ruas jalan tidak dapat dimuat (503 / galat server).
+											</p>
+											{catalogRequestId ? (
+												<p className="text-[11px] text-red-600 mt-0.5">
+													ID Permintaan: {catalogRequestId}
+												</p>
+											) : null}
+										</div>
+										<button
+											type="button"
+											onClick={() => void roadSegmentsQuery.refetch()}
+											className="px-3 py-1.5 rounded-lg bg-red-600 text-white font-semibold hover:bg-red-700 transition-colors shrink-0"
+										>
+											Coba Lagi
+										</button>
+									</div>
+								) : catalogSegments.length === 0 ? (
+									<div className="rounded-xl border border-stone-200 bg-[#FBFBFA] p-3 text-xs text-stone-600">
+										Katalog ruas jalan kosong untuk wilayah ini. Gunakan mode gambar untuk
+										menandai garis simulasi.
+									</div>
+								) : null}
 								<DashboardRoadMapInput
 									mode={roadInputMode}
 									height={420}
@@ -1692,6 +1725,10 @@ export function EventWizardPage() {
 									selectedCatalogSegmentId={selectedRoadSegmentId}
 									onSelectCatalogSegment={(id) => setSelectedRoadSegmentId(id)}
 									attachedRoadImpacts={attachedRoadImpacts}
+									isCatalogLoading={roadSegmentsQuery.isLoading}
+									isCatalogError={roadSegmentsQuery.isError}
+									catalogRequestId={catalogRequestId}
+									onRetryCatalog={() => void roadSegmentsQuery.refetch()}
 								/>
 
 								{/* Input Form Based on Active Map Mode */}
@@ -1811,8 +1848,7 @@ export function EventWizardPage() {
 													className="rounded border-[#C5C3BC] text-[#264D3B]"
 												/>
 												<span>
-													Saya memverifikasi bahwa garis ruas jalan ini sesuai
-													dengan lokasi penutupan lapangan (Human-Verified).
+															Saya memeriksa garis ini untuk latihan. Garis ini bukan ruas operasional terverifikasi.
 												</span>
 											</label>
 
@@ -1838,6 +1874,21 @@ export function EventWizardPage() {
 									</div>
 								) : (
 									<div className="rounded-2xl border border-[#E5E3DC] bg-[#FBFBFA] p-4 space-y-4">
+										{roadSegmentsQuery.isError ? (
+											<div
+												role="alert"
+												className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800 flex items-center justify-between gap-2 flex-wrap"
+											>
+												<span>Katalog ruas jalan tidak dapat dimuat.</span>
+												<button
+													type="button"
+													onClick={() => void roadSegmentsQuery.refetch()}
+													className="px-2.5 py-1 rounded bg-red-600 text-white font-semibold text-[11px] hover:bg-red-700 shrink-0"
+												>
+													Coba Lagi
+												</button>
+											</div>
+										) : null}
 										<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 											<div className="md:col-span-2">
 												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
@@ -1851,7 +1902,11 @@ export function EventWizardPage() {
 													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
 												>
 													<option value="">
-														-- Pilih ruas jalan atau klik garis biru di peta --
+														{roadSegmentsQuery.isLoading
+															? "-- Memuat katalog ruas jalan... --"
+															: roadSegmentsQuery.isError
+																? "-- Gagal memuat katalog (klik coba lagi) --"
+																: "-- Pilih ruas jalan atau klik garis biru di peta --"}
 													</option>
 													{catalogSegments.map((seg) => (
 														<option key={seg.id} value={seg.id}>
@@ -1924,20 +1979,20 @@ export function EventWizardPage() {
 										{attachedRoadImpacts.map((imp) => (
 											<div
 												key={imp.id}
-												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 max-w-full overflow-hidden"
 											>
-												<div className="space-y-1">
+												<div className="space-y-1 min-w-0 flex-1 break-words">
 													<div className="flex flex-wrap items-center gap-2">
-														<span className="text-xs font-bold text-[#181817]">
+														<span className="text-xs font-bold text-[#181817] break-words">
 															{imp.segment?.displayName ||
 																imp.displayName ||
 																"Ruas Jalan Terverifikasi"}
 														</span>
-														<span className="px-2 py-0.5 rounded-md bg-[#EBF3EE] text-[#264D3B] text-[11px] font-semibold">
+														<span className="px-2 py-0.5 rounded-md bg-[#EBF3EE] text-[#264D3B] text-[11px] font-semibold shrink-0">
 															{getImpactTypeLabel(imp.impactType)}
 														</span>
 													</div>
-													<p className="text-xs text-[#585854]">
+													<p className="text-xs text-[#585854] break-words">
 														{imp.segment?.coverageArea ||
 															imp.coverageArea ||
 															"Bali"}{" "}
@@ -1951,28 +2006,32 @@ export function EventWizardPage() {
 													</p>
 												</div>
 
-												<div className="flex items-center gap-2 shrink-0">
-													<RoadStatusBadge
-														status={
-															imp.operationalStatus?.effectiveStatus ===
-															"unconfirmed"
-																? "unknown"
-																: (imp.operationalStatus?.effectiveStatus ??
-																	"unknown")
-														}
-														expiresAt={imp.operationalStatus?.expiresAt}
-													/>
-													<button
-														type="button"
-														disabled={removeRoadImpactMutation.isPending}
-														onClick={() =>
-															void removeRoadImpactMutation.mutateAsync(imp.id)
-														}
-														className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-[11px] font-semibold text-[#9E2A2B] hover:bg-[#fae5e5]"
-													>
-														<Trash2 className="w-3 h-3" />
-														<span>Hapus</span>
-													</button>
+												<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-[#E5E3DC]">
+													<div className="max-w-full overflow-hidden">
+														<RoadStatusBadge
+															status={
+																imp.operationalStatus?.effectiveStatus ===
+																"unconfirmed"
+																	? "unknown"
+																	: (imp.operationalStatus?.effectiveStatus ??
+																		"unknown")
+															}
+															expiresAt={imp.operationalStatus?.expiresAt}
+														/>
+													</div>
+													<div className="flex justify-end shrink-0">
+														<button
+															type="button"
+															disabled={removeRoadImpactMutation.isPending}
+															onClick={() =>
+																void removeRoadImpactMutation.mutateAsync(imp.id)
+															}
+															className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-[11px] font-semibold text-[#9E2A2B] hover:bg-[#fae5e5]"
+														>
+															<Trash2 className="w-3 h-3" />
+															<span>Hapus</span>
+														</button>
+													</div>
 												</div>
 											</div>
 										))}
@@ -1980,11 +2039,14 @@ export function EventWizardPage() {
 								) : (
 									<EmptyStateCard
 										title={SYSTEM_STATE_MESSAGES.noMatchingRoad.title}
+
 										description={
 											SYSTEM_STATE_MESSAGES.noMatchingRoad.description
+
 										}
 									/>
 								)}
+
 
 								<div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#F0EFEA]">
 									<button
@@ -2011,7 +2073,15 @@ export function EventWizardPage() {
 					{/* ================================================================= */}
 					{/* STEP 3: VERIFIKASI PRAJURU & TERBITKAN KE WARGA                   */}
 					{/* ================================================================= */}
-					{activeStep === 3 ? (
+					{activeStep === 3 || activeStep === 4 ? (
+						<section className="teduh-workspace-card space-y-4">
+							<h2>{activeStep === 3 ? "Tugas kebersihan" : "Tim dan undangan"}</h2>
+							<p>{activeStep === 3 ? "Atur tugas kebersihan pada halaman kegiatan yang tersimpan." : "Kelola penugasan dan undangan pada halaman kegiatan yang tersimpan."}</p>
+							{routeEventId && isRealUuidEvent ? <Link to={`/dashboard/events/${routeEventId}/${activeStep === 3 ? "cleanup" : "team"}`}>Buka pengaturan {activeStep === 3 ? "kebersihan" : "tim"}</Link> : <p>Simpan draf untuk membuka pengaturan ini.</p>}
+							<button type="button" onClick={() => setActiveStep(activeStep + 1)}>Lanjut</button>
+						</section>
+					) : null}
+					{activeStep === 5 || activeStep === 6 ? (
 						<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 							<div className="xl:col-span-7 teduh-workspace-card space-y-5">
 								<div className="border-b border-[#F0EFEA] pb-3">
@@ -2057,7 +2127,7 @@ export function EventWizardPage() {
 											Ruas Jalan Terdampak
 										</span>
 										<p className="font-bold text-[#264D3B]">
-											{attachedRoadImpacts.length} ruas jalan terverifikasi
+																	{attachedRoadImpacts.length} ruas jalan tercatat
 										</p>
 									</div>
 									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
@@ -2117,6 +2187,7 @@ export function EventWizardPage() {
 										<button
 											type="button"
 											disabled={
+
 												!isRealUuidEvent ||
 												(!loadedEvent?.verifiedAt &&
 													currentLifecycleStatus !== "review")
@@ -2171,6 +2242,7 @@ export function EventWizardPage() {
 								) : null}
 							</div>
 
+
 							{/* Right Column: Operational Modules Shortcuts */}
 							<div className="xl:col-span-5 space-y-4">
 								<div className="teduh-workspace-card space-y-4">
@@ -2183,6 +2255,7 @@ export function EventWizardPage() {
 										status jalan saat acara berlangsung, dan mencatat kebersihan
 										pasca-acara.
 									</p>
+
 
 									{isRealUuidEvent && routeEventId ? (
 										<div className="space-y-2.5">
@@ -2204,6 +2277,7 @@ export function EventWizardPage() {
 												</div>
 												<ArrowRight className="w-4 h-4 text-[#585854]" />
 											</Link>
+
 
 											<Link
 												to={`/field/events/${routeEventId}`}
@@ -2261,13 +2335,14 @@ export function EventWizardPage() {
 				onAction={() => {
 					void publishMutation.mutateAsync();
 				}}
-				title="Umumkan Kegiatan ke Warga?"
-				description="Jadwal upacara dan peta ruas jalan terdampak akan resmi diterbitkan ke portal publik desa. Pastikan seluruh data telah sesuai dengan surat edaran."
-				actionLabel="Ya, Terbitkan"
+				title={!publishSimulation ? "Umumkan Kegiatan ke Warga?" : "Publikasikan Simulasi?"}
+				description={!publishSimulation ? "Pastikan seluruh data telah sesuai dengan surat edaran." : "Kegiatan ini akan ditampilkan sebagai SIMULASI."}
+				actionLabel={!publishSimulation ? "Ya, Terbitkan" : "Ya, Terbitkan Simulasi"}
 				cancelLabel="Batal"
 				actionVariant="primary"
 				isActionLoading={publishMutation.isPending}
 			/>
 		</div>
+
 	);
 }

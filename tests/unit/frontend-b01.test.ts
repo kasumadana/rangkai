@@ -13,6 +13,7 @@ import {
 import {
 	createEventDraft,
 	fromIsoToWitaInput,
+	mapPublicEventToCeremonyProfile,
 	normalizeEventCategory,
 	normalizeRoadImpactType,
 	toWitaIsoTimestamp,
@@ -29,6 +30,14 @@ import {
 } from "../../src/react-app/lib/wita";
 
 describe("B01 Frontend Foundation & Rangkai UI Domain Helpers", () => {
+	it("keeps missing or stale status unconfirmed and treats missing mode as simulation", () => {
+		const event = { id: "event", title: "Latihan", slug: "latihan", category: null, description: null, venueName: null, startsAt: null, endsAt: null, status: "active", publishedAt: null, organizationName: "Organisasi", village: "Bali", district: "Bali" };
+		const profile = mapPublicEventToCeremonyProfile(event, [{ id: "impact", roadSegmentId: "road", plannedFrom: null, plannedTo: null, impactType: "closure", diversionNote: null, operationalStatus: { effectiveStatus: "unconfirmed", rawStatus: "open", isStale: true, observedAt: null, expiresAt: null } }]);
+		expect(profile.primaryStatus).toBe("unknown");
+		expect(profile.roadSegments[0].status).toBe("unknown");
+		expect(profile.isSimulation).toBe(true);
+		expect(mapPublicEventToCeremonyProfile(event).primaryStatus).toBe("unknown");
+	});
 	it("formats UTC timestamps into Asia/Makassar (WITA, UTC+8) accurately", () => {
 		expect(WITA_TIMEZONE).toBe("Asia/Makassar");
 		expect(WITA_LABEL).toBe("WITA");

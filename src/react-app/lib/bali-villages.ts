@@ -65,6 +65,7 @@ export interface VillageCommunityNotice {
 
 export interface BaliVillageCeremonyProfile {
 	id: string;
+	isSimulation?: boolean;
 	slug: string;
 	desaAdatName: string;
 	kabupaten: string;

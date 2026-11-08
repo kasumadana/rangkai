@@ -22,6 +22,7 @@ interface NormalizedLandingEvent {
 	regency: string;
 	roadName: string;
 	status: "open" | "intermittent" | "closed" | "unknown";
+	isSimulation: boolean;
 	timeLabel: string;
 }
 
@@ -45,7 +46,7 @@ export function LandingPage() {
 		() =>
 			liveEvents.map((evt, idx) =>
 				mapPublicEventToCeremonyProfile(evt, [], idx),
-			),
+			).filter((profile) => profile.roadSegments.some((road) => road.coordinates.length > 0)),
 		[liveEvents],
 	);
 
@@ -60,11 +61,8 @@ export function LandingPage() {
 					village: e.organizationName || e.village || "Desa Adat",
 					regency: e.district || "Bali",
 					roadName: e.venueName || e.village || "Koridor Wilayah Desa",
-					status: (e.status === "active"
-						? "closed"
-						: e.status === "completed"
-							? "open"
-							: "intermittent") as "open" | "intermittent" | "closed" | "unknown",
+					status: "unknown" as const,
+					isSimulation: e.isSimulation !== false,
 					timeLabel: `${schedule.dateLabel} • ${schedule.windowWita}`,
 				};
 			}),
@@ -213,7 +211,7 @@ export function LandingPage() {
 											</span>
 										</div>
 
-										<h3 className="schedule-card-title">{evt.title}</h3>
+										<h3 className="schedule-card-title">{evt.isSimulation ? "SIMULASI — " : ""}{evt.title}</h3>
 
 										<div className="schedule-card-meta">
 											<div className="schedule-meta-row">

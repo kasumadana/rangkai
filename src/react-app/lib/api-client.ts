@@ -135,6 +135,7 @@ export interface EventRecord {
 	endsAt: string;
 	permitReference?: string | null;
 	status: EventLifecycleStatus;
+	isSimulation?: boolean;
 	publicSlug?: string | null;
 	publishedAt?: string | null;
 	verifiedBy?: string | null;

@@ -183,6 +183,16 @@ export interface CreateRoadSegmentPayload {
 	humanVerified: boolean;
 }
 
+export async function createSimulationRoadImpact(eventId: string, payload: CreateRoadSegmentPayload & {
+	mutationId: string;
+	plannedFrom: string | null;
+	plannedTo: string | null;
+	impactType: RoadImpactType;
+	diversionNote: string | null;
+}): Promise<{ roadImpact: { id: string }; duplicate: boolean }> {
+	return apiFetch(`/api/events/${encodeURIComponent(eventId)}/simulation-road-impacts`, { method: "POST", body: payload });
+}
+
 export interface RoadImpactRecord {
 	id: string;
 	eventId?: string;
@@ -326,6 +336,7 @@ export interface PublicEventItem {
 	organizationName: string;
 	village: string;
 	district: string;
+	isSimulation?: boolean;
 	organization?: {
 		name: string;
 		village: string;
@@ -510,12 +521,13 @@ export async function transitionEventToReview(
 
 export async function publishVerifiedEvent(
 	eventId: string,
+	options?: { isSimulation?: boolean },
 ): Promise<{ event: EventRecord }> {
 	return apiFetch<{ event: EventRecord }>(
 		`/api/events/${encodeURIComponent(eventId)}/publish`,
 		{
 			method: "POST",
-			body: {},
+			body: options?.isSimulation !== undefined ? { isSimulation: options.isSimulation } : {},
 		},
 	);
 }
@@ -822,6 +834,10 @@ export async function submitCleanupTask(
 	);
 }
 
+export async function startCleanupTask(taskId: string): Promise<{ cleanupTask: CleanupTaskRecord }> {
+	return apiFetch(`/api/cleanup-tasks/${encodeURIComponent(taskId)}`, { method: "PATCH", body: { status: "in_progress" } });
+}
+
 export async function verifyCleanupTask(
 	taskId: string,
 	notes?: string,
@@ -893,6 +909,7 @@ interface RawPublicEventPayload {
 	organizationName?: string;
 	village?: string;
 	district?: string;
+	isSimulation?: boolean;
 	organization?: {
 		name?: string;
 		village?: string;
@@ -933,6 +950,7 @@ function normalizePublicEvent(raw: RawPublicEventPayload): PublicEventItem & {
 		organizationName: orgName,
 		village,
 		district,
+		isSimulation: raw.isSimulation !== false,
 		organization: {
 			name: orgName,
 			village,
@@ -1004,11 +1022,13 @@ export async function fetchPublicEventDetail(slug: string): Promise<{
 
 export async function fetchPublicEventRoads(slug: string): Promise<{
 	eventSlug: string;
+	isSimulation: boolean;
 	roads: RoadImpactRecord[];
 	roadImpacts: RoadImpactRecord[];
 }> {
 	const res = await apiFetch<{
 		eventSlug: string;
+		isSimulation?: boolean;
 		roads?: RoadImpactRecord[];
 		roadImpacts?: RoadImpactRecord[];
 	}>(`/api/public/events/${encodeURIComponent(slug)}/roads`, {
@@ -1017,6 +1037,7 @@ export async function fetchPublicEventRoads(slug: string): Promise<{
 	const list = res.roads ?? res.roadImpacts ?? [];
 	return {
 		eventSlug: res.eventSlug || slug,
+		isSimulation: res.isSimulation !== false,
 		roads: list,
 		roadImpacts: list,
 	};
@@ -1024,6 +1045,7 @@ export async function fetchPublicEventRoads(slug: string): Promise<{
 
 export interface PublicCleanupSummaryData {
 	eventSlug: string;
+	isSimulation: boolean;
 	summary: {
 		totalTasks: number;
 		verifiedTasks: number;
@@ -1062,6 +1084,7 @@ export async function fetchPublicCleanupSummary(
 ): Promise<PublicCleanupSummaryData> {
 	const res = await apiFetch<{
 		eventSlug?: string;
+		isSimulation?: boolean;
 		summary?: PublicCleanupSummaryData["summary"];
 		wasteTotals?: PublicCleanupSummaryData["wasteTotals"];
 		byCategory?: PublicCleanupSummaryData["byCategory"];
@@ -1126,6 +1149,7 @@ export async function fetchPublicCleanupSummary(
 
 	return {
 		eventSlug: res.eventSlug || slug,
+		isSimulation: res.isSimulation !== false,
 		summary,
 		wasteTotals,
 		byCategory,
@@ -1280,15 +1304,8 @@ export function mapPublicEventToCeremonyProfile(
 		const effStatus = r.operationalStatus?.effectiveStatus;
 		const normalizedImpact = normalizeRoadImpactType(r.impactType);
 		let roadStatus: OperationalRoadStatus = "unknown";
-		if (effStatus === "closed" || effStatus === "intermittent" || effStatus === "open") {
+		if (!r.operationalStatus?.isStale && (effStatus === "closed" || effStatus === "intermittent" || effStatus === "open")) {
 			roadStatus = effStatus;
-		} else if (!effStatus) {
-			if (normalizedImpact === "closure") roadStatus = "closed";
-			else if (normalizedImpact === "intermittent" || normalizedImpact === "narrowing") {
-				roadStatus = "intermittent";
-			} else if (normalizedImpact === "procession") {
-				roadStatus = "open";
-			}
 		}
 
 		const schedule = formatWitaEventSchedule(r.plannedFrom, r.plannedTo);
@@ -1312,7 +1329,7 @@ export function mapPublicEventToCeremonyProfile(
 			pecalangPost: orgName,
 			lastConfirmedLabel: r.operationalStatus?.observedAt
 				? formatWitaEventSchedule(r.operationalStatus.observedAt, null).dateLabel
-				: "Terverifikasi Panitia",
+				: "Belum dikonfirmasi",
 			guidanceNote:
 				r.diversionNote ||
 				evt.trafficImpactDescription ||
@@ -1340,21 +1357,18 @@ export function mapPublicEventToCeremonyProfile(
 	const schedule = formatWitaEventSchedule(evt.startsAt, evt.endsAt);
 
 	// Derive primary operational status from road segments or event lifecycle status
-	let primaryStatus: OperationalRoadStatus = "intermittent";
+	let primaryStatus: OperationalRoadStatus = "unknown";
 	if (mappedRoads.some((r) => r.status === "closed")) {
 		primaryStatus = "closed";
 	} else if (mappedRoads.some((r) => r.status === "intermittent")) {
 		primaryStatus = "intermittent";
 	} else if (mappedRoads.some((r) => r.status === "open")) {
 		primaryStatus = "open";
-	} else if (evt.status === "active") {
-		primaryStatus = "closed";
-	} else if (evt.status === "completed") {
-		primaryStatus = "open";
 	}
 
 	return {
 		id: evt.id,
+		isSimulation: evt.isSimulation !== false,
 		slug: evt.slug || evt.publicSlug || evt.id,
 		desaAdatName: orgName,
 		kabupaten: matchedDistrict?.kabupaten || districtName,
@@ -1465,4 +1479,59 @@ export function buildDistrictFeaturesFromEvents(
 			};
 		}),
 	};
+}
+
+// ---------------------------------------------------------------------------
+// 7. Field Officer Operational APIs (Ticket 04)
+// ---------------------------------------------------------------------------
+
+export interface FieldTaskItem {
+	assignmentId: string | null;
+	eventId: string;
+	eventTitle: string;
+	eventStatus: string;
+	venueName: string | null;
+	startsAt: string | null;
+	endsAt: string | null;
+	isSimulation: boolean;
+	organizationId: string;
+	organizationName: string;
+	canUpdateTraffic: boolean;
+	canUpdateCleanup: boolean;
+	isOrganizerOversight: boolean;
+}
+
+export interface FieldEventDetailResponse {
+	event: EventRecord & { isSimulation: boolean };
+	permissions: {
+		canUpdateTraffic: boolean;
+		canUpdateCleanup: boolean;
+		isOrganizer: boolean;
+	};
+	roadImpacts: Array<{
+		id: string;
+		displayName: string;
+		plannedFrom: string | null;
+		plannedTo: string | null;
+		coverageArea: string | null;
+		status: "open" | "intermittent" | "closed" | "unknown";
+		expiresAt: string | null;
+		isStale: boolean;
+	}>;
+	cleanupTasks: CleanupTaskRecord[];
+}
+
+export async function fetchFieldTasks(): Promise<{ assignments: FieldTaskItem[] }> {
+	return apiFetch<{ assignments: FieldTaskItem[] }>("/api/field/tasks", {
+		method: "GET",
+	});
+}
+
+export async function fetchFieldEventDetail(
+	eventId: string,
+): Promise<FieldEventDetailResponse> {
+	return apiFetch<FieldEventDetailResponse>(
+		`/api/field/events/${encodeURIComponent(eventId)}`,
+		{ method: "GET" },
+	);
 }

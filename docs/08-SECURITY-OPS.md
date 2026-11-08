@@ -155,6 +155,7 @@ Never commit .env files or production credentials.
 ## 10. Operational Safeguards
 
 - Rate-limit authentication and AI extraction.
+- Authentication's application limiter uses fixed windows local to each Worker isolate (10 sign-ups or 20 sign-ins per minute per observed address). Counters are not shared across isolates or locations and reset on isolate eviction; they do not provide a distributed guarantee. It uses `CF-Connecting-IP` only on traffic entering through Cloudflare, with a shared unknown-address bucket when absent. Direct or untrusted proxy access must not be treated as a trusted source of this header. Configure and verify an appropriate Cloudflare edge rate-limiting rule for production protection.
 - Limit uploads per user.
 - Apply AI request timeouts.
 - Avoid duplicate extraction requests.
@@ -211,3 +212,14 @@ Track:
 - Unauthorized mutation attempts.
 
 Do not log sensitive document contents.
+
+## 15. Production Release & Deployment Runbook
+
+Detailed fail-closed operational runbook for production release gating, migration backup/recovery, and candidate commit binding is maintained in `docs/RELEASE-RUNBOOK.md`.
+
+Key gates:
+- Target Cloudflare Worker `rangkai-production` and R2 `rangkai-documents-prod`.
+- Target Neon production database with PostGIS (separate from development branch).
+- Strict release validator checking candidate commit pin and pre-deployment backups.
+- No production migrations or deployments without external approval and verified pilot authority.
+

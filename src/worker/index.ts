@@ -3,6 +3,7 @@ import { getDb } from "../db/index";
 import { AuthConfigError, createAuth } from "./auth";
 import { formatErrorEnvelope } from "./lib/errors";
 import { csrfAndOriginProtection } from "./middleware/csrf";
+import { rateLimit } from "./middleware/rate-limit";
 import { assignmentsRouter } from "./routes/assignments";
 import { cleanupRouter } from "./routes/cleanup";
 import { documentsRouter } from "./routes/documents";
@@ -12,6 +13,7 @@ import { publicRouter } from "./routes/public";
 import { roadsRouter } from "./routes/roads";
 import { organizationsRouter } from "./routes/organizations";
 import { invitationsRouter } from "./routes/invitations";
+import { fieldRouter } from "./routes/field";
 import type { AppVariables, Env } from "./types";
 
 declare global {
@@ -106,6 +108,16 @@ app.use("/api/*", async (c, next) => {
 // Enforce CSRF and Origin protection on cookie-authenticated / mutating application routes
 app.use("/api/*", csrfAndOriginProtection);
 
+// Rate limiting on sensitive auth endpoints (Ticket 01, SRS FR-070–072)
+app.use(
+	"/api/auth/sign-up/*",
+	rateLimit({ windowMs: 60 * 1000, max: 10, keyPrefix: "auth-signup" }),
+);
+app.use(
+	"/api/auth/sign-in/*",
+	rateLimit({ windowMs: 60 * 1000, max: 20, keyPrefix: "auth-signin" }),
+);
+
 // Better Auth owns /api/auth/* (docs/06-API-CONTRACT.md §3)
 app.all("/api/auth/*", async (c) => {
 	const auth = c.get("auth");
@@ -114,6 +126,8 @@ app.all("/api/auth/*", async (c) => {
 
 // Mount Public API routes (anonymous read-only access)
 app.route("/api/public", publicRouter);
+// Invitation inspection is anonymous; its mutation and listing handlers enforce authentication.
+app.route("/api/invitations", invitationsRouter);
 
 // Mount A05-A08 routers
 app.route("/api/events", documentsRouter);
@@ -125,7 +139,7 @@ app.route("/api", cleanupRouter);
 app.route("/api/events", assignmentsRouter);
 app.route("/api/events", eventsRouter);
 app.route("/api/organizations", organizationsRouter);
-app.route("/api/invitations", invitationsRouter);
+app.route("/api/field", fieldRouter);
 
 // 404 handler for API routes
 app.notFound((c) => {

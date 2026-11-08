@@ -12,7 +12,7 @@ import {
 	UserPlus,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { z } from "zod";
 import { ApiClientError } from "../lib/api-client";
 import { useAuthSession, useSignUpMutation } from "../lib/auth";
@@ -40,11 +40,20 @@ const registerSchema = z
 
 export function RegisterPage() {
 	const pageRef = useRef<HTMLDivElement>(null);
+	const location = useLocation();
 	const { data: sessionData } = useAuthSession();
 	const signUpMutation = useSignUpMutation();
 
+	const stateObj = location.state as { email?: string; from?: string } | null;
+	const initialEmail = stateObj?.email || "";
+	const rawReturn = stateObj?.from;
+	const safeReturnUrl =
+		rawReturn && rawReturn.startsWith("/") && !rawReturn.startsWith("//")
+			? rawReturn
+			: null;
+
 	const [name, setName] = useState("");
-	const [email, setEmail] = useState("");
+	const [email, setEmail] = useState(initialEmail);
 	const [password, setPassword] = useState("");
 	const [confirmPassword, setConfirmPassword] = useState("");
 	const [showPassword, setShowPassword] = useState(false);
@@ -177,6 +186,38 @@ export function RegisterPage() {
 							</div>
 
 							<div style={{ display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
+								{safeReturnUrl ? (
+									<div
+										style={{
+											background: "#ECF3EF",
+											border: "1px solid rgba(38, 77, 59, 0.3)",
+											borderRadius: 16,
+											padding: "16px 18px",
+											display: "flex",
+											flexDirection: "column",
+											gap: 8,
+										}}
+									>
+										<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+											<CheckCircle2 size={18} color="#264D3B" />
+											<span style={{ fontSize: 14, fontWeight: 600, color: "#181B20" }}>
+												Kembali ke Tautan Undangan Anda
+											</span>
+										</div>
+										<p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: "#545B67" }}>
+											Akun Anda telah aktif dan siap menerima hak penugasan resmi.
+										</p>
+										<Link
+											to={safeReturnUrl}
+											className="teduh-pill-action"
+											style={{ alignSelf: "flex-start", marginTop: 4, padding: "8px 16px", fontSize: 13 }}
+										>
+											<span>Buka Undangan & Konfirmasi Hak Akses</span>
+											<ArrowRight size={14} />
+										</Link>
+									</div>
+								) : null}
+
 								{/* Option 1: Buat Organisasi Baru */}
 								<div
 									style={{
