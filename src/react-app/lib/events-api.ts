@@ -361,14 +361,24 @@ export function getSavedOrganizationId(): string {
 }
 
 export function saveOrganizationId(organizationId: string): void {
-	const storage = (
-		globalThis as unknown as {
-			localStorage?: { setItem: (k: string, v: string) => void };
-		}
-	).localStorage;
-	if (!storage || !organizationId) return;
+	const globalScope = globalThis as unknown as {
+		localStorage?: { setItem: (k: string, v: string) => void };
+		dispatchEvent?: (event: unknown) => boolean;
+		CustomEvent?: typeof CustomEvent;
+	};
+	if (!globalScope.localStorage || !organizationId) return;
 	try {
-		storage.setItem(ACTIVE_ORG_STORAGE_KEY, organizationId.trim());
+		globalScope.localStorage.setItem(ACTIVE_ORG_STORAGE_KEY, organizationId.trim());
+		if (
+			typeof globalScope.dispatchEvent === "function" &&
+			typeof CustomEvent !== "undefined"
+		) {
+			globalScope.dispatchEvent(
+				new CustomEvent("rangkai:organization-changed", {
+					detail: organizationId.trim(),
+				}),
+			);
+		}
 	} catch {
 		// Ignore storage quota errors
 	}

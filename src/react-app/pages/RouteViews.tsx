@@ -72,6 +72,7 @@ import {
 
 	formatWitaEventSchedule,
 	fromIsoToWitaInput,
+	getSavedOrganizationId,
 	mapPublicEventToCeremonyProfile,
 	normalizeEventCategory,
 	publishVerifiedEvent,
@@ -88,7 +89,12 @@ import {
 	uploadEventDocument,
 	verifyCleanupTask,
 } from "../lib/events-api";
-import { createInvitation, fetchInvitations, revokeInvitation } from "../lib/auth";
+import {
+	createInvitation,
+	fetchInvitations,
+	revokeInvitation,
+	useMyOrganizationsQuery,
+} from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
 import type { OperationalRoadStatus } from "../lib/road-status";
 import { formatWitaDateTime, formatWitaRange } from "../lib/wita";
@@ -1004,6 +1010,13 @@ export function WorkflowRouteShellPage({
 		refetchInterval: 15_000,
 	});
 
+	const myOrgsQuery = useMyOrganizationsQuery();
+	const myOrganizations = useMemo(
+		() => myOrgsQuery.data?.organizations ?? [],
+		[myOrgsQuery.data?.organizations],
+	);
+	const rawEvent = eventDetailQuery.data?.event;
+
 	const fieldDetailQuery = useQuery({
 		queryKey: ["field", "events", eventId],
 		queryFn: () => fetchFieldEventDetail(eventId),
@@ -1011,7 +1024,15 @@ export function WorkflowRouteShellPage({
 		retry: false,
 	});
 	const permissions = fieldDetailQuery.data?.permissions;
-	const isOrganizer = permissions?.isOrganizer ?? false;
+	const isOrganizer = useMemo(() => {
+		if (permissions?.isOrganizer) return true;
+		if (rawEvent?.organizationId) {
+			return myOrganizations.some(
+				(o) => o.id === rawEvent.organizationId && o.role === "organizer",
+			);
+		}
+		return myOrganizations.some((o) => o.role === "organizer");
+	}, [permissions?.isOrganizer, rawEvent, myOrganizations]);
 	const canTraffic = permissions?.canUpdateTraffic ?? false;
 	const canCleanup = permissions?.canUpdateCleanup ?? false;
 
@@ -1036,7 +1057,6 @@ export function WorkflowRouteShellPage({
 		retry: false,
 	});
 
-	const rawEvent = eventDetailQuery.data?.event;
 	const attachedRoadImpacts = useMemo(
 		() => eventRoadImpactsQuery.data?.roadImpacts ?? [],
 		[eventRoadImpactsQuery.data?.roadImpacts],
@@ -1126,15 +1146,27 @@ export function WorkflowRouteShellPage({
 	const [inviteCanCleanup, setInviteCanCleanup] = useState(true);
 	const [inviteEmail, setInviteEmail] = useState("");
 	const [inviteRole, setInviteRole] = useState<"officer" | "organizer">("officer");
+	const invitationsOrgId = rawEvent?.organizationId || getSavedOrganizationId();
 	const invitationsQuery = useQuery({
-		queryKey: ["invitations", rawEvent?.organizationId],
-		queryFn: () => fetchInvitations(rawEvent?.organizationId),
-		enabled: Boolean(rawEvent?.organizationId && pathname.endsWith("/team") && isOrganizer),
+		queryKey: ["invitations", invitationsOrgId],
+		queryFn: () => fetchInvitations(invitationsOrgId),
+		enabled: Boolean(invitationsOrgId && pathname.endsWith("/team") && isOrganizer),
 	});
 	const revokeInvitationMutation = useMutation({
 		mutationFn: revokeInvitation,
-		onSuccess: () => { void invitationsQuery.refetch(); setStatusFeedback({ type: "success", message: "Undangan dibatalkan." }); },
-		onError: () => setStatusFeedback({ type: "error", message: "Undangan gagal dibatalkan. Coba lagi." }),
+		onSuccess: () => {
+			void invitationsQuery.refetch();
+			void queryClient.invalidateQueries({ queryKey: ["invitations"] });
+			setStatusFeedback({
+				type: "success",
+				message: "Tautan undangan berhasil dibatalkan.",
+			});
+		},
+		onError: () =>
+			setStatusFeedback({
+				type: "error",
+				message: "Undangan gagal dibatalkan. Coba lagi.",
+			}),
 	});
 	const [generatedInviteUrl, setGeneratedInviteUrl] = useState<string | null>(
 		null,
@@ -1620,11 +1652,15 @@ export function WorkflowRouteShellPage({
 			if (!isRealUuidEvent) {
 				throw new Error("Simpan kegiatan terlebih dahulu.");
 			}
+			const orgId = rawEvent?.organizationId || getSavedOrganizationId();
+			if (!orgId) {
+				throw new Error("Organisasi belum dipilih.");
+			}
 			return createInvitation({
-				organizationId: rawEvent?.organizationId,
+				organizationId: orgId,
 				eventId: inviteRole === "officer" ? eventId : undefined,
 				role: inviteRole,
-				recipientEmail: inviteEmail,
+				recipientEmail: inviteEmail.trim(),
 				canUpdateTraffic: inviteRole === "officer" && inviteCanTraffic,
 				canUpdateCleanup: inviteRole === "officer" && inviteCanCleanup,
 			});
@@ -1632,6 +1668,7 @@ export function WorkflowRouteShellPage({
 		onSuccess: (res) => {
 			setGeneratedInviteUrl(res.invitation.inviteUrl ?? null);
 			void invitationsQuery.refetch();
+			void queryClient.invalidateQueries({ queryKey: ["invitations"] });
 			setStatusFeedback({
 				type: "success",
 				message:
@@ -1716,14 +1753,17 @@ export function WorkflowRouteShellPage({
 			}
 			return "field";
 		}
-		return "field";
+		return "wizard";
 	}, [pathname, isOrganizer, canTraffic, canCleanup]);
 
 	function handleTabChange(nextTab: string) {
 		setStatusFeedback(null);
 		switch (nextTab) {
+			case "wizard":
+				navigate(`/dashboard/events/${eventId}`);
+				break;
 			case "document":
-				navigate(`/dashboard/events/${eventId}/review`);
+				navigate(`/dashboard/events/${eventId}/document`);
 				break;
 			case "roads":
 				navigate(`/dashboard/events/${eventId}/roads`);
@@ -1732,7 +1772,11 @@ export function WorkflowRouteShellPage({
 				navigate(`/field/events/${eventId}`);
 				break;
 			case "cleanup":
-				navigate(pathname.startsWith("/field") ? `/field/events/${eventId}/cleanup` : `/dashboard/events/${eventId}/cleanup`);
+				navigate(
+					pathname.startsWith("/field")
+						? `/field/events/${eventId}/cleanup`
+						: `/dashboard/events/${eventId}/cleanup`,
+				);
 				break;
 			case "team":
 				navigate(`/dashboard/events/${eventId}/team`);
@@ -1767,12 +1811,18 @@ export function WorkflowRouteShellPage({
 	}, [attachedRoadImpacts, segmentStatuses]);
 
 	const WORKFLOW_TABS = [
-		{ id: "document", label: "Surat Edaran & Review", icon: FileText },
-		{ id: "roads", label: "Peta & Ruas Jalan", icon: MapPinned },
-		{ id: "field", label: "Pos Pecalang (Live)", icon: Radio },
-		{ id: "cleanup", label: "Kebersihan & Sampah", icon: ClipboardCheck },
-		{ id: "team", label: "Tim & Undangan Petugas", icon: Users },
-	].filter((tab) => !pathname.startsWith("/field") || (tab.id === "field" && (isOrganizer || canTraffic)) || (tab.id === "cleanup" && (isOrganizer || canCleanup)));
+		{ id: "wizard", label: "Ringkasan / Detail", icon: FileText },
+		{ id: "document", label: "Dokumen & AI", icon: FileText },
+		{ id: "roads", label: "Dampak Jalan", icon: MapPinned },
+		{ id: "cleanup", label: "Kebersihan", icon: ClipboardCheck },
+		{ id: "team", label: "Tim & Petugas", icon: Users },
+		{ id: "field", label: "Pos Pecalang", icon: Radio },
+	].filter((tab) =>
+		!pathname.startsWith("/field")
+			? tab.id !== "field" || isOrganizer || canTraffic
+			: (tab.id === "field" && (isOrganizer || canTraffic)) ||
+				(tab.id === "cleanup" && (isOrganizer || canCleanup)),
+	);
 
 	return (
 		<div>
@@ -1817,7 +1867,7 @@ export function WorkflowRouteShellPage({
 			</div>
 
 			{/* Workflow Module Navigation Tabs */}
-			<div className="flex flex-wrap items-center gap-2 mb-6">
+			<div className="flex flex-wrap items-center gap-2 mb-6" role="tablist" aria-label="Modul Alur Kerja">
 				{WORKFLOW_TABS.map((tab) => {
 					const IconComp = tab.icon;
 					const active = currentTabValue === tab.id;
@@ -1825,6 +1875,8 @@ export function WorkflowRouteShellPage({
 						<button
 							key={tab.id}
 							type="button"
+							role="tab"
+							aria-selected={active}
 							onClick={() => handleTabChange(tab.id)}
 							className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
 								active
@@ -2873,61 +2925,91 @@ export function WorkflowRouteShellPage({
 						<div className="teduh-workspace-card space-y-4">
 							<div className="space-y-1">
 								<h2 className="teduh-workspace-card-title">
-									Buat Tautan Undangan Petugas Lapangan
+									Buat Tautan Undangan Petugas
 								</h2>
-								<p className="text-xs text-[#585854] mt-1">
+								<p className="text-xs text-[#585854] mt-1 leading-relaxed">
 									Hasilkan tautan undangan resmi sekali pakai (berlaku 7 hari)
-									untuk dibagikan kepada Pecalang atau petugas kebersihan via
-									WhatsApp.
+									untuk dibagikan kepada Pecalang atau petugas kebersihan via WhatsApp.
 								</p>
 							</div>
 
-							<div className="space-y-2.5 text-xs">
-								<label>Email penerima
-									<input type="email" required value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} className="w-full rounded-xl border border-[#E5E3DC] px-3 py-2" />
-								</label>
-								<label>Peran
-									<select value={inviteRole} onChange={(e) => setInviteRole(e.target.value === "organizer" ? "organizer" : "officer")}>
-										<option value="officer">Petugas lapangan</option>
-										<option value="organizer">Penyelenggara</option>
-									</select>
-								</label>
-								<label className="flex items-center gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer">
+							<div className="space-y-3">
+								<div>
+									<label className="block text-xs font-semibold text-[#181817] mb-1">
+										Email Penerima Undangan *
+									</label>
 									<input
-										type="checkbox"
-										disabled={inviteRole === "organizer"}
-										checked={inviteCanTraffic}
-										onChange={(e) => setInviteCanTraffic(e.target.checked)}
-										className="rounded border-[#C5C3BC] text-[#264D3B]"
+										type="email"
+										required
+										value={inviteEmail}
+										onChange={(e) => setInviteEmail(e.target.value)}
+										placeholder="contoh: pecalang.desa@rangkai.local"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
 									/>
-									<div>
-										<span className="font-bold text-[#181817] block">
-											Wewenang Lalu Lintas (`traffic:update`)
-										</span>
-										<span className="text-[#585854]">
-											Dapat memperbarui status ruas jalan (Pos Pecalang)
-										</span>
-									</div>
-								</label>
+								</div>
 
-								<label className="flex items-center gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer">
-									<input
-										type="checkbox"
-										disabled={inviteRole === "organizer"}
-										checked={inviteCanCleanup}
-										onChange={(e) => setInviteCanCleanup(e.target.checked)}
-										className="rounded border-[#C5C3BC] text-[#264D3B]"
-									/>
-									<div>
-										<span className="font-bold text-[#181817] block">
-											Wewenang Kebersihan (`cleanup:update`)
+								<div>
+									<label className="block text-xs font-semibold text-[#181817] mb-1">
+										Peran Undangan
+									</label>
+									<select
+										value={inviteRole}
+										onChange={(e) =>
+											setInviteRole(
+												e.target.value === "organizer" ? "organizer" : "officer",
+											)
+										}
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+									>
+										<option value="officer">
+											Petugas Lapangan (Pecalang / Kebersihan)
+										</option>
+										<option value="organizer">
+											Panitia Penyelenggara (Organizer)
+										</option>
+									</select>
+								</div>
+
+								{inviteRole === "officer" ? (
+									<div className="space-y-2 pt-1">
+										<span className="block text-xs font-semibold text-[#181817]">
+											Hak Akses Penugasan Lapangan:
 										</span>
-										<span className="text-[#585854]">
-											Dapat mengunggah foto bukti &amp; menyerahkan tugas
-											kebersihan
-										</span>
+										<label className="flex items-start gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer hover:bg-[#F3F1EC] transition-colors">
+											<input
+												type="checkbox"
+												checked={inviteCanTraffic}
+												onChange={(e) => setInviteCanTraffic(e.target.checked)}
+												className="mt-0.5 rounded border-[#C5C3BC] text-[#264D3B]"
+											/>
+											<div className="text-xs">
+												<span className="font-bold text-[#181817] block">
+													Wewenang Status Jalan (traffic:update)
+												</span>
+												<span className="text-[#585854]">
+													Dapat memperbarui status buka/tutup ruas jalan di Pos Pecalang
+												</span>
+											</div>
+										</label>
+
+										<label className="flex items-start gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer hover:bg-[#F3F1EC] transition-colors">
+											<input
+												type="checkbox"
+												checked={inviteCanCleanup}
+												onChange={(e) => setInviteCanCleanup(e.target.checked)}
+												className="mt-0.5 rounded border-[#C5C3BC] text-[#264D3B]"
+											/>
+											<div className="text-xs">
+												<span className="font-bold text-[#181817] block">
+													Wewenang Kebersihan (cleanup:update)
+												</span>
+												<span className="text-[#585854]">
+													Dapat mengunggah foto bukti &amp; menyerahkan tugas kebersihan
+												</span>
+											</div>
+										</label>
 									</div>
-								</label>
+								) : null}
 							</div>
 
 							<button
@@ -2935,15 +3017,17 @@ export function WorkflowRouteShellPage({
 								disabled={
 									generateInviteMutation.isPending ||
 									!inviteEmail.trim() ||
-									(inviteRole === "officer" && !inviteCanTraffic && !inviteCanCleanup)
+									(inviteRole === "officer" &&
+										!inviteCanTraffic &&
+										!inviteCanCleanup)
 								}
 								onClick={() => void generateInviteMutation.mutateAsync()}
-								className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+								className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 transition-colors shadow-xs"
 							>
-								<UserPlus className="w-3.5 h-3.5" />
+								<UserPlus className="w-4 h-4" />
 								<span>
 									{generateInviteMutation.isPending
-										? "Membuat Tautan..."
+										? "Membuat Tautan Undangan..."
 										: "Buat Tautan Undangan Petugas"}
 								</span>
 							</button>
@@ -2965,12 +3049,19 @@ export function WorkflowRouteShellPage({
 											onClick={async () => {
 												try {
 													await navigator.clipboard.writeText(generatedInviteUrl);
-													setStatusFeedback({ type: "info", message: "Tautan berhasil disalin." });
+													setStatusFeedback({
+														type: "info",
+														message: "Tautan undangan berhasil disalin ke papan klip.",
+													});
 												} catch {
-													setStatusFeedback({ type: "error", message: "Gagal menyalin. Pilih dan salin tautan secara manual." });
+													setStatusFeedback({
+														type: "error",
+														message:
+															"Gagal menyalin tautan otomatis. Pilih dan salin teks tautan secara manual.",
+													});
 												}
 											}}
-											className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#264D3B] text-white text-xs font-semibold"
+											className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] shrink-0"
 										>
 											<Copy className="w-3.5 h-3.5" />
 											<span>Salin</span>
@@ -2979,9 +3070,86 @@ export function WorkflowRouteShellPage({
 								</div>
 							) : null}
 						</div>
-						<div className="teduh-workspace-card">
-							<h3>Undangan organisasi</h3>
-							{invitationsQuery.isLoading ? <p>Memuat undangan...</p> : invitationsQuery.isError ? <p role="alert">Undangan tidak dapat dimuat. <button type="button" onClick={() => void invitationsQuery.refetch()}>Coba lagi</button></p> : invitationsQuery.data?.invitations.length ? <ul>{invitationsQuery.data.invitations.map((invitation) => <li key={invitation.id}>{invitation.recipientEmail} · {invitation.status} {invitation.status === "pending" ? <button type="button" disabled={revokeInvitationMutation.isPending} onClick={() => revokeInvitationMutation.mutate(invitation.id)}>Batalkan</button> : null}</li>)}</ul> : <p>Belum ada undangan.</p>}
+
+						{/* Daftar Undangan Organisasi */}
+						<div className="teduh-workspace-card space-y-3">
+							<div className="flex items-center justify-between">
+								<h3 className="teduh-workspace-card-title">
+									Daftar Tautan Undangan Organisasi
+								</h3>
+								<span className="px-2 py-0.5 rounded-md bg-[#F3F1EC] text-xs font-semibold text-[#585854]">
+									{invitationsQuery.data?.invitations?.length ?? 0}
+								</span>
+							</div>
+
+							{invitationsQuery.isLoading ? (
+								<LoadingStateBlock label="Memuat daftar undangan..." rows={2} />
+							) : invitationsQuery.isError ? (
+								<div className="p-3 rounded-xl border border-[#E8B4B4] bg-[#FDF2F2] text-xs text-[#9E2A2B] space-y-2">
+									<p>Undangan tidak dapat dimuat.</p>
+									<button
+										type="button"
+										onClick={() => void invitationsQuery.refetch()}
+										className="font-bold underline"
+									>
+										Coba lagi
+									</button>
+								</div>
+							) : !invitationsQuery.data?.invitations?.length ? (
+								<p className="text-xs text-[#585854] py-2">
+									Belum ada tautan undangan yang dibuat.
+								</p>
+							) : (
+								<div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+									{invitationsQuery.data.invitations.map((invitation) => (
+										<div
+											key={invitation.id}
+											className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-center justify-between gap-2"
+										>
+											<div className="min-w-0 space-y-1">
+												<p className="text-xs font-semibold text-[#181817] truncate">
+													{invitation.recipientEmail}
+												</p>
+												<div className="flex flex-wrap items-center gap-1 text-[11px]">
+													<span className="px-1.5 py-0.5 rounded bg-[#EBF3EE] text-[#264D3B] font-medium">
+														{invitation.role === "organizer"
+															? "Panitia"
+															: "Petugas Lapangan"}
+													</span>
+													<span
+														className={`px-1.5 py-0.5 rounded font-medium ${
+															invitation.status === "pending"
+																? "bg-[#FEF3C7] text-[#92400E]"
+																: invitation.status === "accepted"
+																	? "bg-[#D1FAE5] text-[#065F46]"
+																	: "bg-[#F3F4F6] text-[#6B7280]"
+														}`}
+													>
+														{invitation.status === "pending"
+															? "Menunggu"
+															: invitation.status === "accepted"
+																? "Diterima"
+																: "Dibatalkan"}
+													</span>
+												</div>
+											</div>
+
+											{invitation.status === "pending" ? (
+												<button
+													type="button"
+													disabled={revokeInvitationMutation.isPending}
+													onClick={() =>
+														revokeInvitationMutation.mutate(invitation.id)
+													}
+													className="px-2.5 py-1.5 rounded-lg border border-[#E8B4B4] bg-white text-[11px] font-semibold text-[#9E2A2B] hover:bg-[#FDF2F2] transition-colors shrink-0"
+												>
+													Batalkan
+												</button>
+											) : null}
+										</div>
+									))}
+								</div>
+							)}
 						</div>
 
 

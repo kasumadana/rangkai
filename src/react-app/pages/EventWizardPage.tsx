@@ -989,6 +989,44 @@ export function EventWizardPage() {
 				</div>
 			</div>
 
+			{/* Contextual Event Navigation Tabs for Saved Events */}
+			{isRealUuidEvent && routeEventId ? (
+				<div className="flex flex-wrap items-center gap-2 mb-6">
+					<span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#264D3B] text-white shadow-xs cursor-default">
+						<FileText className="w-3.5 h-3.5" />
+						<span>Ringkasan / Wizard</span>
+					</span>
+					<Link
+						to={`/dashboard/events/${routeEventId}/document`}
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+					>
+						<FileText className="w-3.5 h-3.5" />
+						<span>Dokumen &amp; AI</span>
+					</Link>
+					<Link
+						to={`/dashboard/events/${routeEventId}/roads`}
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+					>
+						<MapPinned className="w-3.5 h-3.5" />
+						<span>Dampak Jalan</span>
+					</Link>
+					<Link
+						to={`/dashboard/events/${routeEventId}/cleanup`}
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+					>
+						<ClipboardCheck className="w-3.5 h-3.5" />
+						<span>Kebersihan</span>
+					</Link>
+					<Link
+						to={`/dashboard/events/${routeEventId}/team`}
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+					>
+						<Users className="w-3.5 h-3.5" />
+						<span>Tim &amp; Undangan</span>
+					</Link>
+				</div>
+			) : null}
+
 			{/* Step Navigation Bar */}
 			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
 				{WIZARD_STEPS.map((step) => {
