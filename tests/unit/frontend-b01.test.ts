@@ -13,8 +13,11 @@ import {
 import {
 	createEventDraft,
 	fromIsoToWitaInput,
+	normalizeEventCategory,
+	normalizeRoadImpactType,
 	toWitaIsoTimestamp,
 } from "../../src/react-app/lib/events-api";
+import { createRoadSegmentSchema } from "../../src/worker/validators/roads";
 import { getRoadStatusPresentation } from "../../src/react-app/lib/road-status";
 import {
 	WITA_LABEL,
@@ -240,5 +243,41 @@ describe("B01 Frontend Foundation & Rangkai UI Domain Helpers", () => {
 			expect(village.pecalangPosts.length).toBeGreaterThanOrEqual(2);
 			expect(village.communityNotices.length).toBeGreaterThanOrEqual(2);
 		}
+	});
+
+	it("validates human-verified map-drawn road segments and normalizes enums for backend contracts", () => {
+		const validSegment = createRoadSegmentSchema.safeParse({
+			displayName: "Jl. Raya Ubud — Depan Puri Saren",
+			coverageArea: "Ubud, Gianyar",
+			coordinates: [
+				[115.2612, -8.5068],
+				[115.2645, -8.5069],
+			],
+			humanVerified: true,
+		});
+		expect(validSegment.success).toBe(true);
+
+		// Rejects identical coordinates (zero-length line)
+		const zeroLength = createRoadSegmentSchema.safeParse({
+			displayName: "Jl. Raya Ubud",
+			coverageArea: "Ubud",
+			coordinates: [
+				[115.2612, -8.5068],
+				[115.2612, -8.5068],
+			],
+			humanVerified: true,
+		});
+		expect(zeroLength.success).toBe(false);
+
+		// Normalizes legacy and canonical road impact types & event categories
+		expect(normalizeRoadImpactType("full_closure")).toBe("closure");
+		expect(normalizeRoadImpactType("partial_closure")).toBe("intermittent");
+		expect(normalizeRoadImpactType("one_way")).toBe("narrowing");
+		expect(normalizeRoadImpactType("speed_reduction")).toBe("procession");
+		expect(normalizeRoadImpactType("closure")).toBe("closure");
+
+		expect(normalizeEventCategory("prosesi")).toBe("procession");
+		expect(normalizeEventCategory("ngaben")).toBe("upacara_adat");
+		expect(normalizeEventCategory("melasti")).toBe("melasti");
 	});
 });

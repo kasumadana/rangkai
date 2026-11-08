@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import {
 	events,
@@ -13,6 +13,7 @@ import type { AppVariables, Env } from "../types";
 import { uuidParamSchema } from "../validators/events";
 import {
 	createRoadImpactSchema,
+	createRoadSegmentSchema,
 	createRoadStatusSchema,
 	roadSegmentsQuerySchema,
 	updateRoadImpactSchema,
@@ -164,6 +165,128 @@ roadsRouter.get("/road-segments", async (c) => {
 			})),
 		},
 		200,
+	);
+});
+
+/**
+ * POST /api/road-segments
+ * Register and human-verify a road segment in the catalog (Organizer only).
+ */
+roadsRouter.post("/road-segments", async (c) => {
+	const currentUser = c.get("user")!;
+	const db = c.get("db");
+
+	const orgMemberships = await db
+		.select({
+			organizationId: memberships.organizationId,
+			role: memberships.role,
+		})
+		.from(memberships)
+		.where(
+			and(
+				eq(memberships.userId, currentUser.id),
+				eq(memberships.role, "organizer"),
+			),
+		)
+		.limit(1);
+
+	if (orgMemberships.length === 0) {
+		return sendError(
+			c,
+			"FORBIDDEN",
+			"Organizer permission required to register and verify road segments.",
+			403,
+		);
+	}
+
+	let body: unknown;
+	try {
+		body = await c.req.json();
+	} catch {
+		return sendError(c, "BAD_REQUEST", "Invalid JSON payload.", 400);
+	}
+
+	const parseResult = createRoadSegmentSchema.safeParse(body);
+	if (!parseResult.success) {
+		return sendError(
+			c,
+			"VALIDATION_FAILED",
+			parseResult.error.issues[0]?.message || "Invalid road segment data.",
+			422,
+		);
+	}
+
+	const data = parseResult.data;
+	const segmentId = crypto.randomUUID();
+	const auditId = crypto.randomUUID();
+	const now = new Date();
+	const ewkt = `SRID=4326;LINESTRING(${data.coordinates
+		.map(([lng, lat]) => `${Number(lng)} ${Number(lat)}`)
+		.join(", ")})`;
+
+	const query = sql`
+		WITH inserted AS (
+			INSERT INTO road_segments (
+				id, display_name, geom, coverage_area, verified_by, verified_at, created_at
+			)
+			VALUES (
+				${segmentId}::uuid,
+				${data.displayName}::text,
+				ST_GeomFromEWKT(${ewkt}::text),
+				${data.coverageArea}::text,
+				${currentUser.id}::text,
+				${now}::timestamptz,
+				${now}::timestamptz
+			)
+			RETURNING
+				id,
+				display_name AS "displayName",
+				coverage_area AS "coverageArea",
+				verified_by AS "verifiedBy",
+				verified_at AS "verifiedAt",
+				ST_AsGeoJSON(geom)::json AS geometry
+		),
+		logged AS (
+			INSERT INTO audit_logs (
+				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
+			)
+			SELECT
+				${auditId}::uuid,
+				${orgMemberships[0].organizationId}::uuid,
+				NULL,
+				${currentUser.id}::text,
+				'road_segment.verified',
+				'road_segment',
+				i.id,
+				NULL,
+				jsonb_build_object(
+					'displayName', i."displayName",
+					'coverageArea', i."coverageArea",
+					'verifiedBy', i."verifiedBy"
+				),
+				${now}::timestamptz
+			FROM inserted i
+			RETURNING id
+		)
+		SELECT * FROM inserted;
+	`;
+
+	const res = await db.execute(query);
+	const r = res.rows[0] as Record<string, unknown>;
+
+	return c.json(
+		{
+			segment: {
+				id: r.id as string,
+				displayName: r.displayName as string,
+				coverageArea: r.coverageArea as string,
+				verified: true,
+				verifiedBy: r.verifiedBy as string,
+				verifiedAt: new Date(r.verifiedAt as string).toISOString(),
+				geometry: r.geometry,
+			},
+		},
+		201,
 	);
 });
 
@@ -426,21 +549,57 @@ roadsRouter.get("/events/:eventId/road-impacts", async (c) => {
 	`;
 
 	const res = await db.execute(query);
+	const impactRows = res.rows as Array<Record<string, unknown>>;
+
+	const latestByImpactId = new Map<
+		string,
+		{
+			status: string;
+			observedAt: Date | string;
+			expiresAt: Date | string;
+			updatedBy: string;
+			createdAt?: Date | string;
+		}
+	>();
+
+	if (impactRows.length > 0) {
+		const impactIds = impactRows.map((r) => r.id as string);
+		const statusUpdates = await db
+			.select()
+			.from(roadStatusUpdates)
+			.where(inArray(roadStatusUpdates.roadImpactId, impactIds))
+			.orderBy(
+				desc(roadStatusUpdates.observedAt),
+				desc(roadStatusUpdates.createdAt),
+			);
+
+		for (const u of statusUpdates) {
+			if (!latestByImpactId.has(u.roadImpactId)) {
+				latestByImpactId.set(u.roadImpactId, u);
+			}
+		}
+	}
+
 	return c.json(
 		{
-			roadImpacts: res.rows.map((r: Record<string, unknown>) => ({
-				id: r.id as string,
-				eventId: r.eventId as string,
-				roadSegmentId: r.roadSegmentId as string,
-				displayName: r.displayName as string,
-				coverageArea: r.coverageArea as string,
-				plannedFrom: new Date(r.plannedFrom as string).toISOString(),
-				plannedTo: new Date(r.plannedTo as string).toISOString(),
-				impactType: r.impactType as string,
-				diversionNote: (r.diversionNote ?? null) as string | null,
-				geometry: r.geometry,
-				createdAt: new Date(r.createdAt as string).toISOString(),
-			})),
+			roadImpacts: impactRows.map((r: Record<string, unknown>) => {
+				const impactId = r.id as string;
+				const latest = latestByImpactId.get(impactId) ?? null;
+				return {
+					id: impactId,
+					eventId: r.eventId as string,
+					roadSegmentId: r.roadSegmentId as string,
+					displayName: r.displayName as string,
+					coverageArea: r.coverageArea as string,
+					plannedFrom: new Date(r.plannedFrom as string).toISOString(),
+					plannedTo: new Date(r.plannedTo as string).toISOString(),
+					impactType: r.impactType as string,
+					diversionNote: (r.diversionNote ?? null) as string | null,
+					geometry: r.geometry,
+					operationalStatus: evaluateEffectiveRoadStatus(latest),
+					createdAt: new Date(r.createdAt as string).toISOString(),
+				};
+			}),
 		},
 		200,
 	);

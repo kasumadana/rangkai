@@ -1,30 +1,6 @@
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
-import { Button } from "@astryxdesign/core/Button";
-import { Divider } from "@astryxdesign/core/Divider";
-import { FileInput } from "@astryxdesign/core/FileInput";
-import { FormLayout } from "@astryxdesign/core/FormLayout";
-import { Grid } from "@astryxdesign/core/Grid";
-import { Heading } from "@astryxdesign/core/Heading";
-import { Icon } from "@astryxdesign/core/Icon";
-import {
-	Layout,
-	LayoutContent,
-	LayoutHeader,
-	LayoutPanel,
-} from "@astryxdesign/core/Layout";
-import { List, ListItem } from "@astryxdesign/core/List";
-import {
-	SegmentedControl,
-	SegmentedControlItem,
-} from "@astryxdesign/core/SegmentedControl";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
-import { Tab, TabList } from "@astryxdesign/core/TabList";
-import { Token } from "@astryxdesign/core/Token";
-import { Text } from "@astryxdesign/core/Text";
-import { TextArea } from "@astryxdesign/core/TextArea";
-import { TextInput } from "@astryxdesign/core/TextInput";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
 	ArrowLeft,
@@ -33,59 +9,84 @@ import {
 	CheckCircle2,
 	ClipboardCheck,
 	Clock,
+	Copy,
 	FileText,
 	Info,
+	Link2,
 	MapPin,
 	MapPinned,
 	Milestone,
 	Navigation,
 	PackageCheck,
+	PenTool,
+	Plus,
 	Radio,
 	Save,
 	Scale,
 	Search,
+	Send,
 	ShieldCheck,
+	Sparkles,
+	Trash2,
+	Upload,
+	UserPlus,
 	Users,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
-import { RouterLinkBridge } from "../components/layout/AppShellLayout";
 import {
 	CleanupStatusBadge,
+	type CleanupTaskStatus,
 	EmptyStateCard,
+	EventLifecycleBadge,
 	LoadingStateBlock,
 	RoadStatusBadge,
-	type CleanupTaskStatus,
 } from "../components/rangkai";
-import { LandingPage } from "./LandingPage";
-import { TeduhSpatialMapConsole } from "../features/map/TeduhSpatialMapConsole";
 import { BaliMapTilerView } from "../features/map/BaliMapTilerView";
-import {
-	type BaliVillageCeremonyProfile,
-} from "../lib/bali-villages";
+import { DashboardRoadMapInput } from "../features/map/DashboardRoadMapInput";
+import { TeduhSpatialMapConsole } from "../features/map/TeduhSpatialMapConsole";
+import { type BaliVillageCeremonyProfile } from "../lib/bali-villages";
 import { OPERATIONAL_DISCLAIMERS } from "../lib/constants";
 import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
 import {
+	assignEventOfficer,
 	createCleanupTask,
+	createEventInvitation,
+	createRoadImpact,
+	createRoadSegment,
 	createWasteRecord,
+	deleteRoadImpact,
 	fetchCleanupTasks,
+	fetchEventAssignments,
 	fetchEventDetail,
 	fetchEventRoadImpacts,
 	fetchPublicCleanupSummary,
 	fetchPublicEventDetail,
 	fetchPublicEventRoads,
 	fetchPublicEvents,
+	fetchRoadSegments,
 	formatWitaEventSchedule,
+	fromIsoToWitaInput,
 	mapPublicEventToCeremonyProfile,
+	normalizeEventCategory,
+	publishVerifiedEvent,
 	reopenCleanupTask,
+	revokeEventAssignment,
+	saveExtractedFields,
 	submitCleanupTask,
+	toWitaIsoTimestamp,
+	transitionEventToReview,
+	triggerDocumentExtraction,
 	updateRoadStatus,
 	uploadCleanupEvidence,
+	uploadEventDocument,
 	verifyCleanupTask,
 } from "../lib/events-api";
 import { useGsapPageReveal } from "../lib/gsap-motion";
 import type { OperationalRoadStatus } from "../lib/road-status";
-import { formatWitaRange } from "../lib/wita";
+import { formatWitaDateTime, formatWitaRange } from "../lib/wita";
+import { IMPACT_TYPE_OPTIONS, getImpactTypeLabel } from "./EventWizardPage";
+import { LandingPage } from "./LandingPage";
 
 /**
  * 1. PUBLIC HOME PAGE (`/`)
@@ -939,7 +940,7 @@ export function PublicEventDetailPage({
 
 /**
  * 6. WORKFLOW & FIELD OFFICER WORKSPACE (`/dashboard/events/:id/*` & `/field/events/:id`)
- * Uses Astryx `Layout` + `LayoutHeader` (with docked `TabList`) + focused workspace region.
+ * Cohesive Teduh Workspace Shell with dedicated dashboard map input & full backend connectivity.
  */
 interface WorkflowRouteShellProps {
 	stepCode: string;
@@ -948,10 +949,14 @@ interface WorkflowRouteShellProps {
 	requirementRef: string;
 }
 
-export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
+export function WorkflowRouteShellPage({
+	title,
+	subtitle,
+}: WorkflowRouteShellProps) {
 	const { id: eventId = "" } = useParams<{ id: string }>();
 	const { pathname } = useLocation();
 	const navigate = useNavigate();
+	const queryClient = useQueryClient();
 
 	const isRealUuidEvent = useMemo(
 		() =>
@@ -962,7 +967,7 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 	);
 
 	const eventDetailQuery = useQuery({
-		queryKey: ["event", eventId],
+		queryKey: ["events", "detail", eventId],
 		queryFn: () => fetchEventDetail(eventId),
 		enabled: Boolean(eventId && isRealUuidEvent),
 		retry: false,
@@ -973,95 +978,351 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 		queryFn: () => fetchEventRoadImpacts(eventId),
 		enabled: Boolean(eventId && isRealUuidEvent),
 		retry: false,
-		refetchInterval: 15 * 1000,
+		refetchInterval: 15_000,
 	});
 
-	const activeVillage = useMemo(() => {
-		const rawEvent = eventDetailQuery.data?.event;
-		const roads = eventRoadImpactsQuery.data?.roadImpacts ?? [];
-		if (rawEvent) {
-			return mapPublicEventToCeremonyProfile(
-				{
-					id: rawEvent.id,
-					title: rawEvent.title,
-					slug: rawEvent.publicSlug || rawEvent.id,
-					category: rawEvent.category ?? null,
-					description: rawEvent.description ?? null,
-					venueName: rawEvent.venueName,
-					startsAt: rawEvent.startsAt,
-					endsAt: rawEvent.endsAt,
-					status: rawEvent.status,
-					publishedAt: rawEvent.publishedAt ?? null,
-					organizationName: "Desa Adat",
-					village: "Bali",
-					district: "Bali",
-				},
-				roads,
-			);
-		}
-		return mapPublicEventToCeremonyProfile(
-			{
-				id: eventId || "event-detail",
-				title: "Detail Kegiatan Desa",
-				slug: eventId || "event",
-				category: null,
-				description: null,
-				venueName: null,
-				startsAt: null,
-				endsAt: null,
-				status: "draft",
-				publishedAt: null,
-				organizationName: "Desa Adat",
-				village: "Bali",
-				district: "Bali",
-			},
-			roads,
-		);
-	}, [eventDetailQuery.data?.event, eventRoadImpactsQuery.data?.roadImpacts, eventId]);
+	const roadSegmentsCatalogQuery = useQuery({
+		queryKey: ["road-segments", "catalog"],
+		queryFn: () => fetchRoadSegments(),
+		enabled: Boolean(pathname.endsWith("/roads")),
+		staleTime: 60_000,
+	});
 
-	const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
-	const [extractionChecked, setExtractionChecked] = useState(true);
-	const [extractedTitle, setExtractedTitle] = useState(
-		activeVillage.ceremonyTitle,
+	const cleanupTasksQuery = useQuery({
+		queryKey: ["cleanup-tasks", eventId],
+		queryFn: () => fetchCleanupTasks(eventId),
+		enabled: Boolean(isRealUuidEvent && pathname.endsWith("/cleanup")),
+		retry: false,
+	});
+
+	const assignmentsQuery = useQuery({
+		queryKey: ["events", eventId, "assignments"],
+		queryFn: () => fetchEventAssignments(eventId),
+		enabled: Boolean(isRealUuidEvent && pathname.endsWith("/team")),
+		retry: false,
+	});
+
+	const rawEvent = eventDetailQuery.data?.event;
+	const attachedRoadImpacts = useMemo(
+		() => eventRoadImpactsQuery.data?.roadImpacts ?? [],
+		[eventRoadImpactsQuery.data?.roadImpacts],
 	);
-	const [extractedVenue, setExtractedVenue] = useState(
-		`${activeVillage.sacredCenterName} → ${activeVillage.destinationName}`,
-	);
-	const [extractedWindow, setExtractedWindow] = useState(
-		`${activeVillage.scheduleDateLabel} (${activeVillage.scheduleWindowWita})`,
+	const catalogSegments = roadSegmentsCatalogQuery.data?.segments ?? [];
+
+	// Document & Review Tab State
+	const [docTitle, setDocTitle] = useState("");
+	const [docVenue, setDocVenue] = useState("");
+	const [docStartsWita, setDocStartsWita] = useState("");
+	const [docEndsWita, setDocEndsWita] = useState("");
+	const [docTrafficNote, setDocTrafficNote] = useState("");
+	const [docPermitRef, setDocPermitRef] = useState("");
+	const [hydratedDocEventId, setHydratedDocEventId] = useState<string | null>(
+		null,
 	);
 
+	if (rawEvent && hydratedDocEventId !== rawEvent.id) {
+		setHydratedDocEventId(rawEvent.id);
+		const rec = rawEvent as unknown as Record<string, unknown>;
+		setDocTitle(rawEvent.title || "");
+		setDocVenue(rawEvent.venueName || "");
+		setDocStartsWita(fromIsoToWitaInput(rawEvent.startsAt));
+		setDocEndsWita(fromIsoToWitaInput(rawEvent.endsAt));
+		setDocTrafficNote((rec.trafficImpactDescription as string) || "");
+		setDocPermitRef(rawEvent.permitReference || "");
+	}
+
+	// Roads Tab State ("draw" vs "catalog")
+	const [roadInputMode, setRoadInputMode] = useState<"draw" | "catalog">(
+		"draw",
+	);
+	const [draftCoordinates, setDraftCoordinates] = useState<[number, number][]>(
+		[],
+	);
+	const [newSegmentName, setNewSegmentName] = useState("");
+	const [newSegmentArea, setNewSegmentArea] = useState("Bali");
+	const [humanVerifiedRoad, setHumanVerifiedRoad] = useState(true);
+	const [selectedCatalogSegmentId, setSelectedCatalogSegmentId] =
+		useState<string>("");
+	const [selectedImpactType, setSelectedImpactType] = useState<
+		"closure" | "intermittent" | "narrowing" | "procession"
+	>("closure");
+	const [impactDiversionNote, setImpactDiversionNote] = useState("");
+
+	// Field Officer (Pos Pecalang) Tab State
 	const [segmentStatuses, setSegmentStatuses] = useState<
 		Record<string, OperationalRoadStatus>
 	>({});
-	const [selectedSegmentId, setSelectedSegmentId] = useState<string>(
-		activeVillage.roadSegments[0]?.id ?? "",
-	);
+	const [selectedImpactId, setSelectedImpactId] = useState<string>("");
 	const [pendingStatusChange, setPendingStatusChange] = useState<{
 		segmentId: string;
 		roadName: string;
 		nextStatus: OperationalRoadStatus;
 	} | null>(null);
 	const [fieldNote, setFieldNote] = useState("");
-	const [statusFeedback, setStatusFeedback] = useState<string | null>(null);
+	const [statusFeedback, setStatusFeedback] = useState<{
+		type: "success" | "warning" | "error" | "info";
+		message: string;
+	} | null>(null);
 
-	const [organicKg, setOrganicKg] = useState("");
-	const [recyclableKg, setRecyclableKg] = useState("");
-	const [residualSacks, setResidualSacks] = useState("");
-	const [cleanupVerified, setCleanupVerified] = useState(false);
-
-	const cleanupTasksQuery = useQuery({
-		queryKey: ["cleanup-tasks", eventId],
-		queryFn: () => fetchCleanupTasks(eventId),
-		enabled: isRealUuidEvent,
-		retry: false,
-	});
-
-	const [evidenceStage, setEvidenceStage] = useState<"before" | "after">("after");
+	// Cleanup & Waste Tab State
+	const [evidenceStage, setEvidenceStage] = useState<"before" | "after">(
+		"after",
+	);
+	const [selectedTaskForEvidence, setSelectedTaskForEvidence] =
+		useState<string>("");
 	const [newTaskTitle, setNewTaskTitle] = useState("");
 	const [newTaskLocation, setNewTaskLocation] = useState("");
 	const [isAddingTask, setIsAddingTask] = useState(false);
 
+	const [organicKg, setOrganicKg] = useState("");
+	const [organicMethod, setOrganicMethod] = useState<"weighed" | "estimated">(
+		"weighed",
+	);
+	const [recyclableKg, setRecyclableKg] = useState("");
+	const [recyclableMethod, setRecyclableMethod] = useState<
+		"weighed" | "estimated"
+	>("weighed");
+	const [residualSacks, setResidualSacks] = useState("");
+
+	// Team & Invitation Tab State
+	const [inviteCanTraffic, setInviteCanTraffic] = useState(true);
+	const [inviteCanCleanup, setInviteCanCleanup] = useState(true);
+	const [generatedInviteUrl, setGeneratedInviteUrl] = useState<string | null>(
+		null,
+	);
+	const [directOfficerUserId, setDirectOfficerUserId] = useState("");
+
+	// ---------------------------------------------------------------------------
+	// Mutations: Document Upload, Extraction, Save, Review, Publish
+	// ---------------------------------------------------------------------------
+	const uploadAndExtractDocMutation = useMutation({
+		mutationFn: async (file: File) => {
+			if (!isRealUuidEvent) {
+				throw new Error("Buka kegiatan yang telah tersimpan terlebih dahulu.");
+			}
+			const uploadRes = await uploadEventDocument(eventId, file, true);
+			const extractRes = await triggerDocumentExtraction(
+				eventId,
+				uploadRes.document.id,
+				true,
+			);
+			return extractRes.extraction;
+		},
+		onSuccess: (ext) => {
+			const out = ext.outputJson;
+			if (out) {
+				if (out.event_name?.value) setDocTitle(out.event_name.value);
+				if (out.venue_name?.value) setDocVenue(out.venue_name.value);
+				if (out.start_datetime?.value)
+					setDocStartsWita(fromIsoToWitaInput(out.start_datetime.value));
+				if (out.end_datetime?.value)
+					setDocEndsWita(fromIsoToWitaInput(out.end_datetime.value));
+				if (out.traffic_impact_description?.value)
+					setDocTrafficNote(out.traffic_impact_description.value);
+				if (out.permit_reference_text?.value)
+					setDocPermitRef(out.permit_reference_text.value);
+			}
+			setStatusFeedback({
+				type: "success",
+				message: `Surat edaran berhasil diekstrak oleh ${ext.modelName}. Silakan periksa dan simpan perubahan.`,
+			});
+		},
+		onError: (err) => {
+			setStatusFeedback({
+				type: "warning",
+				message:
+					err instanceof Error
+						? `${err.message}. Silakan perbarui rincian secara manual.`
+						: "Gagal mengekstrak dokumen otomatis.",
+			});
+		},
+	});
+
+	const saveDocReviewMutation = useMutation({
+		mutationFn: async (markReviewed: boolean) => {
+			if (!isRealUuidEvent) {
+				throw new Error("Kegiatan belum memiliki UUID valid.");
+			}
+			await saveExtractedFields(eventId, {
+				title: docTitle.trim() || rawEvent?.title || "Upacara Adat",
+				category: normalizeEventCategory(rawEvent?.category) || "upacara_adat",
+				venueName: docVenue.trim() || null,
+				startsAt: toWitaIsoTimestamp(docStartsWita),
+				endsAt: toWitaIsoTimestamp(docEndsWita),
+				permitReference: docPermitRef.trim() || null,
+				trafficImpactDescription: docTrafficNote.trim() || null,
+			});
+			if (markReviewed) {
+				await transitionEventToReview(eventId);
+			}
+		},
+		onSuccess: async (_, markReviewed) => {
+			await queryClient.invalidateQueries({
+				queryKey: ["events", "detail", eventId],
+			});
+			await queryClient.invalidateQueries({ queryKey: ["events"] });
+			setStatusFeedback({
+				type: "success",
+				message: markReviewed
+					? "Data disimpan dan ditandai telah diperiksa Prajuru (Status: REVIEW)."
+					: "Perubahan rincian surat edaran berhasil disimpan.",
+			});
+		},
+		onError: (err) => {
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Gagal menyimpan rincian.",
+			});
+		},
+	});
+
+	const publishEventMutation = useMutation({
+		mutationFn: async () => {
+			if (!isRealUuidEvent) throw new Error("Kegiatan belum tersimpan.");
+			return publishVerifiedEvent(eventId);
+		},
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: ["events", "detail", eventId],
+			});
+			await queryClient.invalidateQueries({ queryKey: ["events"] });
+			setStatusFeedback({
+				type: "success",
+				message:
+					"Pengumuman upacara resmi diterbitkan ke portal publik dan peta warga!",
+			});
+		},
+		onError: (err) => {
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error
+						? err.message
+						: "Pastikan kegiatan telah ditandai diperiksa Prajuru (Review) sebelum diterbitkan.",
+			});
+		},
+	});
+
+	// ---------------------------------------------------------------------------
+	// Mutations: Road Map Input (Draw & Catalog & Delete)
+	// ---------------------------------------------------------------------------
+	const drawRoadOnTabMutation = useMutation({
+		mutationFn: async () => {
+			if (!isRealUuidEvent) {
+				throw new Error("Simpan kegiatan terlebih dahulu.");
+			}
+			if (draftCoordinates.length < 2) {
+				throw new Error(
+					"Klik minimal 2 titik pada peta untuk membentuk garis ruas jalan.",
+				);
+			}
+			if (newSegmentName.trim().length < 3) {
+				throw new Error("Masukkan nama ruas jalan (minimal 3 karakter).");
+			}
+			if (!humanVerifiedRoad) {
+				throw new Error("Centang verifikasi lokasi ruas jalan oleh Prajuru.");
+			}
+
+			const segRes = await createRoadSegment({
+				displayName: newSegmentName.trim(),
+				coverageArea:
+					newSegmentArea.trim() || rawEvent?.venueName || "Kawasan Desa Adat",
+				coordinates: draftCoordinates,
+				humanVerified: true,
+			});
+
+			await createRoadImpact(eventId, {
+				roadSegmentId: segRes.segment.id,
+				impactType: selectedImpactType,
+				plannedFrom: rawEvent?.startsAt || null,
+				plannedTo: rawEvent?.endsAt || null,
+				diversionNote: impactDiversionNote.trim() || null,
+			});
+			return segRes.segment.displayName;
+		},
+		onSuccess: async (segName) => {
+			setDraftCoordinates([]);
+			setNewSegmentName("");
+			setImpactDiversionNote("");
+			await queryClient.invalidateQueries({
+				queryKey: ["road-segments", "catalog"],
+			});
+			await queryClient.invalidateQueries({
+				queryKey: ["events", eventId, "road-impacts"],
+			});
+			setStatusFeedback({
+				type: "success",
+				message: `Ruas jalan "${segName}" berhasil digambar, diverifikasi, dan ditautkan ke kegiatan ini.`,
+			});
+		},
+		onError: (err) => {
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Gagal menyimpan ruas jalan.",
+			});
+		},
+	});
+
+	const attachCatalogRoadMutation = useMutation({
+		mutationFn: async (roadSegmentId: string) => {
+			if (!isRealUuidEvent) {
+				throw new Error("Simpan kegiatan terlebih dahulu.");
+			}
+			return createRoadImpact(eventId, {
+				roadSegmentId,
+				impactType: selectedImpactType,
+				plannedFrom: rawEvent?.startsAt || null,
+				plannedTo: rawEvent?.endsAt || null,
+				diversionNote: impactDiversionNote.trim() || null,
+			});
+		},
+		onSuccess: async () => {
+			setSelectedCatalogSegmentId("");
+			setImpactDiversionNote("");
+			await queryClient.invalidateQueries({
+				queryKey: ["events", eventId, "road-impacts"],
+			});
+			setStatusFeedback({
+				type: "success",
+				message: "Ruas jalan dari katalog berhasil ditautkan ke kegiatan ini.",
+			});
+		},
+		onError: (err) => {
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Gagal menautkan ruas jalan.",
+			});
+		},
+	});
+
+	const deleteRoadImpactOnTabMutation = useMutation({
+		mutationFn: async (impactId: string) => {
+			return deleteRoadImpact(eventId, impactId);
+		},
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({
+				queryKey: ["events", eventId, "road-impacts"],
+			});
+			setStatusFeedback({
+				type: "info",
+				message: "Ruas jalan terdampak telah dihapus dari kegiatan ini.",
+			});
+		},
+		onError: (err) => {
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Gagal menghapus ruas jalan.",
+			});
+		},
+	});
+
+	// ---------------------------------------------------------------------------
+	// Mutations: Field Officer Live Status Update
+	// ---------------------------------------------------------------------------
 	const updateStatusMutation = useMutation({
 		mutationFn: async ({
 			impactId,
@@ -1085,35 +1346,37 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 				[vars.impactId]: vars.nextStatus,
 			}));
 			void eventRoadImpactsQuery.refetch();
-			setStatusFeedback(
-				`Status "${vars.nextStatus}" berhasil disimpan ke server. Berlaku 30 menit per SPO Operasional.`,
-			);
+			setStatusFeedback({
+				type: "success",
+				message: `Status "${vars.nextStatus.toUpperCase()}" berhasil disimpan ke server. Berlaku 30 menit sesuai SPO Operasional Pecalang.`,
+			});
 			setPendingStatusChange(null);
 		},
 		onError: (err) => {
-			setStatusFeedback(
-				err instanceof Error
-					? `Gagal memperbarui status jalan: ${err.message}`
-					: "Gagal memperbarui status jalan.",
-			);
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error
+						? `Gagal memperbarui status jalan: ${err.message}`
+						: "Gagal memperbarui status jalan.",
+			});
 			setPendingStatusChange(null);
 		},
 	});
 
+	// ---------------------------------------------------------------------------
+	// Mutations: Cleanup & Waste
+	// ---------------------------------------------------------------------------
 	const createCleanupTaskMutation = useMutation({
 		mutationFn: async ({
-			title,
+			title: taskTitle,
 			locationNotes,
 		}: {
 			title: string;
 			locationNotes?: string;
 		}) => {
-			if (!isRealUuidEvent) {
-				setStatusFeedback("Tugas kebersihan baru ditambahkan (mode demonstrasi).");
-				return;
-			}
 			return createCleanupTask(eventId, {
-				title,
+				title: taskTitle,
 				description: locationNotes || undefined,
 			});
 		},
@@ -1122,86 +1385,105 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 			setNewTaskTitle("");
 			setNewTaskLocation("");
 			setIsAddingTask(false);
-			setStatusFeedback("Tugas kebersihan baru berhasil ditambahkan.");
+			setStatusFeedback({
+				type: "success",
+				message: "Tugas kebersihan baru berhasil ditambahkan.",
+			});
 		},
 		onError: (err) => {
-			setStatusFeedback(
-				err instanceof Error ? err.message : "Gagal menambahkan tugas kebersihan.",
-			);
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error
+						? err.message
+						: "Gagal menambahkan tugas kebersihan.",
+			});
 		},
 	});
 
 	const submitCleanupMutation = useMutation({
-		mutationFn: async (taskId: string) => {
-			if (!isRealUuidEvent) {
-				setStatusFeedback("Tugas kebersihan diserahkan (mode demonstrasi).");
-				return;
-			}
-			return submitCleanupTask(taskId);
-		},
+		mutationFn: async (taskId: string) => submitCleanupTask(taskId),
 		onSuccess: () => {
 			void cleanupTasksQuery.refetch();
-			setStatusFeedback("Tugas kebersihan diserahkan untuk diverifikasi Prajuru.");
+			setStatusFeedback({
+				type: "success",
+				message: "Tugas kebersihan diserahkan untuk diverifikasi Prajuru.",
+			});
 		},
 		onError: (err) => {
-			setStatusFeedback(
-				err instanceof Error ? err.message : "Gagal menyerahkan tugas kebersihan.",
-			);
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error
+						? err.message
+						: "Gagal menyerahkan tugas kebersihan.",
+			});
 		},
 	});
 
 	const reopenCleanupMutation = useMutation({
-		mutationFn: async ({ taskId, reason }: { taskId: string; reason?: string }) => {
-			if (!isRealUuidEvent) {
-				setStatusFeedback("Tugas kebersihan dibuka kembali (mode demonstrasi).");
-				return;
-			}
-			return reopenCleanupTask(taskId, reason);
-		},
+		mutationFn: async ({
+			taskId,
+			reason,
+		}: {
+			taskId: string;
+			reason?: string;
+		}) => reopenCleanupTask(taskId, reason),
 		onSuccess: () => {
 			void cleanupTasksQuery.refetch();
-			setStatusFeedback("Tugas kebersihan dibuka kembali untuk perbaikan bukti.");
+			setStatusFeedback({
+				type: "info",
+				message: "Tugas kebersihan dibuka kembali untuk perbaikan bukti.",
+			});
 		},
 		onError: (err) => {
-			setStatusFeedback(
-				err instanceof Error ? err.message : "Gagal membuka kembali tugas.",
-			);
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Gagal membuka kembali tugas.",
+			});
 		},
 	});
 
 	const uploadCleanupEvidenceMutation = useMutation({
 		mutationFn: async (file: File) => {
 			const tasks = cleanupTasksQuery.data?.cleanupTasks ?? [];
-			const targetTask = tasks[0];
+			const targetTask =
+				tasks.find((t) => t.id === selectedTaskForEvidence) || tasks[0];
 			if (!targetTask) {
-				throw new Error("Belum ada tugas kebersihan terdaftar pada kegiatan ini. Buat tugas terlebih dahulu.");
+				throw new Error(
+					"Buat minimal 1 tugas kebersihan terlebih dahulu sebelum mengunggah foto bukti.",
+				);
 			}
 			return uploadCleanupEvidence(targetTask.id, file, evidenceStage);
 		},
 		onSuccess: () => {
 			void cleanupTasksQuery.refetch();
-			setStatusFeedback(`Foto bukti tahap "${evidenceStage}" berhasil diunggah.`);
+			setStatusFeedback({
+				type: "success",
+				message: `Foto bukti tahap "${evidenceStage.toUpperCase()}" berhasil diunggah ke Cloudflare R2.`,
+			});
 		},
 		onError: (err) => {
-			setStatusFeedback(
-				err instanceof Error ? err.message : "Gagal mengunggah foto bukti kebersihan.",
-			);
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error
+						? err.message
+						: "Gagal mengunggah foto bukti kebersihan.",
+			});
 		},
 	});
 
 	const recordWasteMutation = useMutation({
 		mutationFn: async () => {
-			if (!isRealUuidEvent) {
-				setStatusFeedback("Catatan sampah disimpan (mode simulasi draf).");
-				return;
-			}
 			const records = [];
 			if (organicKg && Number(organicKg) > 0) {
 				records.push(
 					createWasteRecord(eventId, {
 						category: "organic",
 						quantityKg: Number(organicKg),
-						measurementMethod: "weighed",
+						measurementMethod: organicMethod,
 					}),
 				);
 			}
@@ -1210,7 +1492,7 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 					createWasteRecord(eventId, {
 						category: "recyclable",
 						quantityKg: Number(recyclableKg),
-						measurementMethod: "weighed",
+						measurementMethod: recyclableMethod,
 					}),
 				);
 			}
@@ -1223,37 +1505,143 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 					}),
 				);
 			}
+			if (records.length === 0) {
+				throw new Error(
+					"Isi minimal salah satu kuantitas sampah (Organik, Daur Ulang, atau Residu).",
+				);
+			}
 			await Promise.all(records);
 		},
 		onSuccess: () => {
-			setStatusFeedback("Catatan timbunan sampah berhasil disimpan ke pangkalan data.");
+			setOrganicKg("");
+			setRecyclableKg("");
+			setResidualSacks("");
+			setStatusFeedback({
+				type: "success",
+				message:
+					"Catatan timbunan sampah pasca-upacara berhasil disimpan ke pangkalan data.",
+			});
 		},
 		onError: (err) => {
-			setStatusFeedback(
-				err instanceof Error ? err.message : "Gagal mencatat data sampah.",
-			);
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Gagal mencatat data sampah.",
+			});
 		},
 	});
 
 	const verifyCleanupMutation = useMutation({
 		mutationFn: async (params?: { taskId?: string }) => {
 			const tasks = cleanupTasksQuery.data?.cleanupTasks ?? [];
-			const targetTask = tasks.find((t) => t.id === params?.taskId) || tasks[0];
-			if (targetTask && isRealUuidEvent) {
-				await verifyCleanupTask(targetTask.id, "Diverifikasi oleh Prajuru Adat.");
+			const targetTask =
+				tasks.find((t) => t.id === params?.taskId) || tasks[0];
+			if (!targetTask) {
+				throw new Error("Belum ada tugas kebersihan yang dapat diverifikasi.");
 			}
+			await verifyCleanupTask(targetTask.id, "Diverifikasi oleh Prajuru Adat.");
 		},
 		onSuccess: () => {
-			setCleanupVerified(true);
 			void cleanupTasksQuery.refetch();
-			setStatusFeedback(
-				"Kebersihan area berhasil diverifikasi oleh Prajuru Adat. Pengingat aturan domain: Pembukaan jalan tetap wewenang pos Pecalang dan tidak dibuka otomatis.",
-			);
+			setStatusFeedback({
+				type: "success",
+				message:
+					"Kebersihan area berhasil diverifikasi Prajuru. Sesuai aturan domain: pembukaan jalan tetap wewenang pos Pecalang dan tidak dibuka otomatis.",
+			});
 		},
 		onError: (err) => {
-			setStatusFeedback(
-				err instanceof Error ? err.message : "Gagal memverifikasi tugas kebersihan.",
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error
+						? err.message
+						: "Gagal memverifikasi tugas kebersihan.",
+			});
+		},
+	});
+
+	// ---------------------------------------------------------------------------
+	// Mutations: Team Assignments & One-Time Invitations
+	// ---------------------------------------------------------------------------
+	const generateInviteMutation = useMutation({
+		mutationFn: async () => {
+			if (!isRealUuidEvent) {
+				throw new Error("Simpan kegiatan terlebih dahulu.");
+			}
+			return createEventInvitation({
+				eventId,
+				canUpdateTraffic: inviteCanTraffic,
+				canUpdateCleanup: inviteCanCleanup,
+			});
+		},
+		onSuccess: (res) => {
+			const origin =
+				typeof window !== "undefined" ? window.location.origin : "";
+			setGeneratedInviteUrl(
+				res.inviteUrl || `${origin}${res.invitePath || `/invite/${res.token}`}`,
 			);
+			setStatusFeedback({
+				type: "success",
+				message:
+					"Tautan undangan sekali pakai berhasil dibuat! Salin dan bagikan kepada Pecalang atau petugas kebersihan.",
+			});
+		},
+		onError: (err) => {
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error
+						? err.message
+						: "Gagal membuat tautan undangan.",
+			});
+		},
+	});
+
+	const directAssignMutation = useMutation({
+		mutationFn: async () => {
+			if (!directOfficerUserId.trim()) {
+				throw new Error("Masukkan UUID akun petugas.");
+			}
+			return assignEventOfficer(eventId, {
+				userId: directOfficerUserId.trim(),
+				canUpdateTraffic: inviteCanTraffic,
+				canUpdateCleanup: inviteCanCleanup,
+			});
+		},
+		onSuccess: async () => {
+			setDirectOfficerUserId("");
+			await assignmentsQuery.refetch();
+			setStatusFeedback({
+				type: "success",
+				message: "Petugas lapangan berhasil ditugaskan pada kegiatan ini.",
+			});
+		},
+		onError: (err) => {
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Gagal menugaskan petugas.",
+			});
+		},
+	});
+
+	const revokeAssignmentMutation = useMutation({
+		mutationFn: async (assignmentId: string) => {
+			return revokeEventAssignment(eventId, assignmentId);
+		},
+		onSuccess: async () => {
+			await assignmentsQuery.refetch();
+			setStatusFeedback({
+				type: "info",
+				message: "Penugasan petugas pada kegiatan ini telah dicabut.",
+			});
+		},
+		onError: (err) => {
+			setStatusFeedback({
+				type: "error",
+				message:
+					err instanceof Error ? err.message : "Gagal mencabut penugasan.",
+			});
 		},
 	});
 
@@ -1269,6 +1657,7 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 	}, [pathname]);
 
 	function handleTabChange(nextTab: string) {
+		setStatusFeedback(null);
 		switch (nextTab) {
 			case "document":
 				navigate(`/dashboard/events/${eventId}/review`);
@@ -1288,215 +1677,752 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 		}
 	}
 
-	const villageWithLiveStatuses = useMemo(
-		() => ({
-			...activeVillage,
-			roadSegments: activeVillage.roadSegments.map((seg) => ({
-				...seg,
-				status: segmentStatuses[seg.id] ?? seg.status,
-			})),
-		}),
-		[activeVillage, segmentStatuses],
-	);
-
 	const officerRoadList = useMemo(() => {
-		if (isRealUuidEvent && eventRoadImpactsQuery.data?.roadImpacts) {
-			return eventRoadImpactsQuery.data.roadImpacts.map((imp) => ({
+		return attachedRoadImpacts.map((imp) => {
+			const effective =
+				segmentStatuses[imp.id] ??
+				imp.operationalStatus?.effectiveStatus ??
+				"unknown";
+			return {
 				id: imp.id,
-				roadName: imp.displayName || "Ruas Jalan Terdampak",
-				corridorSection: imp.coverageArea || "Koridor Wilayah",
-				windowWita: formatWitaRange(imp.plannedFrom, imp.plannedTo),
-				status: (segmentStatuses[imp.id] ??
-					(imp.operationalStatus?.effectiveStatus === "unconfirmed"
-						? "unknown"
-						: (imp.operationalStatus?.effectiveStatus ?? "unknown"))) as OperationalRoadStatus,
+				roadName:
+					imp.segment?.displayName ||
+					imp.displayName ||
+					"Ruas Jalan Terdampak",
+				corridorSection:
+					imp.segment?.coverageArea || imp.coverageArea || "Kawasan Desa Adat",
+				impactType: imp.impactType,
+				diversionNote: imp.diversionNote,
+				windowWita:
+					imp.plannedFrom && imp.plannedTo
+						? formatWitaRange(imp.plannedFrom, imp.plannedTo)
+						: "Sesuai jadwal acara",
+				status: effective as OperationalRoadStatus,
 				expiresAt: imp.operationalStatus?.expiresAt,
-				isStale: imp.operationalStatus?.isStale,
-			}));
-		}
-		return activeVillage.roadSegments.map((seg) => ({
-			...seg,
-			status: (segmentStatuses[seg.id] ?? seg.status) as OperationalRoadStatus,
-			expiresAt: null as string | null,
-			isStale: false,
-		}));
-	}, [isRealUuidEvent, eventRoadImpactsQuery.data, activeVillage, segmentStatuses]);
+			};
+		});
+	}, [attachedRoadImpacts, segmentStatuses]);
 
-	const isMapSplitMode =
-		currentTabValue === "roads" || currentTabValue === "field";
+	const WORKFLOW_TABS = [
+		{ id: "document", label: "Surat Edaran & Review", icon: FileText },
+		{ id: "roads", label: "Peta & Ruas Jalan", icon: MapPinned },
+		{ id: "field", label: "Pos Pecalang (Live)", icon: Radio },
+		{ id: "cleanup", label: "Kebersihan & Sampah", icon: ClipboardCheck },
+		{ id: "team", label: "Tim & Undangan Petugas", icon: Users },
+	];
 
-	const headerNode = (
-		<LayoutHeader hasDivider paddingBlockEnd={0}>
-			<VStack gap={3}>
-				<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
-					<HStack gap={2} vAlign="center" wrap="wrap">
-						<Button
-							as={RouterLinkBridge}
-							href="/dashboard"
-							variant="ghost"
-							size="sm"
-							label="Daftar Upacara"
-							icon={<Icon icon={ArrowLeft} size="sm" />}
-						/>
-						<Heading level={1}>{title}</Heading>
-					</HStack>
-					<Token color="gray" size="sm" label={activeVillage.desaAdatName} />
-				</HStack>
+	return (
+		<div>
+			{/* Header Workspace */}
+			<div className="teduh-workspace-header">
+				<div>
+					<div className="teduh-workspace-eyebrow">
+						<ShieldCheck className="w-3.5 h-3.5" />
+						<span>
+							Ruang Kerja Operasional Upacara •{" "}
+							{rawEvent?.venueName || "Desa Adat Bali"}
+						</span>
+					</div>
+					<div className="flex flex-wrap items-center gap-3">
+						<h1 className="teduh-workspace-title">
+							{rawEvent?.title || title}
+						</h1>
+						{rawEvent ? (
+							<EventLifecycleBadge status={rawEvent.status} />
+						) : null}
+					</div>
+					<p className="teduh-workspace-subtitle">{subtitle}</p>
+				</div>
 
-				<TabList
-					value={currentTabValue}
-					onChange={handleTabChange}
-					size="sm"
-					isFullBleed
-				>
-					<Tab value="document" label="Surat Edaran" />
-					<Tab value="roads" label="Rute & Jalan" />
-					<Tab value="field" label="Pos Pecalang" />
-					<Tab value="cleanup" label="Kebersihan" />
-					<Tab value="team" label="Petugas" />
-				</TabList>
-			</VStack>
-		</LayoutHeader>
-	);
-
-	if (isMapSplitMode) {
-		return (
-			<Layout
-				defaultHasDividers
-				height="fill"
-				header={headerNode}
-				content={
-					<LayoutContent padding={0} isScrollable={false}>
-						<BaliMapTilerView
-							village={villageWithLiveStatuses}
-							allVillages={[villageWithLiveStatuses]}
-							selectedSegmentId={selectedSegmentId}
-							onSelectSegment={setSelectedSegmentId}
-							height="100%"
-						/>
-					</LayoutContent>
-				}
-				end={
-					<LayoutPanel
-						width={400}
-						hasDivider
-						isScrollable
-						label="Kendali Status Ruas Jalan"
+				<div className="flex flex-wrap items-center gap-2">
+					<Link
+						to="/dashboard"
+						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
 					>
-						<VStack gap={4}>
-							<Heading level={2}>
-								{currentTabValue === "field"
-									? "Perbarui Status Jalan (Pecalang)"
-									: "Daftar Ruas Jalan Terdampak"}
-							</Heading>
+						<ArrowLeft className="w-3.5 h-3.5" />
+						<span>Daftar Upacara</span>
+					</Link>
+					{isRealUuidEvent ? (
+						<Link
+							to={`/dashboard/events/${eventId}`}
+							className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] no-underline"
+						>
+							<Sparkles className="w-3.5 h-3.5" />
+							<span>Buka Wizard Lengkap</span>
+						</Link>
+					) : null}
+				</div>
+			</div>
 
-							{!isRealUuidEvent ? (
-								<Banner
-									status="info"
-									collapsible={false}
-									title="Mode Pratinjau Alur Petugas (Simulasi)"
-									description="Halaman ini menggunakan data simulasi untuk keperluan demonstrasi alur Pecalang. Pembaruan status bersifat demonstratif (tidak tersimpan ke server)."
+			{/* Workflow Module Navigation Tabs */}
+			<div className="flex flex-wrap items-center gap-2 mb-6 border-b border-[#E5E3DC] pb-3">
+				{WORKFLOW_TABS.map((tab) => {
+					const IconComp = tab.icon;
+					const active = currentTabValue === tab.id;
+					return (
+						<button
+							key={tab.id}
+							type="button"
+							onClick={() => handleTabChange(tab.id)}
+							className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+								active
+									? "bg-[#264D3B] text-white shadow-xs"
+									: "bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC]"
+							}`}
+						>
+							<IconComp className="w-3.5 h-3.5" />
+							<span>{tab.label}</span>
+						</button>
+					);
+				})}
+			</div>
+
+			{/* Status Feedback Banner */}
+			{statusFeedback ? (
+				<div className="mb-6">
+					<Banner
+						status={statusFeedback.type}
+						collapsible={false}
+						title="Informasi Operasional"
+						description={statusFeedback.message}
+					/>
+				</div>
+			) : null}
+
+			{!isRealUuidEvent ? (
+				<div className="mb-6">
+					<Banner
+						status="warning"
+						collapsible={false}
+						title="Pilih Kegiatan Upacara yang Valid"
+						description="URL ini belum merujuk pada UUID kegiatan yang tersimpan di pangkalan data. Silakan pilih kegiatan dari Dashboard atau buat pengumuman baru."
+					/>
+				</div>
+			) : null}
+
+			{/* =================================================================== */}
+			{/* TAB 1: SURAT EDARAN & PEMERIKSAAN PRAJURU (`document`)              */}
+			{/* =================================================================== */}
+			{currentTabValue === "document" ? (
+				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+					<div className="xl:col-span-5 teduh-workspace-card space-y-4">
+						<div className="border-b border-[#F0EFEA] pb-3">
+							<h2 className="teduh-workspace-card-title">
+								Unggah Surat Edaran &amp; Ekstraksi AI
+							</h2>
+							<p className="text-xs text-[#585854] mt-0.5">
+								Unggah berkas surat pengumuman Desa Adat (PDF/JPG/PNG) untuk
+								diekstrak otomatis oleh Google Gemini.
+							</p>
+						</div>
+
+						<div className="rounded-2xl border-2 border-dashed border-[#C7DBD0] bg-[#F6FAF7] p-6 text-center space-y-3">
+							<Upload className="w-7 h-7 text-[#264D3B] mx-auto" />
+							<p className="text-xs font-bold text-[#181817]">
+								Berkas Surat Edaran Desa Adat (Maks. 10 MB)
+							</p>
+							<label className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] cursor-pointer">
+								<Upload className="w-3.5 h-3.5" />
+								<span>
+									{uploadAndExtractDocMutation.isPending
+										? "Menganalisis Dokumen..."
+										: "Pilih & Ekstrak Surat Edaran"}
+								</span>
+								<input
+									type="file"
+									accept=".pdf,image/jpeg,image/png,image/webp"
+									disabled={uploadAndExtractDocMutation.isPending}
+									onChange={(e) => {
+										const file = e.target.files?.[0];
+										if (file) {
+											void uploadAndExtractDocMutation.mutateAsync(file);
+										}
+									}}
+									className="hidden"
 								/>
-							) : null}
+							</label>
+						</div>
 
-							{statusFeedback ? (
-								<Banner
-									status="success"
-									collapsible={false}
-									title="Status Diperbarui"
-									description={statusFeedback}
+						<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 text-xs text-[#585854] space-y-1">
+							<p className="font-bold text-[#181817]">
+								Prinsip Human-in-the-Loop Rangkai
+							</p>
+							<p>
+								Hasil ekstraksi AI tidak pernah langsung dipublikasikan ke
+								warga. Prajuru wajib memeriksa dan mengonfirmasi rincian di
+								sebelah kanan.
+							</p>
+						</div>
+					</div>
+
+					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
+						<div className="flex items-center justify-between border-b border-[#F0EFEA] pb-3">
+							<h2 className="teduh-workspace-card-title">
+								Periksa &amp; Konfirmasi Rincian Upacara
+							</h2>
+							{rawEvent?.verifiedAt ? (
+								<span className="px-2.5 py-1 rounded-full bg-[#EBF3EE] text-[#264D3B] text-[11px] font-bold">
+									Terverifikasi Prajuru
+								</span>
+							) : (
+								<span className="px-2.5 py-1 rounded-full bg-[#FDF7EB] text-[#9A5B13] text-[11px] font-bold">
+									Menunggu Konfirmasi
+								</span>
+							)}
+						</div>
+
+						<div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+							<div className="sm:col-span-2">
+								<label className="block text-xs font-semibold text-[#181817] mb-1">
+									Nama Upacara / Kegiatan Adat *
+								</label>
+								<input
+									type="text"
+									value={docTitle}
+									onChange={(e) => setDocTitle(e.target.value)}
+									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
 								/>
-							) : null}
+							</div>
 
-							{isRealUuidEvent && eventRoadImpactsQuery.isLoading ? (
-								<LoadingStateBlock label="Memuat ruas jalan Pos Pecalang..." rows={3} />
-							) : officerRoadList.length === 0 ? (
+							<div>
+								<label className="block text-xs font-semibold text-[#181817] mb-1">
+									Lokasi Pura &amp; Kawasan Utama
+								</label>
+								<input
+									type="text"
+									value={docVenue}
+									onChange={(e) => setDocVenue(e.target.value)}
+									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+								/>
+							</div>
+
+							<div>
+								<label className="block text-xs font-semibold text-[#181817] mb-1">
+									Nomor Surat Edaran
+								</label>
+								<input
+									type="text"
+									value={docPermitRef}
+									onChange={(e) => setDocPermitRef(e.target.value)}
+									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+								/>
+							</div>
+
+							<div>
+								<label className="block text-xs font-semibold text-[#181817] mb-1">
+									Waktu Mulai (WITA)
+								</label>
+								<input
+									type="datetime-local"
+									value={docStartsWita}
+									onChange={(e) => setDocStartsWita(e.target.value)}
+									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+								/>
+							</div>
+
+							<div>
+								<label className="block text-xs font-semibold text-[#181817] mb-1">
+									Waktu Selesai (WITA)
+								</label>
+								<input
+									type="datetime-local"
+									value={docEndsWita}
+									onChange={(e) => setDocEndsWita(e.target.value)}
+									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+								/>
+							</div>
+
+							<div className="sm:col-span-2">
+								<label className="block text-xs font-semibold text-[#181817] mb-1">
+									Ringkasan Rekayasa Lalu Lintas &amp; Pengalihan Arus
+								</label>
+								<textarea
+									rows={3}
+									value={docTrafficNote}
+									onChange={(e) => setDocTrafficNote(e.target.value)}
+									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 text-xs text-[#181817]"
+								/>
+							</div>
+						</div>
+
+						<div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#F0EFEA]">
+							<button
+								type="button"
+								disabled={saveDocReviewMutation.isPending}
+								onClick={() => void saveDocReviewMutation.mutateAsync(false)}
+								className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+							>
+								<Save className="w-3.5 h-3.5" />
+								<span>Simpan Draf</span>
+							</button>
+
+							<div className="flex flex-wrap items-center gap-2">
+								<button
+									type="button"
+									disabled={saveDocReviewMutation.isPending}
+									onClick={() => void saveDocReviewMutation.mutateAsync(true)}
+									className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4]"
+								>
+									<CheckCircle2 className="w-3.5 h-3.5" />
+									<span>Konfirmasi Prajuru (Review)</span>
+								</button>
+
+								<button
+									type="button"
+									disabled={publishEventMutation.isPending}
+									onClick={() => void publishEventMutation.mutateAsync()}
+									className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+								>
+									<Send className="w-3.5 h-3.5" />
+									<span>Terbitkan ke Warga</span>
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			) : null}
+
+			{/* =================================================================== */}
+			{/* TAB 2: PETA & RUAS JALAN TERDAMPAK (`roads`)                        */}
+			{/* =================================================================== */}
+			{currentTabValue === "roads" ? (
+				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+					{/* Left: Dedicated Dashboard Road Map Input */}
+					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
+						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
+							<div>
+								<h2 className="teduh-workspace-card-title">
+									Peta Input Ruas Jalan Terdampak
+								</h2>
+								<p className="text-xs text-[#585854]">
+									Klik titik koordinat di peta untuk menggambar ruas jalan baru,
+									atau pilih dari katalog jalan terverifikasi.
+								</p>
+							</div>
+
+							<div className="inline-flex rounded-xl border border-[#E5E3DC] bg-[#F3F1EC] p-1">
+								<button
+									type="button"
+									onClick={() => setRoadInputMode("draw")}
+									className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
+										roadInputMode === "draw"
+											? "bg-[#264D3B] text-white"
+											: "text-[#585854] hover:text-[#181817]"
+									}`}
+								>
+									<PenTool className="w-3.5 h-3.5" />
+									<span>Gambar di Peta</span>
+								</button>
+								<button
+									type="button"
+									onClick={() => setRoadInputMode("catalog")}
+									className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
+										roadInputMode === "catalog"
+											? "bg-[#264D3B] text-white"
+											: "text-[#585854] hover:text-[#181817]"
+									}`}
+								>
+									<MapPinned className="w-3.5 h-3.5" />
+									<span>Katalog ({catalogSegments.length})</span>
+								</button>
+							</div>
+						</div>
+
+						<DashboardRoadMapInput
+							mode={roadInputMode}
+							height={430}
+							draftCoordinates={draftCoordinates}
+							onDraftCoordinatesChange={setDraftCoordinates}
+							catalogSegments={catalogSegments}
+							selectedCatalogSegmentId={selectedCatalogSegmentId}
+							onSelectCatalogSegment={setSelectedCatalogSegmentId}
+							attachedRoadImpacts={attachedRoadImpacts}
+						/>
+					</div>
+
+					{/* Right: Form & Attached Road Segments List */}
+					<div className="xl:col-span-5 space-y-5">
+						<div className="teduh-workspace-card space-y-4">
+							<h3 className="teduh-workspace-card-title">
+								{roadInputMode === "draw"
+									? `Simpan Garis Ruas Jalan Baru (${draftCoordinates.length} titik)`
+									: "Tautkan Ruas Jalan dari Katalog"}
+							</h3>
+
+							{roadInputMode === "draw" ? (
+								<div className="space-y-3">
+									<div>
+										<label className="block text-xs font-semibold text-[#181817] mb-1">
+											Nama Ruas Jalan / Simpang *
+										</label>
+										<input
+											type="text"
+											value={newSegmentName}
+											onChange={(e) => setNewSegmentName(e.target.value)}
+											placeholder="Mis. Jl. Raya Ubud — Depan Puri Saren"
+											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+										/>
+									</div>
+									<div>
+										<label className="block text-xs font-semibold text-[#181817] mb-1">
+											Kawasan / Desa Adat *
+										</label>
+										<input
+											type="text"
+											value={newSegmentArea}
+											onChange={(e) => setNewSegmentArea(e.target.value)}
+											placeholder="Mis. Ubud, Gianyar"
+											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+										/>
+									</div>
+									<div>
+										<label className="block text-xs font-semibold text-[#181817] mb-1">
+											Jenis Dampak Operasional *
+										</label>
+										<select
+											value={selectedImpactType}
+											onChange={(e) =>
+												setSelectedImpactType(
+													e.target.value as typeof selectedImpactType,
+												)
+											}
+											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+										>
+											{IMPACT_TYPE_OPTIONS.map((opt) => (
+												<option key={opt.value} value={opt.value}>
+													{opt.label}
+												</option>
+											))}
+										</select>
+									</div>
+									<div>
+										<label className="block text-xs font-semibold text-[#181817] mb-1">
+											Arahan Pengalihan Arus
+										</label>
+										<input
+											type="text"
+											value={impactDiversionNote}
+											onChange={(e) => setImpactDiversionNote(e.target.value)}
+											placeholder="Mis. Dialihkan ke Jl. Sugriwa / Peliatan"
+											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+										/>
+									</div>
+									<label className="flex items-start gap-2 text-xs text-[#181817] cursor-pointer">
+										<input
+											type="checkbox"
+											checked={humanVerifiedRoad}
+											onChange={(e) => setHumanVerifiedRoad(e.target.checked)}
+											className="mt-0.5 rounded border-[#C5C3BC] text-[#264D3B]"
+										/>
+										<span>
+											Garis ruas jalan ini telah diverifikasi sesuai lokasi
+											lapangan (Human-Verified).
+										</span>
+									</label>
+									<button
+										type="button"
+										disabled={
+											drawRoadOnTabMutation.isPending ||
+											draftCoordinates.length < 2
+										}
+										onClick={() => void drawRoadOnTabMutation.mutateAsync()}
+										className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+									>
+										<Plus className="w-3.5 h-3.5" />
+										<span>
+											{drawRoadOnTabMutation.isPending
+												? "Menyimpan..."
+												: "Simpan & Tautkan Ruas Jalan"}
+										</span>
+									</button>
+								</div>
+							) : (
+								<div className="space-y-3">
+									<div>
+										<label className="block text-xs font-semibold text-[#181817] mb-1">
+											Pilih Ruas Jalan Terverifikasi *
+										</label>
+										<select
+											value={selectedCatalogSegmentId}
+											onChange={(e) =>
+												setSelectedCatalogSegmentId(e.target.value)
+											}
+											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+										>
+											<option value="">
+												-- Pilih dari katalog atau klik garis biru di peta --
+											</option>
+											{catalogSegments.map((seg) => (
+												<option key={seg.id} value={seg.id}>
+													{seg.displayName} ({seg.coverageArea})
+												</option>
+											))}
+										</select>
+									</div>
+									<div>
+										<label className="block text-xs font-semibold text-[#181817] mb-1">
+											Jenis Dampak Operasional *
+										</label>
+										<select
+											value={selectedImpactType}
+											onChange={(e) =>
+												setSelectedImpactType(
+													e.target.value as typeof selectedImpactType,
+												)
+											}
+											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+										>
+											{IMPACT_TYPE_OPTIONS.map((opt) => (
+												<option key={opt.value} value={opt.value}>
+													{opt.label}
+												</option>
+											))}
+										</select>
+									</div>
+									<div>
+										<label className="block text-xs font-semibold text-[#181817] mb-1">
+											Arahan Pengalihan Arus
+										</label>
+										<input
+											type="text"
+											value={impactDiversionNote}
+											onChange={(e) => setImpactDiversionNote(e.target.value)}
+											placeholder="Mis. Dialihkan melalui jalur alternatif desa"
+											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+										/>
+									</div>
+									<button
+										type="button"
+										disabled={
+											!selectedCatalogSegmentId ||
+											attachCatalogRoadMutation.isPending
+										}
+										onClick={() =>
+											void attachCatalogRoadMutation.mutateAsync(
+												selectedCatalogSegmentId,
+											)
+										}
+										className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+									>
+										<Plus className="w-3.5 h-3.5" />
+										<span>Tautkan Ruas Katalog</span>
+									</button>
+								</div>
+							)}
+						</div>
+
+						{/* Attached Road Impacts List */}
+						<div className="teduh-workspace-card space-y-3">
+							<h3 className="teduh-workspace-card-title">
+								Ruas Jalan Terdampak ({attachedRoadImpacts.length})
+							</h3>
+							{attachedRoadImpacts.length === 0 ? (
 								<EmptyStateCard
 									title={SYSTEM_STATE_MESSAGES.noMatchingRoad.title}
 									description={SYSTEM_STATE_MESSAGES.noMatchingRoad.description}
 								/>
 							) : (
-								<List hasDividers edge="bleed" density="balanced">
-									{officerRoadList.map((seg) => (
-										<ListItem
-											key={seg.id}
-											align="start"
-											startContent={<Icon icon={Radio} size="sm" />}
-											label={seg.roadName}
-											description={
-												<VStack gap={2}>
-													<Text type="supporting" size="xsm">
-														{seg.corridorSection} • {seg.windowWita}
-													</Text>
-													<HStack gap={1.5} wrap="wrap">
-														<Button
-															variant={
-																seg.status === "closed"
-																	? "destructive"
-																	: "secondary"
-															}
-															size="sm"
-															label="Tutup"
-															onClick={() =>
-																setPendingStatusChange({
-																	segmentId: seg.id,
-																	roadName: seg.roadName,
-																	nextStatus: "closed",
-																})
-															}
-														/>
-														<Button
-															variant={
-																seg.status === "intermittent"
-																	? "primary"
-																	: "secondary"
-															}
-															size="sm"
-															label="Buka-Tutup"
-															onClick={() =>
-																setPendingStatusChange({
-																	segmentId: seg.id,
-																	roadName: seg.roadName,
-																	nextStatus: "intermittent",
-																})
-															}
-														/>
-														<Button
-															variant={
-																seg.status === "open" ? "primary" : "secondary"
-															}
-															size="sm"
-															label="Buka"
-															onClick={() =>
-																setPendingStatusChange({
-																	segmentId: seg.id,
-																	roadName: seg.roadName,
-																	nextStatus: "open",
-																})
-															}
-														/>
-													</HStack>
-												</VStack>
-											}
-											endContent={
+								<div className="space-y-2.5">
+									{attachedRoadImpacts.map((imp) => (
+										<div
+											key={imp.id}
+											className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-center justify-between gap-2"
+										>
+											<div className="min-w-0">
+												<p className="text-xs font-bold text-[#181817] truncate">
+													{imp.segment?.displayName ||
+														imp.displayName ||
+														"Ruas Jalan"}
+												</p>
+												<p className="text-[11px] text-[#585854] truncate">
+													{getImpactTypeLabel(imp.impactType)}
+													{imp.diversionNote ? ` • ${imp.diversionNote}` : ""}
+												</p>
+											</div>
+											<div className="flex items-center gap-2 shrink-0">
 												<RoadStatusBadge
-													status={seg.status}
-													expiresAt={seg.expiresAt}
+													status={
+														imp.operationalStatus?.effectiveStatus ===
+														"unconfirmed"
+															? "unknown"
+															: (imp.operationalStatus?.effectiveStatus ??
+																"unknown")
+													}
+													expiresAt={imp.operationalStatus?.expiresAt}
 												/>
-											}
-										/>
+												<button
+													type="button"
+													onClick={() =>
+														void deleteRoadImpactOnTabMutation.mutateAsync(
+															imp.id,
+														)
+													}
+													className="p-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-[#9E2A2B] hover:bg-[#fae5e5]"
+													title="Hapus ruas jalan"
+												>
+													<Trash2 className="w-3.5 h-3.5" />
+												</button>
+											</div>
+										</div>
 									))}
-								</List>
+								</div>
 							)}
+						</div>
+					</div>
+				</div>
+			) : null}
 
-							<TextInput
-								label="Catatan Pos Pecalang (Opsional)"
-								placeholder="Contoh: Iring-iringan tiba di Catus Pata"
+			{/* =================================================================== */}
+			{/* TAB 3: POS PECALANG — STATUS JALAN LIVE (`field`)                   */}
+			{/* =================================================================== */}
+			{currentTabValue === "field" ? (
+				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
+						<div className="border-b border-[#F0EFEA] pb-3">
+							<h2 className="teduh-workspace-card-title">
+								Peta Operasional Pos Pecalang
+							</h2>
+							<p className="text-xs text-[#585854]">
+								Klik ruas jalan pada peta atau pada panel kendali di sebelah
+								kanan untuk memperbarui status penutupan jalan secara real-time.
+							</p>
+						</div>
+
+						<DashboardRoadMapInput
+							mode="operational"
+							height={430}
+							attachedRoadImpacts={attachedRoadImpacts}
+							selectedImpactId={selectedImpactId}
+							onSelectImpact={setSelectedImpactId}
+						/>
+					</div>
+
+					<div className="xl:col-span-5 teduh-workspace-card space-y-4">
+						<div className="border-b border-[#F0EFEA] pb-3">
+							<h2 className="teduh-workspace-card-title">
+								Kendali Status Ruas Jalan (Pecalang)
+							</h2>
+							<p className="text-xs text-[#585854]">
+								Setiap pembaruan berlaku selama 30 menit sebelum ditandai perlu
+								konfirmasi ulang (`UNCONFIRMED`).
+							</p>
+						</div>
+
+						<div>
+							<label className="block text-xs font-semibold text-[#181817] mb-1">
+								Catatan Lapangan Pos Pecalang (Opsional)
+							</label>
+							<input
+								type="text"
 								value={fieldNote}
-								onChange={setFieldNote}
-								width="100%"
+								onChange={(e) => setFieldNote(e.target.value)}
+								placeholder="Contoh: Iring-iringan Melasti tiba di Catus Pata"
+								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
 							/>
-						</VStack>
+						</div>
+
+						{eventRoadImpactsQuery.isLoading ? (
+							<LoadingStateBlock
+								label="Memuat ruas jalan Pos Pecalang..."
+								rows={3}
+							/>
+						) : officerRoadList.length === 0 ? (
+							<EmptyStateCard
+								title={SYSTEM_STATE_MESSAGES.noMatchingRoad.title}
+								description={SYSTEM_STATE_MESSAGES.noMatchingRoad.description}
+								actions={
+									<button
+										type="button"
+										onClick={() => handleTabChange("roads")}
+										className="px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold"
+									>
+										+ Tambah Ruas Jalan di Peta
+									</button>
+								}
+							/>
+						) : (
+							<div className="space-y-3">
+								{officerRoadList.map((seg) => (
+									<div
+										key={seg.id}
+										className={`rounded-xl border p-3.5 space-y-2.5 ${
+											selectedImpactId === seg.id
+												? "border-[#264D3B] bg-[#EBF3EE]/40"
+												: "border-[#E5E3DC] bg-[#FBFBFA]"
+										}`}
+									>
+										<div className="flex items-start justify-between gap-2">
+											<div>
+												<p className="text-xs font-bold text-[#181817]">
+													{seg.roadName}
+												</p>
+												<p className="text-[11px] text-[#585854]">
+													{seg.corridorSection} • {seg.windowWita}
+												</p>
+											</div>
+											<RoadStatusBadge
+												status={seg.status}
+												expiresAt={seg.expiresAt}
+											/>
+										</div>
+
+										<div className="grid grid-cols-3 gap-2 pt-1">
+											<button
+												type="button"
+												onClick={() =>
+													setPendingStatusChange({
+														segmentId: seg.id,
+														roadName: seg.roadName,
+														nextStatus: "closed",
+													})
+												}
+												className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
+													seg.status === "closed"
+														? "bg-[#9E2A2B] text-white border-[#9E2A2B]"
+														: "bg-white text-[#9E2A2B] border-[#E8B4B4] hover:bg-[#FDF2F2]"
+												}`}
+											>
+												Tutup Total
+											</button>
+											<button
+												type="button"
+												onClick={() =>
+													setPendingStatusChange({
+														segmentId: seg.id,
+														roadName: seg.roadName,
+														nextStatus: "intermittent",
+													})
+												}
+												className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
+													seg.status === "intermittent"
+														? "bg-[#B86B14] text-white border-[#B86B14]"
+														: "bg-white text-[#9A5B13] border-[#F3D9A4] hover:bg-[#FDF7EB]"
+												}`}
+											>
+												Buka-Tutup
+											</button>
+											<button
+												type="button"
+												onClick={() =>
+													setPendingStatusChange({
+														segmentId: seg.id,
+														roadName: seg.roadName,
+														nextStatus: "open",
+													})
+												}
+												className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
+													seg.status === "open"
+														? "bg-[#264D3B] text-white border-[#264D3B]"
+														: "bg-white text-[#264D3B] border-[#C7DBD0] hover:bg-[#EBF3EE]"
+												}`}
+											>
+												Buka Lajur
+											</button>
+										</div>
+									</div>
+								))}
+							</div>
+						)}
 
 						<AlertDialog
 							isOpen={Boolean(pendingStatusChange)}
@@ -1505,31 +2431,19 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 							}}
 							onAction={() => {
 								if (!pendingStatusChange) return;
-								if (isRealUuidEvent) {
-									void updateStatusMutation.mutateAsync({
-										impactId: pendingStatusChange.segmentId,
-										nextStatus: pendingStatusChange.nextStatus as
-											| "open"
-											| "intermittent"
-											| "closed",
-										note: fieldNote || undefined,
-									});
-								} else {
-									setSegmentStatuses((prev) => ({
-										...prev,
-										[pendingStatusChange.segmentId]:
-											pendingStatusChange.nextStatus,
-									}));
-									setStatusFeedback(
-										`Status "${pendingStatusChange.roadName}" diperbarui pada pratinjau demonstrasi (mode simulasi).`,
-									);
-									setPendingStatusChange(null);
-								}
+								void updateStatusMutation.mutateAsync({
+									impactId: pendingStatusChange.segmentId,
+									nextStatus: pendingStatusChange.nextStatus as
+										| "open"
+										| "intermittent"
+										| "closed",
+									note: fieldNote || undefined,
+								});
 							}}
 							title="Konfirmasi Perubahan Status Jalan"
 							description={
 								pendingStatusChange
-									? `Ubah status "${pendingStatusChange.roadName}" sekarang? Perubahan akan langsung tampil di peta warga.`
+									? `Ubah status "${pendingStatusChange.roadName}" menjadi ${pendingStatusChange.nextStatus.toUpperCase()}? Pembaruan akan dicatat pada log audit dan langsung tampil di peta publik.`
 									: ""
 							}
 							actionLabel="Simpan Status"
@@ -1540,342 +2454,556 @@ export function WorkflowRouteShellPage({ title }: WorkflowRouteShellProps) {
 									: "primary"
 							}
 						/>
-					</LayoutPanel>
-				}
-			/>
-		);
-	}
+					</div>
+				</div>
+			) : null}
 
-	return (
-		<Layout
-			defaultHasDividers
-			height="fill"
-			contentWidth={720}
-			header={headerNode}
-			content={
-				<LayoutContent>
-					{/* TAB: SURAT EDARAN & PEMERIKSAAN */}
-					{currentTabValue === "document" ? (
-						<VStack gap={5}>
-							<FileInput
-								mode="dropzone"
-								label="Unggah Surat Pengumuman Desa Adat (PDF, JPG, PNG • Maks. 8 MB)"
-								accept=".pdf,image/jpeg,image/png,image/webp"
-								value={uploadedFiles}
-								onChange={(files) =>
-									setUploadedFiles(
-										Array.isArray(files) ? files : files ? [files] : [],
-									)
-								}
-							/>
+			{/* =================================================================== */}
+			{/* TAB 4: KEBERSIHAN & PENCATATAN SAMPAH (`cleanup`)                   */}
+			{/* =================================================================== */}
+			{currentTabValue === "cleanup" ? (
+				<div className="space-y-6">
+					<Banner
+						status="info"
+						collapsible={false}
+						title="Independensi Kebersihan & Pembukaan Jalan"
+						description={OPERATIONAL_DISCLAIMERS.CLEANUP_INDEPENDENCE_NOTE}
+					/>
 
-							<Divider variant="subtle" />
+					<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+						{/* Left Column: Cleanup Tasks & Photo Evidence */}
+						<div className="xl:col-span-7 space-y-6">
+							<div className="teduh-workspace-card space-y-4">
+								<div className="flex items-center justify-between border-b border-[#F0EFEA] pb-3">
+									<h2 className="teduh-workspace-card-title">
+										Daftar Tugas Kebersihan Area Upacara
+									</h2>
+									<button
+										type="button"
+										onClick={() => setIsAddingTask((prev) => !prev)}
+										className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+									>
+										<Plus className="w-3.5 h-3.5" />
+										<span>Tambah Tugas</span>
+									</button>
+								</div>
 
-							<Heading level={2}>Periksa Rincian Hasil Bacaan Surat</Heading>
-
-							<FormLayout direction="vertical" defaultOptionality="required">
-								<TextInput
-									label="Nama Upacara"
-									value={extractedTitle}
-									onChange={setExtractedTitle}
-									isRequired
-									width="100%"
-								/>
-								<TextInput
-									label="Lokasi Pura & Tujuan Prosesi"
-									value={extractedVenue}
-									onChange={setExtractedVenue}
-									isRequired
-									width="100%"
-								/>
-								<TextInput
-									label="Jadwal Pelaksanaan (WITA)"
-									value={extractedWindow}
-									onChange={setExtractedWindow}
-									isRequired
-									width="100%"
-								/>
-								<TextArea
-									label="Ringkasan Pengalihan Arus"
-									value={activeVillage.alternativeRouteSummary}
-									rows={2}
-									width="100%"
-								/>
-							</FormLayout>
-
-							<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
-								<Token
-									color={extractionChecked ? "green" : "orange"}
-									size="sm"
-									label={
-										extractionChecked
-											? "Rincian telah dikonfirmasi Panitia"
-											: "Belum dikonfirmasi"
-									}
-								/>
-								<HStack gap={2}>
-									<Button
-										variant="secondary"
-										size="md"
-										label="Konfirmasi Data"
-										icon={<Icon icon={CheckCircle2} size="sm" />}
-										onClick={() => setExtractionChecked(true)}
-									/>
-									<Button
-										as={RouterLinkBridge}
-										href={`/dashboard/events/${eventId}/roads`}
-										variant="primary"
-										size="md"
-										label="Lanjut ke Rute Jalan"
-									/>
-								</HStack>
-							</HStack>
-						</VStack>
-					) : null}
-
-					{/* TAB: KEBERSIHAN PASCA-KARYA */}
-					{currentTabValue === "cleanup" ? (
-						<VStack gap={5}>
-							<Banner
-								status="info"
-								collapsible={false}
-								title="Catatan Penting"
-								description={OPERATIONAL_DISCLAIMERS.CLEANUP_INDEPENDENCE_NOTE}
-							/>
-
-							{cleanupTasksQuery.data?.cleanupTasks &&
-							cleanupTasksQuery.data.cleanupTasks.length > 0 ? (
-								<VStack gap={3}>
-									<HStack justify="between" vAlign="center" wrap="wrap">
-										<Heading level={2}>Daftar Tugas Kebersihan</Heading>
-										<Button
-											variant="secondary"
-											size="sm"
-											label="Tambah Tugas"
-											onClick={() => setIsAddingTask(true)}
-										/>
-									</HStack>
-									<List hasDividers density="balanced">
-										{cleanupTasksQuery.data.cleanupTasks.map((task) => (
-											<ListItem
-												key={task.id}
-												startContent={<Icon icon={ClipboardCheck} size="sm" />}
-												label={task.title}
-												description={`${task.description || "Area Utama"} • Status: ${task.status}`}
-												endContent={
-													<HStack gap={1.5} vAlign="center" wrap="wrap">
-														<CleanupStatusBadge
-															status={task.status as CleanupTaskStatus}
-														/>
-														{task.status === "in_progress" ||
-														task.status === "todo" ? (
-															<Button
-																variant="secondary"
-																size="sm"
-																label="Serahkan"
-																onClick={() =>
-																	void submitCleanupMutation.mutateAsync(task.id)
-																}
-															/>
-														) : null}
-														{task.status === "submitted" ? (
-															<>
-																<Button
-																	variant="primary"
-																	size="sm"
-																	label="Verifikasi"
-																	onClick={() =>
-																		void verifyCleanupMutation.mutateAsync({
-																			taskId: task.id,
-																		})
-																	}
-																/>
-																<Button
-																	variant="secondary"
-																	size="sm"
-																	label="Buka Kembali"
-																	onClick={() =>
-																		void reopenCleanupMutation.mutateAsync({
-																			taskId: task.id,
-																			reason:
-																				"Periksa kembali pembersihan sisa sampah canang.",
-																		})
-																	}
-																/>
-															</>
-														) : null}
-													</HStack>
-												}
+								{isAddingTask ? (
+									<div className="rounded-xl border border-[#D7E3DC] bg-[#F6FAF7] p-4 space-y-3">
+										<div>
+											<label className="block text-xs font-semibold text-[#181817] mb-1">
+												Judul Tugas Kebersihan *
+											</label>
+											<input
+												type="text"
+												value={newTaskTitle}
+												onChange={(e) => setNewTaskTitle(e.target.value)}
+												placeholder="Contoh: Pembersihan Sisa Canang & Sampah Plastik Catus Pata"
+												className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
 											/>
-										))}
-									</List>
-								</VStack>
-							) : null}
+										</div>
+										<div>
+											<label className="block text-xs font-semibold text-[#181817] mb-1">
+												Catatan Titik Lokasi
+											</label>
+											<input
+												type="text"
+												value={newTaskLocation}
+												onChange={(e) => setNewTaskLocation(e.target.value)}
+												placeholder="Contoh: Seputar Jaba Luar Pura Desa dan Simpang Utama"
+												className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+											/>
+										</div>
+										<div className="flex justify-end gap-2">
+											<button
+												type="button"
+												onClick={() => setIsAddingTask(false)}
+												className="px-3 py-1.5 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817]"
+											>
+												Batal
+											</button>
+											<button
+												type="button"
+												disabled={
+													!newTaskTitle.trim() ||
+													createCleanupTaskMutation.isPending
+												}
+												onClick={() =>
+													void createCleanupTaskMutation.mutateAsync({
+														title: newTaskTitle,
+														locationNotes: newTaskLocation,
+													})
+												}
+												className="px-3.5 py-1.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold disabled:opacity-50"
+											>
+												Simpan Tugas
+											</button>
+										</div>
+									</div>
+								) : null}
 
-							{isAddingTask ? (
-								<VStack gap={3}>
-									<Heading level={3}>Tambah Tugas Kebersihan Baru</Heading>
-									<TextInput
-										label="Judul Tugas"
-										placeholder="Contoh: Pembersihan Koridor Utama Pura"
-										value={newTaskTitle}
-										onChange={setNewTaskTitle}
-										isRequired
-										width="100%"
+								{cleanupTasksQuery.data?.cleanupTasks &&
+								cleanupTasksQuery.data.cleanupTasks.length > 0 ? (
+									<div className="space-y-2.5">
+										{cleanupTasksQuery.data.cleanupTasks.map((task) => (
+											<div
+												key={task.id}
+												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+											>
+												<div>
+													<p className="text-xs font-bold text-[#181817]">
+														{task.title}
+													</p>
+													<p className="text-[11px] text-[#585854]">
+														{task.description || "Area Utama Upacara"}
+													</p>
+												</div>
+												<div className="flex flex-wrap items-center gap-2">
+													<CleanupStatusBadge
+														status={task.status as CleanupTaskStatus}
+													/>
+													{task.status === "todo" ||
+													task.status === "in_progress" ||
+													task.status === "reopened" ? (
+														<button
+															type="button"
+															onClick={() =>
+																void submitCleanupMutation.mutateAsync(task.id)
+															}
+															className="px-2.5 py-1 rounded-lg bg-[#264D3B] text-white text-[11px] font-semibold"
+														>
+															Serahkan Tugas
+														</button>
+													) : null}
+													{task.status === "submitted" ? (
+														<>
+															<button
+																type="button"
+																onClick={() =>
+																	void verifyCleanupMutation.mutateAsync({
+																		taskId: task.id,
+																	})
+																}
+																className="px-2.5 py-1 rounded-lg bg-[#264D3B] text-white text-[11px] font-semibold"
+															>
+																Verifikasi Prajuru
+															</button>
+															<button
+																type="button"
+																onClick={() =>
+																	void reopenCleanupMutation.mutateAsync({
+																		taskId: task.id,
+																		reason:
+																			"Perlu pembersihan ulang sisa sampah di lokasi.",
+																	})
+																}
+																className="px-2.5 py-1 rounded-lg border border-[#E5E3DC] bg-white text-[11px] font-semibold text-[#181817]"
+															>
+																Buka Kembali
+															</button>
+														</>
+													) : null}
+												</div>
+											</div>
+										))}
+									</div>
+								) : (
+									<div className="rounded-xl border border-dashed border-[#D5D3CB] p-4 text-xs text-[#585854] text-center">
+										Belum ada tugas kebersihan terdaftar. Klik{" "}
+										<strong>+ Tambah Tugas</strong> untuk membuat daftar tugas
+										petugas kebersihan.
+									</div>
+								)}
+							</div>
+
+							{/* Photo Evidence Upload */}
+							<div className="teduh-workspace-card space-y-4">
+								<h3 className="teduh-workspace-card-title">
+									Unggah Bukti Foto Kebersihan Lapangan
+								</h3>
+								<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+									<div>
+										<label className="block text-xs font-semibold text-[#181817] mb-1">
+											Pilih Tugas Kebersihan
+										</label>
+										<select
+											value={selectedTaskForEvidence}
+											onChange={(e) =>
+												setSelectedTaskForEvidence(e.target.value)
+											}
+											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+										>
+											{cleanupTasksQuery.data?.cleanupTasks?.map((t) => (
+												<option key={t.id} value={t.id}>
+													{t.title} ({t.status})
+												</option>
+											))}
+											{!cleanupTasksQuery.data?.cleanupTasks?.length ? (
+												<option value="">
+													-- Buat tugas terlebih dahulu --
+												</option>
+											) : null}
+										</select>
+									</div>
+
+									<div>
+										<label className="block text-xs font-semibold text-[#181817] mb-1">
+											Tahap Dokumentasi Foto
+										</label>
+										<select
+											value={evidenceStage}
+											onChange={(e) =>
+												setEvidenceStage(e.target.value as "before" | "after")
+											}
+											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+										>
+											<option value="before">
+												Sebelum Pembersihan (Before)
+											</option>
+											<option value="after">Setelah Pembersihan (After)</option>
+										</select>
+									</div>
+								</div>
+
+								<label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#C7DBD0] bg-[#F6FAF7] p-5 text-center cursor-pointer hover:bg-[#EBF3EE]/60 transition-colors">
+									<Upload className="w-6 h-6 text-[#264D3B] mb-1.5" />
+									<span className="text-xs font-bold text-[#181817]">
+										{uploadCleanupEvidenceMutation.isPending
+											? "Mengunggah Bukti Foto ke R2..."
+											: "Klik untuk Mengunggah Foto Bukti (JPG, PNG, WEBP)"}
+									</span>
+									<input
+										type="file"
+										accept="image/jpeg,image/png,image/webp"
+										disabled={uploadCleanupEvidenceMutation.isPending}
+										onChange={(e) => {
+											const f = e.target.files?.[0];
+											if (f) {
+												void uploadCleanupEvidenceMutation.mutateAsync(f);
+											}
+										}}
+										className="hidden"
 									/>
-									<TextInput
-										label="Catatan Lokasi"
-										placeholder="Contoh: Seputar Catus Pata dan Jaba Tengah"
-										value={newTaskLocation}
-										onChange={setNewTaskLocation}
-										width="100%"
-									/>
-									<HStack gap={2} justify="end">
-										<Button
-											variant="secondary"
-											size="sm"
-											label="Batal"
-											onClick={() => setIsAddingTask(false)}
+								</label>
+							</div>
+						</div>
+
+						{/* Right Column: Waste Quantity Recording */}
+						<div className="xl:col-span-5 teduh-workspace-card space-y-4">
+							<div className="border-b border-[#F0EFEA] pb-3">
+								<h2 className="teduh-workspace-card-title">
+									Pencatatan Timbunan Sampah Pasca-Upacara
+								</h2>
+								<p className="text-xs text-[#585854]">
+									Pisahkan secara jujur antara berat terukur (ditimbang) dan
+									estimasi / jumlah karung sesuai standar Rangkai.
+								</p>
+							</div>
+
+							<div className="space-y-3">
+								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-2">
+									<label className="block text-xs font-bold text-[#181817]">
+										1. Sampah Organik / Canang &amp; Janur (Kg)
+									</label>
+									<div className="grid grid-cols-2 gap-2">
+										<input
+											type="number"
+											min="0"
+											step="0.5"
+											value={organicKg}
+											onChange={(e) => setOrganicKg(e.target.value)}
+											placeholder="Berat (Kg)"
+											className="rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
 										/>
-										<Button
-											variant="primary"
-											size="sm"
-											label="Simpan Tugas"
-											isDisabled={!newTaskTitle.trim()}
-											isLoading={createCleanupTaskMutation.isPending}
+										<select
+											value={organicMethod}
+											onChange={(e) =>
+												setOrganicMethod(
+													e.target.value as "weighed" | "estimated",
+												)
+											}
+											className="rounded-xl border border-[#E5E3DC] bg-white px-2.5 py-2 text-xs text-[#181817]"
+										>
+											<option value="weighed">Ditimbang Aktual</option>
+											<option value="estimated">Estimasi Petugas</option>
+										</select>
+									</div>
+								</div>
+
+								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-2">
+									<label className="block text-xs font-bold text-[#181817]">
+										2. Sampah Daur Ulang / Botol &amp; Plastik (Kg)
+									</label>
+									<div className="grid grid-cols-2 gap-2">
+										<input
+											type="number"
+											min="0"
+											step="0.5"
+											value={recyclableKg}
+											onChange={(e) => setRecyclableKg(e.target.value)}
+											placeholder="Berat (Kg)"
+											className="rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+										/>
+										<select
+											value={recyclableMethod}
+											onChange={(e) =>
+												setRecyclableMethod(
+													e.target.value as "weighed" | "estimated",
+												)
+											}
+											className="rounded-xl border border-[#E5E3DC] bg-white px-2.5 py-2 text-xs text-[#181817]"
+										>
+											<option value="weighed">Ditimbang Aktual</option>
+											<option value="estimated">Estimasi Petugas</option>
+										</select>
+									</div>
+								</div>
+
+								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-2">
+									<label className="block text-xs font-bold text-[#181817]">
+										3. Sampah Residu (Jumlah Karung)
+									</label>
+									<input
+										type="number"
+										min="0"
+										step="1"
+										value={residualSacks}
+										onChange={(e) => setResidualSacks(e.target.value)}
+										placeholder="Contoh: 8 karung"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+									/>
+								</div>
+
+								<button
+									type="button"
+									disabled={recordWasteMutation.isPending}
+									onClick={() => void recordWasteMutation.mutateAsync()}
+									className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+								>
+									<Save className="w-3.5 h-3.5" />
+									<span>
+										{recordWasteMutation.isPending
+											? "Menyimpan..."
+											: "Simpan Catatan Sampah"}
+									</span>
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			) : null}
+
+			{/* =================================================================== */}
+			{/* TAB 5: TIM LAPANGAN & UNDANGAN PETUGAS (`team`)                     */}
+			{/* =================================================================== */}
+			{currentTabValue === "team" ? (
+				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+					{/* Left Column: Generate One-Time Invitation Link & Direct Assign */}
+					<div className="xl:col-span-5 space-y-6">
+						<div className="teduh-workspace-card space-y-4">
+							<div className="border-b border-[#F0EFEA] pb-3">
+								<div className="flex items-center gap-2">
+									<Link2 className="w-4 h-4 text-[#264D3B]" />
+									<h2 className="teduh-workspace-card-title">
+										Buat Tautan Undangan Petugas Lapangan
+									</h2>
+								</div>
+								<p className="text-xs text-[#585854] mt-1">
+									Hasilkan tautan undangan resmi sekali pakai (berlaku 7 hari)
+									untuk dibagikan kepada Pecalang atau petugas kebersihan via
+									WhatsApp.
+								</p>
+							</div>
+
+							<div className="space-y-2.5 text-xs">
+								<label className="flex items-center gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer">
+									<input
+										type="checkbox"
+										checked={inviteCanTraffic}
+										onChange={(e) => setInviteCanTraffic(e.target.checked)}
+										className="rounded border-[#C5C3BC] text-[#264D3B]"
+									/>
+									<div>
+										<span className="font-bold text-[#181817] block">
+											Wewenang Lalu Lintas (`traffic:update`)
+										</span>
+										<span className="text-[#585854]">
+											Dapat memperbarui status ruas jalan (Pos Pecalang)
+										</span>
+									</div>
+								</label>
+
+								<label className="flex items-center gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer">
+									<input
+										type="checkbox"
+										checked={inviteCanCleanup}
+										onChange={(e) => setInviteCanCleanup(e.target.checked)}
+										className="rounded border-[#C5C3BC] text-[#264D3B]"
+									/>
+									<div>
+										<span className="font-bold text-[#181817] block">
+											Wewenang Kebersihan (`cleanup:update`)
+										</span>
+										<span className="text-[#585854]">
+											Dapat mengunggah foto bukti &amp; menyerahkan tugas
+											kebersihan
+										</span>
+									</div>
+								</label>
+							</div>
+
+							<button
+								type="button"
+								disabled={
+									generateInviteMutation.isPending ||
+									(!inviteCanTraffic && !inviteCanCleanup)
+								}
+								onClick={() => void generateInviteMutation.mutateAsync()}
+								className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+							>
+								<UserPlus className="w-3.5 h-3.5" />
+								<span>
+									{generateInviteMutation.isPending
+										? "Membuat Tautan..."
+										: "Buat Tautan Undangan Petugas"}
+								</span>
+							</button>
+
+							{generatedInviteUrl ? (
+								<div className="rounded-xl border border-[#A6D9B8] bg-[#EBF7F0] p-3.5 space-y-2">
+									<span className="text-[11px] font-bold uppercase tracking-wider text-[#1D5E3A] block">
+										Tautan Undangan Siap Dibagikan:
+									</span>
+									<div className="flex items-center gap-2">
+										<input
+											type="text"
+											readOnly
+											value={generatedInviteUrl}
+											className="flex-1 rounded-lg border border-[#A6D9B8] bg-white px-2.5 py-1.5 text-xs font-mono text-[#181817]"
+										/>
+										<button
+											type="button"
 											onClick={() => {
-												void createCleanupTaskMutation.mutateAsync({
-													title: newTaskTitle,
-													locationNotes: newTaskLocation,
+												void navigator.clipboard.writeText(generatedInviteUrl);
+												setStatusFeedback({
+													type: "info",
+													message:
+														"Tautan undangan berhasil disalin ke papan klip!",
 												});
 											}}
-										/>
-									</HStack>
-								</VStack>
-							) : !cleanupTasksQuery.data?.cleanupTasks?.length ? (
-								<HStack justify="end">
-									<Button
-										variant="secondary"
-										size="sm"
-										label="Tambah Tugas Kebersihan"
-										onClick={() => setIsAddingTask(true)}
-									/>
-								</HStack>
+											className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#264D3B] text-white text-xs font-semibold"
+										>
+											<Copy className="w-3.5 h-3.5" />
+											<span>Salin</span>
+										</button>
+									</div>
+								</div>
 							) : null}
+						</div>
 
-							<Divider variant="subtle" />
-
-							<Heading level={2}>Unggah Bukti Foto Lapangan</Heading>
-
-							<SegmentedControl
-								label="Tahap Dokumentasi Foto"
-								value={evidenceStage}
-								onChange={(v) => setEvidenceStage(v as "before" | "after")}
-								size="sm"
-							>
-								<SegmentedControlItem value="before" label="Sebelum Pembersihan (Before)" />
-								<SegmentedControlItem value="after" label="Setelah Pembersihan (After)" />
-							</SegmentedControl>
-
-							<FileInput
-								mode="dropzone"
-								label="Foto Bukti Pembersihan Area (JPG, PNG • Maks. 8 MB)"
-								accept="image/jpeg,image/png"
-								value={uploadedFiles}
-								onChange={(files) => {
-									const list = Array.isArray(files)
-										? files
-										: files
-											? [files]
-											: [];
-									setUploadedFiles(list);
-									if (list.length > 0 && isRealUuidEvent) {
-										void uploadCleanupEvidenceMutation.mutateAsync(list[0]);
+						{/* Direct Assign by User ID */}
+						<div className="teduh-workspace-card space-y-3">
+							<h3 className="teduh-workspace-card-title">
+								Penugasan Langsung via ID Akun
+							</h3>
+							<p className="text-xs text-[#585854]">
+								Jika petugas sudah memiliki akun di Desa Adat ini, masukkan ID
+								Akun mereka untuk menugaskan secara langsung.
+							</p>
+							<div className="flex gap-2">
+								<input
+									type="text"
+									value={directOfficerUserId}
+									onChange={(e) => setDirectOfficerUserId(e.target.value)}
+									placeholder="Masukkan ID Akun Petugas..."
+									className="flex-1 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+								/>
+								<button
+									type="button"
+									disabled={
+										!directOfficerUserId.trim() ||
+										directAssignMutation.isPending
 									}
-								}}
-							/>
+									onClick={() => void directAssignMutation.mutateAsync()}
+									className="px-3.5 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4] disabled:opacity-50"
+								>
+									Tugaskan
+								</button>
+							</div>
+						</div>
+					</div>
 
-							<Heading level={2}>Catatan Sampah Pasca-Upacara</Heading>
+					{/* Right Column: Assigned Officers List */}
+					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
+						<div className="flex items-center justify-between border-b border-[#F0EFEA] pb-3">
+							<h2 className="teduh-workspace-card-title">
+								Daftar Petugas Lapangan Terdaftar (
+								{assignmentsQuery.data?.assignments?.length ?? 0})
+							</h2>
+						</div>
 
-							<Grid columns={{ minWidth: 200, max: 3 }} gap={4}>
-								<TextInput
-									label="Organik / Canang (Kg)"
-									value={organicKg}
-									onChange={setOrganicKg}
-									width="100%"
-								/>
-								<TextInput
-									label="Daur Ulang / Plastik (Kg)"
-									value={recyclableKg}
-									onChange={setRecyclableKg}
-									width="100%"
-								/>
-								<TextInput
-									label="Residu (Jumlah Karung)"
-									value={residualSacks}
-									onChange={setResidualSacks}
-									width="100%"
-								/>
-							</Grid>
+						{assignmentsQuery.isLoading ? (
+							<LoadingStateBlock label="Memuat daftar petugas..." rows={3} />
+						) : !assignmentsQuery.data?.assignments?.length ? (
+							<div className="rounded-xl border border-dashed border-[#D5D3CB] p-6 text-center space-y-2 text-xs text-[#585854]">
+								<Users className="w-7 h-7 text-[#8A8984] mx-auto" />
+								<p className="font-bold text-[#181817]">
+									Belum Ada Petugas Lapangan yang Ditugaskan
+								</p>
+								<p className="max-w-sm mx-auto">
+									Gunakan tombol <strong>Buat Tautan Undangan Petugas</strong>{" "}
+									di sebelah kiri dan kirimkan ke Pecalang atau petugas
+									kebersihan agar mereka dapat bergabung ke acara ini.
+								</p>
+							</div>
+						) : (
+							<div className="space-y-2.5">
+								{assignmentsQuery.data.assignments.map((asg) => (
+									<div
+										key={asg.id}
+										className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+									>
+										<div className="space-y-1">
+											<p className="text-xs font-bold text-[#181817]">
+												{asg.userName || "Petugas Lapangan"} (
+												{asg.userEmail || asg.userId})
+											</p>
+											<div className="flex flex-wrap items-center gap-1.5">
+												{asg.canUpdateTraffic ? (
+													<span className="px-2 py-0.5 rounded-md bg-[#EBF3EE] text-[#264D3B] text-[11px] font-semibold">
+														Pos Pecalang (traffic:update)
+													</span>
+												) : null}
+												{asg.canUpdateCleanup ? (
+													<span className="px-2 py-0.5 rounded-md bg-[#FDF7EB] text-[#9A5B13] text-[11px] font-semibold">
+														Kebersihan (cleanup:update)
+													</span>
+												) : null}
+												<span className="text-[11px] text-[#585854]">
+													• Ditugaskan{" "}
+													{formatWitaDateTime(asg.assignedAt || asg.createdAt)}
+												</span>
+											</div>
+										</div>
 
-							<HStack justify="end">
-								<Button
-									variant="secondary"
-									size="sm"
-									label="Simpan Catatan Sampah"
-									icon={<Icon icon={Save} size="sm" />}
-									isLoading={recordWasteMutation.isPending}
-									onClick={() => {
-										void recordWasteMutation.mutateAsync();
-									}}
-								/>
-							</HStack>
-
-							<HStack justify="between" vAlign="center" wrap="wrap" gap={2}>
-								<Token
-									color={cleanupVerified ? "green" : "orange"}
-									size="sm"
-									label={
-										cleanupVerified
-											? "Kebersihan Diverifikasi (Jalan tetap dikendalikan Pecalang)"
-											: "Menunggu Verifikasi"
-									}
-								/>
-								<Button
-									variant="primary"
-									size="md"
-									label="Verifikasi Kebersihan"
-									icon={<Icon icon={ClipboardCheck} size="sm" />}
-									isLoading={verifyCleanupMutation.isPending}
-									onClick={() => {
-										void verifyCleanupMutation.mutateAsync();
-									}}
-								/>
-							</HStack>
-						</VStack>
-					) : null}
-
-					{/* TAB: PETUGAS LAPANGAN */}
-					{currentTabValue === "team" ? (
-						<VStack gap={4}>
-							<Heading level={2}>Daftar Pos & Petugas Pecalang</Heading>
-							<List hasDividers density="spacious">
-								{activeVillage.pecalangPosts.map((post) => (
-									<ListItem
-										key={post.id}
-										startContent={<Icon icon={Users} size="sm" />}
-										label={post.name}
-										description={`${post.officerInCharge} (${post.phone}) • ${post.assignedRole}`}
-										endContent={
-											<Token color="green" size="sm" label="Ditugaskan" />
-										}
-									/>
+										<button
+											type="button"
+											disabled={revokeAssignmentMutation.isPending}
+											onClick={() =>
+												void revokeAssignmentMutation.mutateAsync(asg.id)
+											}
+											className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-[11px] font-semibold text-[#9E2A2B] hover:bg-[#fae5e5] shrink-0"
+										>
+											<Trash2 className="w-3 h-3" />
+											<span>Cabut Tugas</span>
+										</button>
+									</div>
 								))}
-							</List>
-						</VStack>
-					) : null}
-				</LayoutContent>
-			}
-		/>
+							</div>
+						)}
+					</div>
+				</div>
+			) : null}
+		</div>
 	);
 }
