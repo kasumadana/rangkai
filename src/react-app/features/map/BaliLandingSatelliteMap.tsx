@@ -202,11 +202,13 @@ export function BaliLandingSatelliteMap({
 			}
 
 			const badge = getStatusBadgeConfig(ceremony.status);
+			const isSim = ceremony.isSimulation !== false;
 			const popupNode = document.createElement("div");
 			popupNode.className = "map-popup-card";
 			popupNode.innerHTML = `
 				<div class="map-popup-header">
 					<span class="map-popup-badge ${badge.className}">${badge.label}</span>
+					${isSim ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ''}
 					<span class="map-popup-location">${ceremony.desaAdatName}</span>
 				</div>
 				<h4 class="map-popup-title">${ceremony.title}</h4>
@@ -241,6 +243,7 @@ export function BaliLandingSatelliteMap({
 						sacredCenterName: ceremony.sacredCenterName,
 						roadName: ceremony.roadName,
 						detourRoute: ceremony.detourRoute,
+						isSimulation: ceremony.isSimulation !== false,
 					});
 				});
 			}

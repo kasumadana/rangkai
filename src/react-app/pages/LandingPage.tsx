@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Token } from "@astryxdesign/core/Token";
+import { Stack } from "@astryxdesign/core/Stack";
 import {
 	ArrowRight,
 	Calendar,
@@ -47,7 +48,7 @@ export function LandingPage() {
 		() =>
 			liveEvents.map((evt, idx) =>
 				mapPublicEventToCeremonyProfile(evt, [], idx),
-			).filter((profile) => profile.roadSegments.some((road) => road.coordinates.length > 0)),
+			),
 		[liveEvents],
 	);
 
@@ -202,14 +203,14 @@ export function LandingPage() {
 									<div>
 										<div className="schedule-card-header">
 											<span className="schedule-village-label">{evt.village} • {evt.regency}</span>
-											<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-												{evt.isSimulation ? (
+											<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+												{evt.isSimulation !== false ? (
 													<Token color="orange" size="sm" label="SIMULASI" />
 												) : null}
 												<span className={`road-status-badge ${statusClass}`}>
 													{statusText}
 												</span>
-											</div>
+											</Stack>
 										</div>
 
 										<h3 className="schedule-card-title">{evt.title}</h3>

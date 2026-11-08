@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Token } from "@astryxdesign/core/Token";
+import { Stack } from "@astryxdesign/core/Stack";
 import {
 	Building2,
 	CheckCircle2,
@@ -419,7 +420,7 @@ export function OrganizerDashboardPage() {
 														{categoryLabel}
 													</span>
 													<EventLifecycleBadge status={evt.status} />
-													{evt.isSimulation ? (
+													{evt.isSimulation !== false ? (
 														<Token color="orange" size="sm" label="SIMULASI" />
 													) : null}
 													{evt.permitReference ? (
@@ -521,15 +522,15 @@ export function OrganizerDashboardPage() {
 						{activeEvent ? (
 							<>
 								<div className="flex items-start justify-between gap-3">
-									<div className="space-y-1 min-w-0">
-										<div className="flex items-center gap-2 flex-wrap">
+									<div className="space-y-1 min-w-0 flex-1">
+										<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
 											<h3 className="teduh-workspace-card-title truncate">
 												Peta kegiatan: {activeEvent.title}
 											</h3>
-											{activeEvent.isSimulation ? (
+											{activeEvent.isSimulation !== false ? (
 												<Token color="orange" size="sm" label="SIMULASI" />
 											) : null}
-										</div>
+										</Stack>
 										<p className="text-xs text-[#585854] truncate">
 											{activeEvent.venueName || "Lokasi belum ditetapkan"} •{" "}
 											{activeEvent.startsAt && activeEvent.endsAt
@@ -540,7 +541,9 @@ export function OrganizerDashboardPage() {
 												: "Jadwal WITA belum lengkap"}
 										</p>
 									</div>
-									<EventLifecycleBadge status={activeEvent.status} />
+									<div className="shrink-0">
+										<EventLifecycleBadge status={activeEvent.status} />
+									</div>
 								</div>
 
 								{/* Dedicated Dashboard Road Map (No Kecamatan polygons) */}

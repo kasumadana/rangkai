@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Token } from "@astryxdesign/core/Token";
+import { Stack } from "@astryxdesign/core/Stack";
 import {
 	ArrowRight,
 	Clock,
@@ -360,23 +361,13 @@ export function TeduhSpatialMapConsole() {
 								}}
 							>
 								<div>
-									<div
-										style={{
-											fontSize: 14,
-											fontWeight: 500,
-											color: "#181B20",
-											display: "flex",
-											alignItems: "center",
-											gap: 6,
-											flexWrap: "wrap",
-										}}
-									>
-										<span>{c.ceremonyTitle}</span>
-										{c.isSimulation ? (
+									<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+										<span className="text-sm font-medium text-stone-900">{c.ceremonyTitle}</span>
+										{c.isSimulation !== false ? (
 											<Token color="orange" size="sm" label="SIMULASI" />
 										) : null}
-									</div>
-									<div style={{ fontSize: 12, color: "#545B67" }}>
+									</Stack>
+									<div className="text-xs text-stone-600 mt-0.5">
 										{c.desaAdatName} • {c.kabupaten}
 									</div>
 								</div>
@@ -957,22 +948,16 @@ export function TeduhSpatialMapConsole() {
 					<>
 						<div className="drawer-header">
 							<div style={{ flex: 1, minWidth: 0 }}>
-								<div
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: 8,
-										marginBottom: 6,
-										flexWrap: "wrap",
-									}}
-								>
-									<span className="drawer-location-tag">
-										{activeVillage.desaAdatName} • {activeVillage.kabupaten}
-									</span>
-									{activeVillage.isSimulation ? (
-										<Token color="orange" size="sm" label="SIMULASI" />
-									) : null}
-									<RoadStatusBadge status={activeVillage.primaryStatus} />
+								<div className="mb-1.5">
+									<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+										<span className="drawer-location-tag">
+											{activeVillage.desaAdatName} • {activeVillage.kabupaten}
+										</span>
+										{activeVillage.isSimulation !== false ? (
+											<Token color="orange" size="sm" label="SIMULASI" />
+										) : null}
+										<RoadStatusBadge status={activeVillage.primaryStatus} />
+									</Stack>
 								</div>
 								<h3 className="drawer-title">
 									{activeVillage.ceremonyTitle}

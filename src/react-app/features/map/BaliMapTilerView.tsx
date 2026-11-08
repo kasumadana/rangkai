@@ -457,7 +457,7 @@ export function BaliMapTilerView({
 			popupNode.innerHTML = `
 				<div class="map-popup-header">
 					<span class="map-popup-badge ${statusBadge.className}">${statusBadge.label}</span>
-					${v.isSimulation ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ''}
+					${v.isSimulation !== false ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ''}
 					<span class="map-popup-location"></span>
 				</div>
 				<h4 class="map-popup-title"></h4>

@@ -549,7 +549,7 @@ export function WorkspaceShellLayout() {
 						style={{ textDecoration: "none" }}
 					>
 						<Compass size={14} />
-						<span>Portal Publik</span>
+						<span className="hidden sm:inline">Portal Publik</span>
 					</RouterLink>
 
 					{!isSessionLoading && sessionData?.user ? (
@@ -561,7 +561,7 @@ export function WorkspaceShellLayout() {
 								title={sessionData.user.email}
 							>
 								<Settings size={14} />
-								<span>{sessionData.user.name || "Akun"}</span>
+								<span className="max-w-24 truncate">{sessionData.user.name || "Akun"}</span>
 							</RouterLink>
 							<button
 								type="button"

@@ -1466,6 +1466,7 @@ export function buildDistrictFeaturesFromEvents(
 				coordinates: m.mapCenter,
 				roadName: m.roadSegments[0]?.roadName,
 				detourRoute: m.roadSegments[0]?.guidanceNote || m.alternativeRouteSummary,
+				isSimulation: m.isSimulation !== false,
 			}));
 
 			return {

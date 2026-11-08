@@ -2368,7 +2368,7 @@
 	/* Floating Controls: GPS button and clean overview reset tool */
 	.map-floating-controls {
 		position: absolute;
-		bottom: 24px;
+		bottom: 56px;
 		right: 24px;
 		z-index: 450;
 		display: flex;
@@ -2421,7 +2421,7 @@
 	/* Bottom Status Bar */
 	.map-statusbar {
 		position: absolute;
-		bottom: 24px;
+		bottom: 56px;
 		left: 24px;
 		z-index: 400;
 		display: flex;
@@ -2959,9 +2959,9 @@
 	}
 
 	.map-popup-badge.simulation-token {
-		background: #FEF3C7;
-		color: #92400E;
-		border: 1px solid #FDE68A !important;
+		background: var(--status-intermittent-bg);
+		color: var(--status-intermittent);
+		border: 1px solid var(--status-intermittent-border);
 	}
 
 	/* Ceremony Detail Modal Backdrop & Card */
@@ -3287,7 +3287,7 @@
 		}
 
 		.map-floating-controls {
-			bottom: 24px;
+			bottom: 68px;
 			right: 14px;
 			display: flex;
 			flex-direction: row;
@@ -3296,8 +3296,15 @@
 		}
 
 		.map-statusbar {
-			bottom: 24px;
+			bottom: 68px;
 			left: 12px;
+		}
+
+		.map-status-pill {
+			max-width: calc(100vw - 120px);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
 		}
 
 		.map-onboarding {
@@ -3892,10 +3899,13 @@
 		.schedule-filter-bar {
 			display: flex;
 			flex-wrap: nowrap;
+			justify-content: flex-start;
 			overflow-x: auto;
 			-webkit-overflow-scrolling: touch;
 			scrollbar-width: none;
 			padding-bottom: 4px;
+			padding-left: 4px;
+			padding-right: 4px;
 			max-width: 100%;
 		}
 
@@ -3934,10 +3944,13 @@
 		.teduh-toolbar .schedule-filter-bar {
 			display: flex;
 			flex-wrap: nowrap;
+			justify-content: flex-start;
 			overflow-x: auto;
 			-webkit-overflow-scrolling: touch;
 			scrollbar-width: none;
 			padding-bottom: 4px;
+			padding-left: 4px;
+			padding-right: 4px;
 			margin: 0;
 			width: 100%;
 			max-width: 100%;
@@ -4723,11 +4736,25 @@
 	}
 
 	.teduh-workspace-topbar {
-		padding: 0 16px;
+		padding: 0 12px;
+		gap: 8px;
+	}
+
+	.teduh-workspace-role-pill {
+		display: none;
 	}
 
 	.teduh-workspace-org-badge {
 		display: none;
+	}
+
+	.teduh-workspace-topbar-right {
+		gap: 6px;
+	}
+
+	.teduh-workspace-topbar-right .teduh-map-tool-btn {
+		padding: 5px 8px;
+		font-size: 11.5px;
 	}
 
 	.teduh-workspace-mobile-nav {

@@ -11,6 +11,7 @@ import {
 	UX_EMPTY_COPY,
 } from "../../src/react-app/lib/constants";
 import {
+	buildDistrictFeaturesFromEvents,
 	createEventDraft,
 	fromIsoToWitaInput,
 	mapPublicEventToCeremonyProfile,
@@ -288,5 +289,49 @@ describe("B01 Frontend Foundation & Rangkai UI Domain Helpers", () => {
 		expect(normalizeEventCategory("prosesi")).toBe("procession");
 		expect(normalizeEventCategory("ngaben")).toBe("upacara_adat");
 		expect(normalizeEventCategory("melasti")).toBe("melasti");
+	});
+
+	it("preserves simulation flag truthfully across mapper and district feature builder (SPEC-1, STD-1)", () => {
+		const baseEvent = {
+			id: "evt-sim-check",
+			title: "Upacara Melasti",
+			slug: "melasti-check",
+			category: null,
+			description: null,
+			venueName: "Pantai Sanur",
+			startsAt: null,
+			endsAt: null,
+			status: "published",
+			publishedAt: null,
+			organizationName: "Desa Adat Sanur",
+			village: "Sanur",
+			district: "Denpasar Selatan",
+		};
+
+		// 1. Explicit true: preserves simulation true
+		const profileSimTrue = mapPublicEventToCeremonyProfile({ ...baseEvent, isSimulation: true });
+		expect(profileSimTrue.isSimulation).toBe(true);
+
+		// 2. Explicit false: preserves genuine operational event (does not force simulated)
+		const profileSimFalse = mapPublicEventToCeremonyProfile({ ...baseEvent, isSimulation: false });
+		expect(profileSimFalse.isSimulation).toBe(false);
+
+		// 3. Missing/undefined: fail-safe defaults to simulation true
+		const profileSimMissing = mapPublicEventToCeremonyProfile({ ...baseEvent, isSimulation: undefined });
+		expect(profileSimMissing.isSimulation).toBe(true);
+
+		// 4. District Feature Builder propagation: verifies DistrictCeremonySummary preserves flag
+		const districtFc = buildDistrictFeaturesFromEvents([profileSimTrue, profileSimFalse, profileSimMissing]);
+		const sanurDistrict = districtFc.features.find((f) => f.properties.name.toLowerCase().includes("denpasar selatan"));
+		expect(sanurDistrict).toBeDefined();
+		const summaries = sanurDistrict!.properties.ceremonies;
+		expect(summaries.length).toBe(3);
+
+		// True case
+		expect(summaries[0].isSimulation).toBe(true);
+		// False case (explicit operational)
+		expect(summaries[1].isSimulation).toBe(false);
+		// Missing case (fail-safe defaults true)
+		expect(summaries[2].isSimulation).toBe(true);
 	});
 });
