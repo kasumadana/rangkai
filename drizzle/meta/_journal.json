@@ -29,6 +29,13 @@
       "when": 1794111039167,
       "tag": "0003_gorgeous_black_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794118848862,
+      "tag": "0004_flashy_pretty_boy",
+      "breakpoints": true
     }
   ]
 }

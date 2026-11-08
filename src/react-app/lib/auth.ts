@@ -158,8 +158,8 @@ export async function fetchInvitationDetails(
 
 export async function acceptInvitation(
 	token: string,
-): Promise<{ success: boolean; eventId: string; role: string }> {
-	return apiFetch<{ success: boolean; eventId: string; role: string }>(
+): Promise<{ success: boolean; organizationId: string; eventId: string | null; role: string }> {
+	return apiFetch<{ success: boolean; organizationId: string; eventId: string | null; role: string }>(
 		`/api/invitations/${encodeURIComponent(token)}/accept`,
 		{
 			method: "POST",

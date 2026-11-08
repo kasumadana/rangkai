@@ -200,7 +200,7 @@ export function LoginPage() {
 							</Link>
 
 							<Link
-								to="/field/events/evt-pilot"
+								to="/field"
 								style={{
 									display: "inline-flex",
 									alignItems: "center",

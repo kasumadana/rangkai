@@ -126,6 +126,8 @@ app.all("/api/auth/*", async (c) => {
 
 // Mount Public API routes (anonymous read-only access)
 app.route("/api/public", publicRouter);
+// Invitation inspection is anonymous; its mutation and listing handlers enforce authentication.
+app.route("/api/invitations", invitationsRouter);
 
 // Mount A05-A08 routers
 app.route("/api/events", documentsRouter);
@@ -137,7 +139,6 @@ app.route("/api", cleanupRouter);
 app.route("/api/events", assignmentsRouter);
 app.route("/api/events", eventsRouter);
 app.route("/api/organizations", organizationsRouter);
-app.route("/api/invitations", invitationsRouter);
 app.route("/api/field", fieldRouter);
 
 // 404 handler for API routes

@@ -156,6 +156,25 @@ When the visitor opens a public event,
 Then private documents, internal notes, and user contact
 details are not returned by the API.
 
+### AC-09: Recipient Email & CAS Acceptance
+
+Given an organization invitation,
+When created, a normalized recipient email is required,
+And when accepted, atomic single-consumption CAS revalidates inviter authority and event lifecycle,
+Allowing idempotent same-user replays while rejecting mismatched recipients, expired tokens, or revoked inviter roles.
+
+### AC-10: Simulation Mode Transparency
+
+Given an event published without verified operational authority,
+When viewed publicly, the `isSimulation` flag is propagated across list, detail, roads, and cleanup views,
+And UI banners and map pins visibly distinguish simulation from live operational data.
+
+### AC-11: Road Operational Status Integrity
+
+Given a road status update,
+When its expiry timestamp passes or status is UNKNOWN, public interfaces display it as unconfirmed,
+And post-event cleanup verification never automatically alters road status or triggers road reopening.
+
 ## 4. Non-Functional Requirements
 
 All numerical values are initial engineering TARGETS.

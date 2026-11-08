@@ -11,6 +11,7 @@ import { z } from "zod";
 import { ApiClientError } from "../lib/api-client";
 import { useAuthSession, useCreateOrganizationMutation } from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
+import { saveOrganizationId } from "../lib/events-api";
 
 const orgSchema = z.object({
 	name: z
@@ -75,11 +76,12 @@ export function OrganizationOnboardingPage() {
 		}
 
 		try {
-			await createOrgMutation.mutateAsync({
+			const result = await createOrgMutation.mutateAsync({
 				name: parsed.data.name,
 				district: parsed.data.district,
 				village: parsed.data.village,
 			});
+			saveOrganizationId(result.organization.id);
 			navigate("/dashboard");
 		} catch (err) {
 			if (err instanceof ApiClientError) {

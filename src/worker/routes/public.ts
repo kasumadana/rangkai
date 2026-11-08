@@ -63,8 +63,8 @@ publicRouter.get("/events", async (c) => {
 				FROM road_impacts ri
 				INNER JOIN road_segments rs ON ri.road_segment_id = rs.id
 				WHERE ri.event_id = ${events.id}
-					AND rs.verified_by IS NOT NULL
-					AND rs.verified_at IS NOT NULL
+					AND ((rs.source_type = 'catalog' AND rs.verified_by IS NOT NULL AND rs.verified_at IS NOT NULL)
+						OR (${events.isSimulation} AND rs.source_type = 'simulation_draft' AND rs.organization_id = ${events.organizationId}))
 					AND ST_Intersects(
 						rs.geom,
 						ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)
@@ -87,6 +87,7 @@ publicRouter.get("/events", async (c) => {
 	const rows = await db
 		.select({
 			id: events.id,
+			organizationId: events.organizationId,
 			title: events.title,
 			slug: events.publicSlug,
 			category: events.category,
@@ -238,6 +239,7 @@ publicRouter.get("/events/:slug/roads", async (c) => {
 	const eventRows = await db
 		.select({
 			id: events.id,
+			organizationId: events.organizationId,
 			title: events.title,
 			slug: events.publicSlug,
 			status: events.status,
@@ -272,8 +274,8 @@ publicRouter.get("/events/:slug/roads", async (c) => {
 		FROM road_impacts ri
 		INNER JOIN road_segments rs ON ri.road_segment_id = rs.id
 		WHERE ri.event_id = ${event.id}
-			AND rs.verified_by IS NOT NULL
-			AND rs.verified_at IS NOT NULL
+			AND ((rs.source_type = 'catalog' AND rs.verified_by IS NOT NULL AND rs.verified_at IS NOT NULL)
+				OR (${event.isSimulation} AND rs.source_type = 'simulation_draft' AND rs.organization_id = ${event.organizationId}))
 		ORDER BY ri.planned_from ASC;
 	`;
 

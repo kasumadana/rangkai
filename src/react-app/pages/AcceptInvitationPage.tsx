@@ -16,6 +16,7 @@ import {
 	useSignOutMutation,
 } from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
+import { saveOrganizationId } from "../lib/events-api";
 
 export function AcceptInvitationPage() {
 	const params = useParams();
@@ -43,6 +44,7 @@ export function AcceptInvitationPage() {
 		setActionError(null);
 		try {
 			const res = await acceptMutation.mutateAsync(token);
+			saveOrganizationId(res.organizationId);
 			if (res.role === "organizer" || !res.eventId) {
 				navigate("/dashboard");
 			} else {

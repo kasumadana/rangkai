@@ -542,7 +542,19 @@ invitationsRouter.post("/:token/accept", requireAuth, async (c) => {
 
 	try {
 		const atomicAcceptQuery = sql`
-			WITH consumed AS (
+			WITH creator AS MATERIALIZED (
+				SELECT id FROM memberships
+				WHERE organization_id = ${invitation.organizationId}
+					AND user_id = ${invitation.invitedBy} AND role = 'organizer'
+				FOR SHARE
+			),
+			target_event AS MATERIALIZED (
+				SELECT id FROM events
+				WHERE id = ${invitation.eventId} AND organization_id = ${invitation.organizationId}
+					AND status NOT IN ('cancelled', 'archived')
+				FOR SHARE
+			),
+			consumed AS (
 				UPDATE invitations
 				SET
 					status = 'accepted',
@@ -552,37 +564,55 @@ invitationsRouter.post("/:token/accept", requireAuth, async (c) => {
 				WHERE
 					id = ${invitation.id}
 					AND status = 'pending'
-					AND expires_at > ${now}
+					AND expires_at > clock_timestamp()
+					AND lower(trim(recipient_email)) = ${sessionEmail}
+					AND EXISTS (SELECT 1 FROM creator)
+					AND ((invitation_role = 'organizer' AND event_id IS NULL)
+						OR (invitation_role = 'officer' AND EXISTS (SELECT 1 FROM target_event)))
 				RETURNING *
 			),
-			upsert_membership AS (
-				INSERT INTO memberships (
-					id, organization_id, user_id, role, created_at
-				)
-				SELECT
-					${membershipId}, organization_id, ${currentUser.id}, invitation_role, ${now}
-				FROM consumed
-				ON CONFLICT (organization_id, user_id)
-				DO UPDATE SET
-					role = CASE
-						WHEN memberships.role = 'organizer' THEN 'organizer'
-						ELSE EXCLUDED.role
-					END
+			before_membership AS MATERIALIZED (
+				SELECT m.id, m.organization_id, m.user_id, m.role
+				FROM memberships m JOIN consumed c ON m.organization_id = c.organization_id
+				WHERE m.user_id = ${currentUser.id} FOR UPDATE OF m
+			),
+			inserted_membership AS (
+				INSERT INTO memberships (id, organization_id, user_id, role, created_at)
+				SELECT ${membershipId}, organization_id, ${currentUser.id}, invitation_role, ${now}
+				FROM consumed WHERE NOT EXISTS (SELECT 1 FROM before_membership)
+				ON CONFLICT (organization_id, user_id) DO NOTHING
 				RETURNING id, organization_id, user_id, role
 			),
-			upsert_assignment AS (
-				INSERT INTO event_assignments (
-					id, event_id, user_id, can_update_traffic, can_update_cleanup, created_at
-				)
-				SELECT
-					${assignmentId}, event_id, ${currentUser.id}, can_update_traffic, can_update_cleanup, ${now}
-				FROM consumed
-				WHERE event_id IS NOT NULL
-				ON CONFLICT (event_id, user_id)
-				DO UPDATE SET
-					can_update_traffic = event_assignments.can_update_traffic OR EXCLUDED.can_update_traffic,
-					can_update_cleanup = event_assignments.can_update_cleanup OR EXCLUDED.can_update_cleanup
+			updated_membership AS (
+				UPDATE memberships m SET role = CASE WHEN m.role = 'organizer' THEN 'organizer' ELSE c.invitation_role END
+				FROM consumed c, before_membership b WHERE m.id = b.id AND m.role = b.role
+				RETURNING m.id, m.organization_id, m.user_id, m.role
+			),
+			upsert_membership AS (
+				SELECT * FROM inserted_membership UNION ALL SELECT * FROM updated_membership
+			),
+			before_assignment AS MATERIALIZED (
+				SELECT a.id, a.event_id, a.user_id, a.can_update_traffic, a.can_update_cleanup
+				FROM event_assignments a JOIN consumed c ON a.event_id = c.event_id
+				WHERE a.user_id = ${currentUser.id} FOR UPDATE OF a
+			),
+			inserted_assignment AS (
+				INSERT INTO event_assignments (id, event_id, user_id, can_update_traffic, can_update_cleanup, created_at)
+				SELECT ${assignmentId}, event_id, ${currentUser.id}, can_update_traffic, can_update_cleanup, ${now}
+				FROM consumed WHERE invitation_role = 'officer' AND NOT EXISTS (SELECT 1 FROM before_assignment)
+				ON CONFLICT (event_id, user_id) DO NOTHING
 				RETURNING id, event_id, user_id, can_update_traffic, can_update_cleanup
+			),
+			updated_assignment AS (
+				UPDATE event_assignments a SET
+					can_update_traffic = a.can_update_traffic OR c.can_update_traffic,
+					can_update_cleanup = a.can_update_cleanup OR c.can_update_cleanup
+				FROM consumed c, before_assignment b
+				WHERE a.id = b.id AND a.can_update_traffic = b.can_update_traffic AND a.can_update_cleanup = b.can_update_cleanup
+				RETURNING a.id, a.event_id, a.user_id, a.can_update_traffic, a.can_update_cleanup
+			),
+			upsert_assignment AS (
+				SELECT * FROM inserted_assignment UNION ALL SELECT * FROM updated_assignment
 			),
 			logged AS (
 				INSERT INTO audit_logs (
@@ -596,13 +626,12 @@ invitationsRouter.post("/:token/accept", requireAuth, async (c) => {
 					'invitation.accepted',
 					'invitation',
 					id,
-					json_build_object('status', 'pending', 'recipientEmail', recipient_email)::jsonb,
+					json_build_object('status', 'pending', 'membership', (SELECT row_to_json(b) FROM before_membership b), 'assignment', (SELECT row_to_json(b) FROM before_assignment b))::jsonb,
 					json_build_object(
 						'status', 'accepted',
 						'acceptedBy', accepted_by,
-						'role', invitation_role,
-						'canUpdateTraffic', can_update_traffic,
-						'canUpdateCleanup', can_update_cleanup
+						'membership', (SELECT row_to_json(m) FROM upsert_membership m),
+						'assignment', (SELECT row_to_json(a) FROM upsert_assignment a)
 					)::jsonb,
 					${now}
 				FROM consumed
@@ -614,7 +643,10 @@ invitationsRouter.post("/:token/accept", requireAuth, async (c) => {
 				event_id AS "eventId",
 				invitation_role AS "invitationRole",
 				can_update_traffic AS "canUpdateTraffic",
-				can_update_cleanup AS "canUpdateCleanup"
+				can_update_cleanup AS "canUpdateCleanup",
+				1 / CASE WHEN (SELECT count(*) FROM upsert_membership) = 1
+					AND (invitation_role = 'organizer' OR (SELECT count(*) FROM upsert_assignment) = 1)
+					AND (SELECT count(*) FROM logged) = 1 THEN 1 ELSE 0 END AS guard
 			FROM consumed;
 		`;
 

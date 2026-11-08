@@ -442,7 +442,7 @@ export function BaliMapTilerView({
 	const openCompactPopupForVillage = useCallback(
 		(v: BaliVillageCeremonyProfile) => {
 			const map = mapRef.current;
-			if (!map) return;
+			if (!map || !v.roadSegments.some((road) => road.coordinates.length > 0)) return;
 
 			if (activePopupRef.current) {
 				activePopupRef.current.remove();
@@ -457,26 +457,33 @@ export function BaliMapTilerView({
 			popupNode.innerHTML = `
 				<div class="map-popup-header">
 					<span class="map-popup-badge ${statusBadge.className}">${statusBadge.label}</span>
-					<span class="map-popup-location">${v.desaAdatName}</span>
+					<span class="map-popup-location"></span>
 				</div>
-				<h4 class="map-popup-title">${v.ceremonyTitle}</h4>
+				<h4 class="map-popup-title"></h4>
 				<div class="map-popup-meta-box">
 					<div class="map-popup-meta-row">
 						<span class="map-popup-meta-label">Jalur:</span>
-						<span class="map-popup-meta-val">${v.roadSegments[0]?.roadName || v.sacredCenterName || "Koridor Wilayah"}</span>
+						<span class="map-popup-meta-val"></span>
 					</div>
 					<div class="map-popup-meta-row">
 						<span class="map-popup-meta-label">Waktu:</span>
-						<span class="map-popup-meta-val">${v.scheduleWindowWita || "08:00 - Selesai"}</span>
+						<span class="map-popup-meta-val"></span>
 					</div>
 				</div>
-				<button type="button" class="map-popup-btn" id="btn-compact-detail-map-${v.id}">
+				<button type="button" class="map-popup-btn">
 					<span>Lihat Detail</span>
 					<span aria-hidden="true">→</span>
 				</button>
 			`;
 
-			const btn = popupNode.querySelector(`#btn-compact-detail-map-${v.id}`);
+			const location = popupNode.querySelector(".map-popup-location");
+			const title = popupNode.querySelector(".map-popup-title");
+			const values = popupNode.querySelectorAll(".map-popup-meta-val");
+			if (location) location.textContent = v.desaAdatName;
+			if (title) title.textContent = `${v.isSimulation ? "SIMULASI — " : ""}${v.ceremonyTitle}`;
+			if (values[0]) values[0].textContent = v.roadSegments[0]?.roadName || v.sacredCenterName || "Koridor Wilayah";
+			if (values[1]) values[1].textContent = v.scheduleWindowWita || "Jadwal menyusul";
+			const btn = popupNode.querySelector(".map-popup-btn");
 			if (btn) {
 				btn.addEventListener("click", () => {
 					if (activePopupRef.current) {
@@ -543,6 +550,8 @@ export function BaliMapTilerView({
 		allVillagesMarkersRef.current = [];
 
 		allVillages.forEach((v) => {
+			if (v.isSimulation !== false) return;
+			if (!v.roadSegments.some((road) => road.coordinates.length > 0)) return;
 			const pinColor = getStatusColor(v.primaryStatus);
 			const isCurrent = village ? v.id === village.id : false;
 
@@ -559,8 +568,10 @@ export function BaliMapTilerView({
 						<circle cx="16" cy="14" r="5.5" fill="#FFFFFF"/>
 					</svg>
 				</div>
-				<div class="marker-hover-label">${v.desaAdatName}</div>
+				<div class="marker-hover-label"></div>
 			`;
+			const label = pinEl.querySelector(".marker-hover-label");
+			if (label) label.textContent = `${v.isSimulation ? "SIMULASI — " : ""}${v.desaAdatName}`;
 
 			pinEl.addEventListener("click", (evt) => {
 				evt.stopPropagation();
@@ -1131,7 +1142,9 @@ export function BaliMapTilerView({
 									? "closed"
 									: seg.status === "intermittent"
 										? "intermittent"
-										: "open") as OperationalRoadStatus,
+										: seg.status === "open"
+											? "open"
+											: "unknown") as OperationalRoadStatus,
 							})) ?? []
 						}
 					/>

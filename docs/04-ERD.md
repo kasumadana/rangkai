@@ -108,6 +108,9 @@ CHECK (ends_at > starts_at) when both values exist.
 - display_name: text
 - geom: geometry(LineString, 4326)
 - coverage_area: text
+- organization_id: uuid FK NULL (set for simulation drafts)
+- source_type: catalog | simulation_draft
+- created_by: text FK NULL
 - verified_by: text NULL
 - verified_at: timestamptz NULL
 - created_at: timestamptz

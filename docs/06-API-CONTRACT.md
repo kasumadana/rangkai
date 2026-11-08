@@ -145,7 +145,7 @@ Behavior:
 - Enforces recipient email match.
 - Re-verifies creator's current active organizer authority in the organization.
 - Atomically executes single-consumption compare-and-swap (CAS) via SQL CTE (`UPDATE invitations SET status = 'accepted' WHERE status = 'pending'`).
-- Grants membership and event assignments atomically with audit log. Concurrent double-acceptance yields exactly one 200 OK and one 409 Conflict.
+- Grants membership and event assignments atomically with audit log. Concurrent double-acceptance by competing callers yields exactly one 200 OK and one 409 Conflict. Same-user repeat acceptance of their own already-accepted invitation returns 200 OK idempotently without duplicate grants.
 
 Response: 200 OK:
 ```json
@@ -366,9 +366,10 @@ Permission: organizer
 Returns reviewed road-segment candidates.
 
 POST /api/road-segments
-Permission: organizer
+Global road verification is not available through this endpoint; it returns 403. Existing verified catalog rows require an independently authorized provenance process.
 
-Creates a human-verified road segment (`LineString`) drawn by an organizer on the dashboard map.
+POST /api/events/:eventId/simulation-road-impacts
+Permission: current organizer of the event's organization; event must be a simulation in draft or review. Creates and attaches an organization-scoped training line atomically. This line is not globally verified or eligible for operational publication. Repeating the same payload and `mutationId` returns the existing result; changing a payload for an existing ID returns 409.
 
 Request:
 
@@ -380,7 +381,11 @@ Request:
     [115.2612, -8.5068],
     [115.2645, -8.5069]
   ],
-  "humanVerified": true
+  "humanVerified": true,
+  "mutationId": "uuid",
+  "plannedFrom": "2026-11-10T00:00:00Z",
+  "plannedTo": "2026-11-10T02:00:00Z",
+  "impactType": "closure"
 }
 ```
 

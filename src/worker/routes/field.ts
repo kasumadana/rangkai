@@ -55,6 +55,7 @@ fieldRouter.get("/tasks", async (c) => {
 		.from(eventAssignments)
 		.innerJoin(events, eq(eventAssignments.eventId, events.id))
 		.innerJoin(organizations, eq(events.organizationId, organizations.id))
+		.innerJoin(memberships, and(eq(memberships.organizationId, events.organizationId), eq(memberships.userId, eventAssignments.userId)))
 		.where(eq(eventAssignments.userId, currentUser.id))
 		.orderBy(desc(events.startsAt));
 
@@ -123,7 +124,7 @@ fieldRouter.get("/tasks", async (c) => {
 
 	const allAssigned = [...assignmentRows, ...organizerEvents];
 
-	return c.json({ assignments: allAssigned }, 200);
+	return c.json({ assignments: allAssigned.map((item) => ({ ...item, organizationName: item.orgName, isOrganizerOversight: item.assignmentId.startsWith("org-oversight-") })) }, 200);
 });
 
 /**
@@ -162,6 +163,7 @@ fieldRouter.get("/events/:id", async (c) => {
 	}
 
 	const permissions = {
+		isOrganizer: access.isOrganizer,
 		canUpdateTraffic: access.isOrganizer || Boolean(access.assignment?.canUpdateTraffic),
 		canUpdateCleanup: access.isOrganizer || Boolean(access.assignment?.canUpdateCleanup),
 	};
@@ -189,7 +191,7 @@ fieldRouter.get("/events/:id", async (c) => {
 				.select()
 				.from(roadStatusUpdates)
 				.where(eq(roadStatusUpdates.roadImpactId, imp.id))
-				.orderBy(desc(roadStatusUpdates.createdAt))
+				.orderBy(desc(roadStatusUpdates.observedAt), desc(roadStatusUpdates.createdAt))
 				.limit(1);
 
 			const latest = updateRows[0] || null;
@@ -197,6 +199,8 @@ fieldRouter.get("/events/:id", async (c) => {
 
 			return {
 				...imp,
+				displayName: imp.roadName,
+				status: evaluated.effectiveStatus,
 				currentStatus: evaluated.effectiveStatus,
 				rawStatus: evaluated.rawStatus,
 				isStale: evaluated.isStale,

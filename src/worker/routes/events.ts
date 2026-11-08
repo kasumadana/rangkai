@@ -506,6 +506,7 @@ eventsRouter.patch("/:eventId", async (c) => {
 
 	if (existingEvent.status === "review") {
 		const isModified =
+			(data.isSimulation !== undefined && data.isSimulation !== existingEvent.isSimulation) ||
 			(data.title !== undefined && data.title !== existingEvent.title) ||
 			(data.category !== undefined && data.category !== existingEvent.category) ||
 			(data.description !== undefined && data.description !== existingEvent.description) ||
@@ -536,11 +537,18 @@ eventsRouter.patch("/:eventId", async (c) => {
 	const now = new Date();
 	const auditId = crypto.randomUUID();
 	const db = c.get("db");
+	const nextSimulation = data.isSimulation ?? existingEvent.isSimulation;
+	if (!nextSimulation || !existingEvent.isSimulation) {
+		const [org] = await db.select({ authorized: organizations.hasOperationalAuthority }).from(organizations).where(eq(organizations.id, existingEvent.organizationId));
+		if (!org?.authorized) return sendError(c, "FORBIDDEN", "Wewenang operasional organisasi tidak aktif.", 403);
+	}
 
 	// Single atomic CTE: event update with full-field snapshot CAS verification
 	// and conditional audit log ONLY if row was actually updated
 	const query = sql`
-		WITH updated AS (
+		WITH authority AS MATERIALIZED (
+			SELECT has_operational_authority FROM organizations WHERE id = ${existingEvent.organizationId} FOR SHARE
+		), updated AS (
 			UPDATE events
 			SET
 				title = ${data.title !== undefined ? newTitle : existingEvent.title},
@@ -550,18 +558,21 @@ eventsRouter.patch("/:eventId", async (c) => {
 				starts_at = ${data.startsAt !== undefined ? startsAtDate : existingEvent.startsAt},
 				ends_at = ${data.endsAt !== undefined ? endsAtDate : existingEvent.endsAt},
 				permit_reference = ${data.permitReference !== undefined ? newPermitReference : existingEvent.permitReference},
+				is_simulation = ${nextSimulation},
 				status = ${nextStatus},
 				verified_by = ${nextVerifiedBy},
 				verified_at = ${nextVerifiedAt},
 				updated_at = ${now}
 			WHERE id = ${eventId}
+				AND ((${nextSimulation} AND ${existingEvent.isSimulation}) OR EXISTS (SELECT 1 FROM authority WHERE has_operational_authority))
+				AND is_simulation = ${existingEvent.isSimulation}
 				AND status = ${existingEvent.status}
 				AND title = ${existingEvent.title}
 				AND category IS NOT DISTINCT FROM ${existingEvent.category}
 				AND description IS NOT DISTINCT FROM ${existingEvent.description}
 				AND venue_name IS NOT DISTINCT FROM ${existingEvent.venueName}
-				AND starts_at IS NOT DISTINCT FROM ${existingEvent.startsAt}
-				AND ends_at IS NOT DISTINCT FROM ${existingEvent.endsAt}
+				AND (starts_at IS NOT DISTINCT FROM ${existingEvent.startsAt} OR abs(extract(epoch from (starts_at - ${existingEvent.startsAt}::timestamptz))) < 0.005)
+				AND (ends_at IS NOT DISTINCT FROM ${existingEvent.endsAt} OR abs(extract(epoch from (ends_at - ${existingEvent.endsAt}::timestamptz))) < 0.005)
 				AND permit_reference IS NOT DISTINCT FROM ${existingEvent.permitReference}
 			RETURNING *
 		),
@@ -612,6 +623,7 @@ eventsRouter.patch("/:eventId", async (c) => {
 			starts_at AS "startsAt",
 			ends_at AS "endsAt",
 			status,
+			is_simulation AS "isSimulation",
 			public_slug AS "publicSlug",
 			permit_reference AS "permitReference",
 			verified_by AS "verifiedBy",
@@ -692,8 +704,8 @@ eventsRouter.post("/:eventId/review", async (c) => {
 				AND category IS NOT DISTINCT FROM ${event.category}
 				AND description IS NOT DISTINCT FROM ${event.description}
 				AND venue_name IS NOT DISTINCT FROM ${event.venueName}
-				AND starts_at IS NOT DISTINCT FROM ${event.startsAt}
-				AND ends_at IS NOT DISTINCT FROM ${event.endsAt}
+				AND (starts_at IS NOT DISTINCT FROM ${event.startsAt} OR abs(extract(epoch from (starts_at - ${event.startsAt}::timestamptz))) < 0.005)
+				AND (ends_at IS NOT DISTINCT FROM ${event.endsAt} OR abs(extract(epoch from (ends_at - ${event.endsAt}::timestamptz))) < 0.005)
 				AND permit_reference IS NOT DISTINCT FROM ${event.permitReference}
 			RETURNING *
 		),
@@ -726,6 +738,7 @@ eventsRouter.post("/:eventId/review", async (c) => {
 			starts_at AS "startsAt",
 			ends_at AS "endsAt",
 			status,
+			is_simulation AS "isSimulation",
 			public_slug AS "publicSlug",
 			permit_reference AS "permitReference",
 			verified_by AS "verifiedBy",
@@ -785,6 +798,10 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 
 	// Idempotent retry: if already published, return existing event without duplicate audit or new slug
 	if (event.status === "published" || event.status === "active") {
+		if (!event.isSimulation) {
+			const [org] = await db.select({ authorized: organizations.hasOperationalAuthority }).from(organizations).where(eq(organizations.id, event.organizationId));
+			if (!org?.authorized) return sendError(c, "FORBIDDEN", "Wewenang operasional organisasi tidak aktif.", 403);
+		}
 		return c.json({ event }, 200);
 	}
 
@@ -817,48 +834,6 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 		);
 	}
 
-	// 4. Verified road impacts prerequisite: join with road_segments and verify both existence and segment verification
-	const impactRows = await db
-		.select({
-			impactId: roadImpacts.id,
-			plannedFrom: roadImpacts.plannedFrom,
-			plannedTo: roadImpacts.plannedTo,
-			segmentId: roadSegments.id,
-			segmentVerifiedBy: roadSegments.verifiedBy,
-			segmentVerifiedAt: roadSegments.verifiedAt,
-		})
-		.from(roadImpacts)
-		.innerJoin(roadSegments, eq(roadImpacts.roadSegmentId, roadSegments.id))
-		.where(eq(roadImpacts.eventId, eventId));
-
-	if (impactRows.length === 0) {
-		return sendError(
-			c,
-			"VALIDATION_FAILED",
-			"Event publication requires at least one road impact referencing a verified road segment.",
-			422,
-		);
-	}
-
-	for (const imp of impactRows) {
-		if (!imp.segmentVerifiedBy || !imp.segmentVerifiedAt) {
-			return sendError(
-				c,
-				"VALIDATION_FAILED",
-				"Road impact references an unverified road segment. All referenced road segments must be verified before publication.",
-				422,
-			);
-		}
-		if (new Date(imp.plannedTo) <= new Date(imp.plannedFrom)) {
-			return sendError(
-				c,
-				"VALIDATION_FAILED",
-				"Road impact planned end time must be after planned start time.",
-				422,
-			);
-		}
-	}
-
 	// 5. Operational authority gate (Ticket 03, SRS FR-014–017, FR-060–064)
 	let publishAsSimulation = event.isSimulation !== false;
 	try {
@@ -868,13 +843,15 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 			publishBody !== null &&
 			"isSimulation" in publishBody
 		) {
-			publishAsSimulation = Boolean(
-				(publishBody as { isSimulation?: boolean }).isSimulation,
-			);
+			if (typeof publishBody.isSimulation !== "boolean") {
+				return sendError(c, "VALIDATION_FAILED", "isSimulation must be a boolean.", 422);
+			}
+			publishAsSimulation = publishBody.isSimulation;
 		}
 	} catch {
 		// Empty body is allowed, defaults to event.isSimulation
 	}
+	if (!event.isSimulation && publishAsSimulation) return sendError(c, "STATE_CONFLICT", "Ubah mode draf secara eksplisit sebelum menerbitkan.", 409);
 
 	if (!publishAsSimulation) {
 		const orgRows = await db
@@ -896,6 +873,51 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 		}
 	}
 
+
+	// 4. Verified road impacts prerequisite: join with road_segments and verify both existence and segment verification
+	const impactRows = await db
+		.select({
+			impactId: roadImpacts.id,
+			plannedFrom: roadImpacts.plannedFrom,
+			plannedTo: roadImpacts.plannedTo,
+			segmentId: roadSegments.id,
+			segmentVerifiedBy: roadSegments.verifiedBy,
+			segmentVerifiedAt: roadSegments.verifiedAt,
+			sourceType: roadSegments.sourceType,
+			segmentOrganizationId: roadSegments.organizationId,
+		})
+		.from(roadImpacts)
+		.innerJoin(roadSegments, eq(roadImpacts.roadSegmentId, roadSegments.id))
+		.where(eq(roadImpacts.eventId, eventId));
+
+	if (impactRows.length === 0) {
+		return sendError(
+			c,
+			"VALIDATION_FAILED",
+			"Event publication requires at least one road impact referencing a verified road segment.",
+			422,
+		);
+	}
+
+	for (const imp of impactRows) {
+		if (!((imp.sourceType === "catalog" && imp.segmentVerifiedBy && imp.segmentVerifiedAt) || (publishAsSimulation && imp.sourceType === "simulation_draft" && imp.segmentOrganizationId === event.organizationId))) {
+			return sendError(
+				c,
+				"VALIDATION_FAILED",
+				"Road impact references an unverified road segment. All referenced road segments must be verified before publication.",
+				422,
+			);
+		}
+		if (new Date(imp.plannedTo) <= new Date(imp.plannedFrom)) {
+			return sendError(
+				c,
+				"VALIDATION_FAILED",
+				"Road impact planned end time must be after planned start time.",
+				422,
+			);
+		}
+	}
+
 	// 6. Generate unique public slug (preserving existing slug if set)
 	const publicSlug =
 		event.publicSlug || (await generateUniquePublicSlug(db, event.title));
@@ -905,7 +927,12 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 	// 7. Atomic conditional publication via single CTE:
 	// Only updates if still in review status; audit is ONLY inserted if a row was actually updated!
 	const query = sql`
-		WITH updated AS (
+		WITH authority AS MATERIALIZED (
+			SELECT has_operational_authority FROM organizations WHERE id = ${event.organizationId} FOR SHARE
+		), organizer AS MATERIALIZED (
+			SELECT id FROM memberships WHERE organization_id = ${event.organizationId}
+				AND user_id = ${currentUser.id} AND role = 'organizer' FOR SHARE
+		), updated AS (
 			UPDATE events
 			SET
 				status = 'published',
@@ -914,6 +941,15 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 				published_at = COALESCE(events.published_at, ${now}),
 				updated_at = ${now}
 			WHERE id = ${eventId} AND status = 'review'
+				AND EXISTS (SELECT 1 FROM organizer)
+				AND (${publishAsSimulation} OR EXISTS (SELECT 1 FROM authority WHERE has_operational_authority))
+				AND NOT EXISTS (
+					SELECT 1 FROM road_impacts ri JOIN road_segments rs ON rs.id = ri.road_segment_id
+					WHERE ri.event_id = events.id AND NOT (
+						(rs.source_type = 'catalog' AND rs.verified_by IS NOT NULL AND rs.verified_at IS NOT NULL)
+						OR (${publishAsSimulation} AND rs.source_type = 'simulation_draft' AND rs.organization_id = events.organization_id)
+					)
+				)
 			RETURNING *
 		),
 		logged AS (
@@ -1080,6 +1116,7 @@ eventsRouter.post("/:eventId/cancel", async (c) => {
 			starts_at AS "startsAt",
 			ends_at AS "endsAt",
 			status,
+			is_simulation AS "isSimulation",
 			public_slug AS "publicSlug",
 			permit_reference AS "permitReference",
 			verified_by AS "verifiedBy",
@@ -1174,6 +1211,7 @@ eventsRouter.post("/:eventId/complete", async (c) => {
 			starts_at AS "startsAt",
 			ends_at AS "endsAt",
 			status,
+			is_simulation AS "isSimulation",
 			public_slug AS "publicSlug",
 			permit_reference AS "permitReference",
 			verified_by AS "verifiedBy",

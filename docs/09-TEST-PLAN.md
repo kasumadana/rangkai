@@ -1,7 +1,7 @@
 # Quality Assurance and Validation Plan — Rangkai
 
-Version: 1.0.0-rc
-Status: Executed (54/54 unit passing, 203 passing / 1 skipped paid live smoke integration, 20/20 Playwright E2E passing)
+Version: 1.0.0-rc2
+Status: Executed (58/58 unit passing, 26/26 live Neon readiness batch integration passing, 10/10 Playwright E2E full P0 journeys passing)
 
 ## 1. Testing Objectives
 

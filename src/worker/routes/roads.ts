@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import {
 	events,
 	memberships,
+	organizations,
 	roadImpacts,
 	roadStatusUpdates,
 } from "../../db/schema";
@@ -13,7 +14,7 @@ import type { AppVariables, Env } from "../types";
 import { uuidParamSchema } from "../validators/events";
 import {
 	createRoadImpactSchema,
-	createRoadSegmentSchema,
+	createSimulationRoadImpactSchema,
 	createRoadStatusSchema,
 	roadSegmentsQuerySchema,
 	updateRoadImpactSchema,
@@ -142,6 +143,7 @@ roadsRouter.get("/road-segments", async (c) => {
 		FROM road_segments
 		WHERE verified_by IS NOT NULL
 			AND verified_at IS NOT NULL
+			AND source_type = 'catalog'
 			AND ST_Intersects(
 				geom,
 				ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)
@@ -168,126 +170,64 @@ roadsRouter.get("/road-segments", async (c) => {
 	);
 });
 
-/**
- * POST /api/road-segments
- * Register and human-verify a road segment in the catalog (Organizer only).
- */
-roadsRouter.post("/road-segments", async (c) => {
-	const currentUser = c.get("user")!;
-	const db = c.get("db");
+// A self-attestation cannot grant global road geometry verification.
+roadsRouter.post("/road-segments", (c) =>
+	sendError(c, "FORBIDDEN", "Pembuatan ruas terverifikasi belum tersedia. Pilih ruas yang sudah diverifikasi.", 403),
+);
 
-	const orgMemberships = await db
-		.select({
-			organizationId: memberships.organizationId,
-			role: memberships.role,
-		})
-		.from(memberships)
-		.where(
-			and(
-				eq(memberships.userId, currentUser.id),
-				eq(memberships.role, "organizer"),
-			),
-		)
-		.limit(1);
-
-	if (orgMemberships.length === 0) {
-		return sendError(
-			c,
-			"FORBIDDEN",
-			"Organizer permission required to register and verify road segments.",
-			403,
-		);
-	}
-
+// A drawn line remains organization-scoped simulation data, never a catalog verification.
+roadsRouter.post("/events/:eventId/simulation-road-impacts", async (c) => {
+	const eventId = c.req.param("eventId");
+	if (!uuidParamSchema.safeParse(eventId).success) return sendError(c, "VALIDATION_FAILED", "Invalid event ID.", 422);
 	let body: unknown;
-	try {
-		body = await c.req.json();
-	} catch {
-		return sendError(c, "BAD_REQUEST", "Invalid JSON payload.", 400);
-	}
-
-	const parseResult = createRoadSegmentSchema.safeParse(body);
-	if (!parseResult.success) {
-		return sendError(
-			c,
-			"VALIDATION_FAILED",
-			parseResult.error.issues[0]?.message || "Invalid road segment data.",
-			422,
-		);
-	}
-
-	const data = parseResult.data;
-	const segmentId = crypto.randomUUID();
-	const auditId = crypto.randomUUID();
+	try { body = await c.req.json(); } catch { return sendError(c, "BAD_REQUEST", "Invalid JSON payload.", 400); }
+	const parsed = createSimulationRoadImpactSchema.safeParse(body);
+	if (!parsed.success) return sendError(c, "VALIDATION_FAILED", parsed.error.issues[0]?.message ?? "Invalid road data.", 422);
+	const data = parsed.data;
+	const currentUser = c.get("user")!;
 	const now = new Date();
-	const ewkt = `SRID=4326;LINESTRING(${data.coordinates
-		.map(([lng, lat]) => `${Number(lng)} ${Number(lat)}`)
-		.join(", ")})`;
-
+	const ewkt = `SRID=4326;LINESTRING(${data.coordinates.map(([lng, lat]) => `${lng} ${lat}`).join(", ")})`;
 	const query = sql`
-		WITH inserted AS (
-			INSERT INTO road_segments (
-				id, display_name, geom, coverage_area, verified_by, verified_at, created_at
-			)
-			VALUES (
-				${segmentId}::uuid,
-				${data.displayName}::text,
-				ST_GeomFromEWKT(${ewkt}::text),
-				${data.coverageArea}::text,
-				${currentUser.id}::text,
-				${now}::timestamptz,
-				${now}::timestamptz
-			)
-			RETURNING
-				id,
-				display_name AS "displayName",
-				coverage_area AS "coverageArea",
-				verified_by AS "verifiedBy",
-				verified_at AS "verifiedAt",
-				ST_AsGeoJSON(geom)::json AS geometry
-		),
-		logged AS (
-			INSERT INTO audit_logs (
-				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
-			)
-			SELECT
-				${auditId}::uuid,
-				${orgMemberships[0].organizationId}::uuid,
-				NULL,
-				${currentUser.id}::text,
-				'road_segment.verified',
-				'road_segment',
-				i.id,
-				NULL,
-				jsonb_build_object(
-					'displayName', i."displayName",
-					'coverageArea', i."coverageArea",
-					'verifiedBy', i."verifiedBy"
-				),
-				${now}::timestamptz
-			FROM inserted i
-			RETURNING id
+		WITH target AS MATERIALIZED (
+			SELECT e.id, e.organization_id, e.status, e.is_simulation FROM events e
+			JOIN memberships m ON m.organization_id = e.organization_id AND m.user_id = ${currentUser.id} AND m.role = 'organizer'
+			WHERE e.id = ${eventId} FOR UPDATE OF e, m
+		), inserted_segment AS (
+			INSERT INTO road_segments (id, display_name, geom, coverage_area, organization_id, source_type, created_by, created_at)
+			SELECT ${data.mutationId}, ${data.displayName}, ST_GeomFromEWKT(${ewkt}), ${data.coverageArea}, organization_id, 'simulation_draft', ${currentUser.id}, ${now}
+			FROM target WHERE is_simulation AND status IN ('draft', 'review')
+			ON CONFLICT (id) DO NOTHING RETURNING *
+		), inserted_impact AS (
+			INSERT INTO road_impacts (id, event_id, road_segment_id, planned_from, planned_to, impact_type, diversion_note, created_at)
+			SELECT ${data.mutationId}, t.id, s.id, ${new Date(data.plannedFrom)}, ${new Date(data.plannedTo)}, ${data.impactType}, ${data.diversionNote ?? null}, ${now}
+			FROM target t CROSS JOIN inserted_segment s RETURNING *
+		), reset_review AS (
+			UPDATE events e SET status = 'draft', verified_by = NULL, verified_at = NULL, updated_at = ${now}
+			FROM target t WHERE e.id = t.id AND t.status = 'review' AND EXISTS (SELECT 1 FROM inserted_impact) RETURNING e.id
+		), logged AS (
+			INSERT INTO audit_logs (id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at)
+			SELECT ${crypto.randomUUID()}, t.organization_id, t.id, ${currentUser.id}, 'simulation_road.created', 'road_impact', i.id::text, NULL,
+				jsonb_build_object('roadSegmentId', i.road_segment_id, 'sourceType', 'simulation_draft'), ${now}
+			FROM inserted_impact i CROSS JOIN target t RETURNING id
+		), existing AS (
+			SELECT ri.id FROM road_impacts ri JOIN road_segments rs ON rs.id = ri.road_segment_id JOIN target t ON t.id = ri.event_id
+			WHERE ri.id = ${data.mutationId} AND rs.id = ${data.mutationId} AND rs.organization_id = t.organization_id
+				AND rs.source_type = 'simulation_draft' AND rs.created_by = ${currentUser.id}
+				AND rs.display_name = ${data.displayName} AND rs.coverage_area = ${data.coverageArea}
+				AND ST_Equals(rs.geom, ST_GeomFromEWKT(${ewkt}))
+				AND ri.planned_from = ${new Date(data.plannedFrom)} AND ri.planned_to = ${new Date(data.plannedTo)}
+				AND ri.impact_type = ${data.impactType} AND ri.diversion_note IS NOT DISTINCT FROM ${data.diversionNote ?? null}
 		)
-		SELECT * FROM inserted;
+		SELECT (SELECT count(*)::int FROM target) AS "targetCount", (SELECT is_simulation FROM target) AS "isSimulation",
+			(SELECT status FROM target) AS "eventStatus", (SELECT id FROM inserted_impact) AS "createdId",
+			(SELECT id FROM existing) AS "existingId", (SELECT count(*)::int FROM logged) AS "auditCount";
 	`;
-
-	const res = await db.execute(query);
-	const r = res.rows[0] as Record<string, unknown>;
-
-	return c.json(
-		{
-			segment: {
-				id: r.id as string,
-				displayName: r.displayName as string,
-				coverageArea: r.coverageArea as string,
-				verified: true,
-				verifiedBy: r.verifiedBy as string,
-				verifiedAt: new Date(r.verifiedAt as string).toISOString(),
-				geometry: r.geometry,
-			},
-		},
-		201,
-	);
+	const result = await c.get("db").execute(query);
+	const row = result.rows[0];
+	if (!row?.targetCount) return sendError(c, "FORBIDDEN", "Akses penyelenggara diperlukan.", 403);
+	if (!row.isSimulation || !["draft", "review"].includes(String(row.eventStatus))) return sendError(c, "STATE_CONFLICT", "Garis latihan hanya dapat ditambahkan ke draf simulasi.", 409);
+	if (!row.createdId && !row.existingId) return sendError(c, "STATE_CONFLICT", "Permintaan ini bertentangan dengan data yang sudah tersimpan.", 409);
+	return c.json({ roadImpact: { id: String(row.createdId ?? row.existingId) }, duplicate: !row.createdId }, row.createdId ? 201 : 200);
 });
 
 /**
@@ -363,7 +303,7 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 			FOR UPDATE OF e
 		),
 		target_segment AS (
-			SELECT rs.id, rs.display_name, rs.verified_by, rs.verified_at
+			SELECT rs.id, rs.display_name, rs.verified_by, rs.verified_at, rs.source_type
 			FROM road_segments rs
 			WHERE rs.id = ${data.roadSegmentId}
 		),
@@ -379,6 +319,7 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 			INNER JOIN target_segment ts
 				ON ts.verified_by IS NOT NULL
 				AND ts.verified_at IS NOT NULL
+				AND ts.source_type = 'catalog'
 			WHERE te.status IN ('draft', 'review')
 			RETURNING *
 		),
@@ -428,7 +369,7 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 			(SELECT count(*)::int FROM target_event) AS "eventFound",
 			(SELECT status FROM target_event) AS "eventStatus",
 			(SELECT count(*)::int FROM target_segment) AS "segmentFound",
-			(SELECT (verified_by IS NOT NULL AND verified_at IS NOT NULL) FROM target_segment) AS "segmentVerified",
+			(SELECT (verified_by IS NOT NULL AND verified_at IS NOT NULL AND source_type = 'catalog') FROM target_segment) AS "segmentVerified",
 			(SELECT row_to_json(r) FROM (
 				SELECT
 					id,
@@ -1052,9 +993,12 @@ roadsRouter.post("/road-impacts/:impactId/status", async (c) => {
 			roadSegmentId: roadImpacts.roadSegmentId,
 			organizationId: events.organizationId,
 			eventStatus: events.status,
+			isSimulation: events.isSimulation,
+			hasOperationalAuthority: organizations.hasOperationalAuthority,
 		})
 		.from(roadImpacts)
 		.innerJoin(events, eq(roadImpacts.eventId, events.id))
+		.innerJoin(organizations, eq(events.organizationId, organizations.id))
 		.where(eq(roadImpacts.id, impactId))
 		.limit(1);
 
@@ -1079,6 +1023,9 @@ roadsRouter.post("/road-impacts/:impactId/status", async (c) => {
 			"You must be an assigned traffic officer for this event to update road status.",
 			403,
 		);
+	}
+	if (!impact.isSimulation && !impact.hasOperationalAuthority) {
+		return sendError(c, "FORBIDDEN", "Wewenang operasional organisasi tidak lagi aktif.", 403);
 	}
 
 	if (
@@ -1206,10 +1153,13 @@ roadsRouter.post("/road-impacts/:impactId/status", async (c) => {
 				ri.event_id,
 				e.organization_id,
 				e.status AS event_status,
+				e.is_simulation,
+				o.has_operational_authority,
 				m.role AS member_role,
 				COALESCE(ea.can_update_traffic, false) AS can_update_traffic
 			FROM road_impacts ri
 			INNER JOIN events e ON e.id = ri.event_id
+			INNER JOIN organizations o ON o.id = e.organization_id
 			INNER JOIN memberships m
 				ON m.organization_id = e.organization_id
 				AND m.user_id = ${currentUser.id}
@@ -1217,12 +1167,13 @@ roadsRouter.post("/road-impacts/:impactId/status", async (c) => {
 				ON ea.event_id = e.id
 				AND ea.user_id = ${currentUser.id}
 			WHERE ri.id = ${impactId}
-			FOR UPDATE OF ri, e
+			FOR UPDATE OF ri, e, o
 		),
 		authorized_impact AS (
 			SELECT *
 			FROM target_impact
 			WHERE event_status NOT IN ('completed', 'cancelled', 'archived')
+				AND (is_simulation OR has_operational_authority)
 				AND (
 					member_role = 'organizer'
 					OR (member_role = 'officer' AND can_update_traffic = true)

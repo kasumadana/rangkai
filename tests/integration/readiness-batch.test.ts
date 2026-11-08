@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import * as dotenv from "dotenv";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { hashPassword } from "better-auth/crypto";
 import { assertDevBranch, AUTHORIZED_DEV_BRANCH } from "../../src/db/guard";
@@ -73,8 +73,8 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 		district: "Kecamatan Resmi",
 		hasOperationalAuthority: true,
 		operationalAuthorityGrantedAt: new Date(),
-		operationalAuthorityGrantedBy: "dishub_bali_authorized",
-		operationalAuthorityProvenance: "SK Dishub No. 123/2026",
+		operationalAuthorityGrantedBy: "synthetic-test-actor",
+		operationalAuthorityProvenance: "Synthetic integration test fixture",
 	};
 
 	const roadSegment = {
@@ -223,6 +223,7 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 			}
 
 			await db.delete(memberships).where(inArray(memberships.organizationId, orgIds));
+			await db.delete(roadSegments).where(inArray(roadSegments.organizationId, orgIds));
 			await db.delete(roadSegments).where(eq(roadSegments.id, roadSegment.id));
 			await db.delete(session).where(inArray(session.userId, userIds));
 			await db.delete(account).where(inArray(account.userId, userIds));
@@ -556,6 +557,143 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 			);
 			expect(acceptRes.status).toBe(409);
 		});
+
+		it("rejects missing recipient email at the API boundary", async () => {
+			const response = await app.request("http://localhost:5173/api/invitations", {
+				method: "POST",
+				headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+				body: JSON.stringify({ organizationId: simOrg.id, role: "organizer" }),
+			});
+			expect(response.status).toBe(422);
+		});
+
+		it("allows anonymous recipients to inspect an organizer invitation", async () => {
+			const created = await app.request("http://localhost:5173/api/invitations", {
+				method: "POST", headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+				body: JSON.stringify({ organizationId: simOrg.id, role: "organizer", recipientEmail: officerUserB.email }),
+			});
+			expect(created.status).toBe(201);
+			const { invitation } = await created.json() as { invitation: { token: string } };
+			const inspected = await app.request(`http://localhost:5173/api/invitations/${invitation.token}`);
+			expect(inspected.status).toBe(200);
+			const body = await inspected.json() as { invitationRole: string; event: unknown };
+			expect(body.invitationRole).toBe("organizer");
+			expect(body.event).toBeNull();
+		});
+
+		it("does not consume a field invitation after its event is cancelled", async () => {
+			const created = await app.request("http://localhost:5173/api/invitations", {
+				method: "POST",
+				headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+				body: JSON.stringify({ organizationId: simOrg.id, eventId: simEventForInvites.id, role: "officer", recipientEmail: officerUserB.email, canUpdateTraffic: true }),
+			});
+			expect(created.status).toBe(201);
+			const { invitation } = await created.json() as { invitation: { id: string; token: string } };
+			try {
+				await db.update(events).set({ status: "cancelled" }).where(eq(events.id, simEventForInvites.id));
+				const accepted = await app.request(`http://localhost:5173/api/invitations/${invitation.token}/accept`, {
+					method: "POST", headers: { "Content-Type": "application/json", Cookie: officerBCookie }, body: "{}",
+				});
+				expect(accepted.status).toBe(409);
+				const [stored] = await db.select().from(invitations).where(eq(invitations.id, invitation.id));
+				expect(stored.status).toBe("pending");
+			} finally {
+				await db.update(events).set({ status: "draft" }).where(eq(events.id, simEventForInvites.id));
+			}
+		});
+
+		it("does not consume an invitation after its creator loses organizer membership", async () => {
+			const created = await app.request("http://localhost:5173/api/invitations", {
+				method: "POST", headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+				body: JSON.stringify({ organizationId: simOrg.id, role: "organizer", recipientEmail: officerUserB.email }),
+			});
+			expect(created.status).toBe(201);
+			const { invitation } = await created.json() as { invitation: { id: string; token: string } };
+			try {
+				await db.update(memberships).set({ role: "officer" }).where(and(eq(memberships.organizationId, simOrg.id), eq(memberships.userId, organizerUser.id)));
+				const accepted = await app.request(`http://localhost:5173/api/invitations/${invitation.token}/accept`, {
+					method: "POST", headers: { "Content-Type": "application/json", Cookie: officerBCookie }, body: "{}",
+				});
+				expect(accepted.status).toBe(403);
+				const [stored] = await db.select().from(invitations).where(eq(invitations.id, invitation.id));
+				expect(stored.status).toBe("pending");
+			} finally {
+				await db.update(memberships).set({ role: "organizer" }).where(and(eq(memberships.organizationId, simOrg.id), eq(memberships.userId, organizerUser.id)));
+			}
+		});
+
+		it("preserves prior assignment grants and audits actual before and after values", async () => {
+			await db.insert(eventAssignments).values({ eventId: simEventForInvites.id, userId: officerUserB.id, canUpdateTraffic: true, canUpdateCleanup: false }).onConflictDoUpdate({ target: [eventAssignments.eventId, eventAssignments.userId], set: { canUpdateTraffic: true, canUpdateCleanup: false } });
+			const created = await app.request("http://localhost:5173/api/invitations", {
+				method: "POST", headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+				body: JSON.stringify({ organizationId: simOrg.id, eventId: simEventForInvites.id, role: "officer", recipientEmail: officerUserB.email, canUpdateCleanup: true }),
+			});
+			expect(created.status).toBe(201);
+			const { invitation } = await created.json() as { invitation: { id: string; token: string } };
+			const accepted = await app.request(`http://localhost:5173/api/invitations/${invitation.token}/accept`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: officerBCookie }, body: "{}" });
+			expect(accepted.status).toBe(200);
+			const [assignment] = await db.select().from(eventAssignments).where(and(eq(eventAssignments.eventId, simEventForInvites.id), eq(eventAssignments.userId, officerUserB.id)));
+			expect([assignment.canUpdateTraffic, assignment.canUpdateCleanup]).toEqual([true, true]);
+			const [audit] = await db.select().from(auditLogs).where(and(eq(auditLogs.entityId, invitation.id), eq(auditLogs.action, "invitation.accepted")));
+			expect(audit.actorId).toBe(officerUserB.id);
+			expect(audit.beforeJson).toMatchObject({ assignment: { can_update_traffic: true, can_update_cleanup: false } });
+			expect(audit.afterJson).toMatchObject({ assignment: { can_update_traffic: true, can_update_cleanup: true } });
+		});
+
+		it("serializes acceptance against revocation", async () => {
+			const created = await app.request("http://localhost:5173/api/invitations", {
+				method: "POST", headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+				body: JSON.stringify({ organizationId: simOrg.id, eventId: simEventForInvites.id, role: "officer", recipientEmail: officerUserB.email, canUpdateTraffic: true }),
+			});
+			expect(created.status).toBe(201);
+			const { invitation } = await created.json() as { invitation: { id: string; token: string } };
+			const [accept, revoke] = await Promise.all([
+				app.request(`http://localhost:5173/api/invitations/${invitation.token}/accept`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: officerBCookie }, body: "{}" }),
+				app.request(`http://localhost:5173/api/invitations/${invitation.id}`, { method: "DELETE", headers: { Cookie: organizerCookie } }),
+			]);
+			expect([accept.status, revoke.status].sort()).toEqual([200, 409]);
+			const [stored] = await db.select().from(invitations).where(eq(invitations.id, invitation.id));
+			expect(stored.status).toBe(accept.status === 200 ? "accepted" : "revoked");
+		});
+
+		it("does not grant a concurrent wrong-email actor", async () => {
+			const created = await app.request("http://localhost:5173/api/invitations", {
+				method: "POST", headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+				body: JSON.stringify({ organizationId: simOrg.id, eventId: simEventForInvites.id, role: "officer", recipientEmail: officerUserB.email, canUpdateTraffic: true }),
+			});
+			expect(created.status).toBe(201);
+			const { invitation } = await created.json() as { invitation: { id: string; token: string } };
+			const accept = (cookie: string) => app.request(`http://localhost:5173/api/invitations/${invitation.token}/accept`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: cookie }, body: "{}" });
+			const [right, wrong] = await Promise.all([accept(officerBCookie), accept(officerACookie)]);
+			expect(right.status).toBe(200);
+			expect([403, 409]).toContain(wrong.status);
+			const [stored] = await db.select().from(invitations).where(eq(invitations.id, invitation.id));
+			expect(stored.acceptedBy).toBe(officerUserB.id);
+		});
+
+		it("rolls back consumption and membership when audit insertion fails", async () => {
+			const created = await app.request("http://localhost:5173/api/invitations", {
+				method: "POST", headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+				body: JSON.stringify({ organizationId: simOrg.id, role: "organizer", recipientEmail: officerUserB.email }),
+			});
+			expect(created.status).toBe(201);
+			const { invitation } = await created.json() as { invitation: { id: string; token: string } };
+			const [before] = await db.select().from(memberships).where(and(eq(memberships.organizationId, simOrg.id), eq(memberships.userId, officerUserB.id)));
+			const name = `test_inv_audit_${runKey.replaceAll("-", "")}`;
+			try {
+				await db.execute(sql.raw(`CREATE FUNCTION "${name}"() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.entity_id = '${invitation.id}' THEN RAISE EXCEPTION 'synthetic audit failure'; END IF; RETURN NEW; END $$`));
+				await db.execute(sql.raw(`CREATE TRIGGER "${name}" BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION "${name}"()`));
+				const accepted = await app.request(`http://localhost:5173/api/invitations/${invitation.token}/accept`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: officerBCookie }, body: "{}" });
+				expect(accepted.status).toBe(500);
+				const [stored] = await db.select().from(invitations).where(eq(invitations.id, invitation.id));
+				const [after] = await db.select().from(memberships).where(and(eq(memberships.organizationId, simOrg.id), eq(memberships.userId, officerUserB.id)));
+				expect(stored.status).toBe("pending");
+				expect(after?.role).toBe(before?.role);
+			} finally {
+				await db.execute(sql.raw(`DROP TRIGGER IF EXISTS "${name}" ON audit_logs`));
+				await db.execute(sql.raw(`DROP FUNCTION IF EXISTS "${name}"()`));
+			}
+		});
 	});
 
 	// =========================================================================
@@ -564,6 +702,7 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 	describe("Ticket 03: Operational Authority Gate & Simulation Publication", () => {
 		let simDraftEventId = "";
 		let opDraftEventId = "";
+		let drawnRoadId = "";
 
 		it("creates draft event with isSimulation: true by default", async () => {
 			const res = await app.request("http://localhost:5173/api/events", {
@@ -586,6 +725,49 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 			const data = (await res.json()) as { event: { id: string; isSimulation: boolean } };
 			expect(data.event.isSimulation).toBe(true);
 			simDraftEventId = data.event.id;
+		});
+
+		it("creates a tenant-scoped simulation road and safely retries the same request", async () => {
+			drawnRoadId = crypto.randomUUID();
+			const payload = { mutationId: drawnRoadId, displayName: `[TEST] ${runKey}`, coverageArea: "Lokasi uji", coordinates: [[115.2166, -8.65], [115.217, -8.651]], humanVerified: true, plannedFrom: "2026-11-20T00:00:00Z", plannedTo: "2026-11-20T06:00:00Z", impactType: "closure" };
+			const request = () => app.request(`http://localhost:5173/api/events/${simDraftEventId}/simulation-road-impacts`, { method: "POST", headers: { "Content-Type": "application/json", Cookie: organizerCookie }, body: JSON.stringify(payload) });
+			expect((await request()).status).toBe(201);
+			expect((await request()).status).toBe(200);
+			const [segment] = await db.select().from(roadSegments).where(eq(roadSegments.id, drawnRoadId));
+			expect(segment.sourceType).toBe("simulation_draft");
+			expect(segment.organizationId).toBe(simOrg.id);
+			expect(segment.verifiedBy).toBeNull();
+			const catalog = await app.request("http://localhost:5173/api/road-segments?bbox=115.2,-8.7,115.3,-8.6", { headers: { Cookie: organizerCookie } });
+			expect(catalog.status).toBe(200);
+			const data = await catalog.json() as { segments: Array<{ id: string }> };
+			expect(data.segments.some((item) => item.id === drawnRoadId)).toBe(false);
+		});
+
+		it("rejects drawing if organizer membership is revoked before the atomic write", async () => {
+			const realFetch = globalThis.fetch;
+			let intercepted = false;
+			const id = crypto.randomUUID();
+			try {
+				globalThis.fetch = async (input, init) => {
+					let query = "";
+					try { query = JSON.parse(String(init?.body)).query ?? ""; } catch { /* non-database request */ }
+					if (!intercepted && query.includes("INSERT INTO road_segments")) {
+						intercepted = true;
+						await db.update(memberships).set({ role: "officer" }).where(and(eq(memberships.organizationId, simOrg.id), eq(memberships.userId, organizerUser.id)));
+					}
+					return realFetch(input, init);
+				};
+				const response = await app.request(`http://localhost:5173/api/events/${simDraftEventId}/simulation-road-impacts`, {
+					method: "POST", headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+					body: JSON.stringify({ mutationId: id, displayName: `[TEST] ${runKey}`, coverageArea: "Lokasi uji", coordinates: [[115.2166, -8.65], [115.217, -8.651]], humanVerified: true, plannedFrom: "2026-11-20T00:00:00Z", plannedTo: "2026-11-20T06:00:00Z", impactType: "closure" }),
+				});
+				expect(intercepted).toBe(true);
+				expect(response.status).toBe(403);
+				expect(await db.select().from(roadSegments).where(eq(roadSegments.id, id))).toHaveLength(0);
+			} finally {
+				globalThis.fetch = realFetch;
+				await db.update(memberships).set({ role: "organizer" }).where(and(eq(memberships.organizationId, simOrg.id), eq(memberships.userId, organizerUser.id)));
+			}
 		});
 
 		it("rejects operational publication (isSimulation: false) when organization lacks operational authority (403)", async () => {
@@ -655,6 +837,16 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 			expect(publicRes.status).toBe(200);
 			const publicData = (await publicRes.json()) as { event: { isSimulation: boolean } };
 			expect(publicData.event.isSimulation).toBe(true);
+			const list = await app.request("http://localhost:5173/api/public/events?limit=100");
+			const listing = await list.json() as { events: Array<{ id: string; isSimulation: boolean }> };
+			expect(listing.events.find((item) => item.id === simDraftEventId)?.isSimulation).toBe(true);
+			for (const suffix of ["roads", "cleanup-summary"]) {
+				const response = await app.request(`http://localhost:5173/api/public/events/${data.event.publicSlug}/${suffix}`);
+				expect(response.status).toBe(200);
+				expect((await response.json() as { isSimulation: boolean }).isSimulation).toBe(true);
+			}
+			const roads = await app.request(`http://localhost:5173/api/public/events/${data.event.publicSlug}/roads`);
+			expect((await roads.json() as { roads: Array<{ id: string }> }).roads.some((road) => road.id === drawnRoadId)).toBe(true);
 		});
 
 		it("allows operational publication (isSimulation: false) when organization has operational authority", async () => {
@@ -667,7 +859,7 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 				},
 				body: JSON.stringify({
 					organizationId: operationalOrg.id,
-					title: `Upacara Resmi Dishub (${runKey})`,
+					title: `Kegiatan operasional sintetis (${runKey})`,
 					startsAt: "2026-11-21T08:00:00+08:00",
 					endsAt: "2026-11-21T14:00:00+08:00",
 					category: "upacara",
@@ -677,6 +869,11 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 			expect(createRes.status).toBe(201);
 			const { event } = (await createRes.json()) as { event: { id: string } };
 			opDraftEventId = event.id;
+			const foreignDraft = await app.request(`http://localhost:5173/api/events/${opDraftEventId}/road-impacts`, {
+				method: "POST", headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+				body: JSON.stringify({ roadSegmentId: drawnRoadId, plannedFrom: "2026-11-21T00:00:00Z", plannedTo: "2026-11-21T06:00:00Z", impactType: "closure" }),
+			});
+			expect(foreignDraft.status).toBe(422);
 
 			// Attach road impact & transition to review
 			const impactRes = await app.request(`http://localhost:5173/api/events/${opDraftEventId}/road-impacts`, {
@@ -690,6 +887,7 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 				}),
 			});
 			expect(impactRes.status).toBe(201);
+			const operationalImpact = await impactRes.json() as { roadImpact: { id: string } };
 
 			const reviewRes = await app.request(`http://localhost:5173/api/events/${opDraftEventId}/review`, {
 				method: "POST",
@@ -705,8 +903,25 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 			});
 
 			expect(pubRes.status).toBe(200);
-			const pubData = (await pubRes.json()) as { event: { isSimulation: boolean } };
+			const pubData = (await pubRes.json()) as { event: { isSimulation: boolean; publicSlug: string } };
 			expect(pubData.event.isSimulation).toBe(false);
+			try {
+				await db.update(organizations).set({ hasOperationalAuthority: false }).where(eq(organizations.id, operationalOrg.id));
+				for (const suffix of ["", "/roads", "/cleanup-summary"]) {
+					const response = await app.request(`http://localhost:5173/api/public/events/${pubData.event.publicSlug}${suffix}`);
+					expect(response.status).toBe(404);
+				}
+				const list = await app.request("http://localhost:5173/api/public/events?limit=100");
+				const listing = await list.json() as { events: Array<{ id: string }> };
+				expect(listing.events.some((item) => item.id === opDraftEventId)).toBe(false);
+				const write = await app.request(`http://localhost:5173/api/road-impacts/${operationalImpact.roadImpact.id}/status`, {
+					method: "POST", headers: { "Content-Type": "application/json", Cookie: organizerCookie },
+					body: JSON.stringify({ status: "closed", observedAt: new Date().toISOString(), mutationId: crypto.randomUUID() }),
+				});
+				expect(write.status).toBe(403);
+			} finally {
+				await db.update(organizations).set({ hasOperationalAuthority: true }).where(eq(organizations.id, operationalOrg.id));
+			}
 		});
 	});
 
