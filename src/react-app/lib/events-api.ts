@@ -118,25 +118,86 @@ export interface ExtractedFieldsPayload {
 	contactInformation?: string | null;
 }
 
+export type RoadImpactType =
+	| "closure"
+	| "intermittent"
+	| "narrowing"
+	| "procession"
+	| "full_closure"
+	| "partial_closure"
+	| "one_way"
+	| "speed_reduction";
+
+export function normalizeRoadImpactType(
+	type?: string | null,
+): "closure" | "intermittent" | "narrowing" | "procession" {
+	switch (type) {
+		case "closure":
+		case "full_closure":
+			return "closure";
+		case "intermittent":
+		case "partial_closure":
+			return "intermittent";
+		case "narrowing":
+		case "one_way":
+			return "narrowing";
+		case "procession":
+		case "speed_reduction":
+			return "procession";
+		default:
+			return "closure";
+	}
+}
+
+export function normalizeEventCategory(
+	category?: string | null,
+): string | null {
+	if (!category) return null;
+	const trimmed = category.trim().toLowerCase();
+	switch (trimmed) {
+		case "prosesi":
+			return "procession";
+		case "ngaben":
+			return "upacara_adat";
+		default:
+			return trimmed;
+	}
+}
+
 export interface RoadSegmentRecord {
 	id: string;
 	displayName: string;
 	coverageArea: string;
 	verifiedBy: string;
 	verifiedAt: string;
-	geometry?: unknown;
+	geometry?: {
+		type: string;
+		coordinates: unknown;
+	} | null;
+}
+
+export interface CreateRoadSegmentPayload {
+	displayName: string;
+	coverageArea: string;
+	coordinates: Array<[number, number]>;
+	humanVerified: boolean;
 }
 
 export interface RoadImpactRecord {
 	id: string;
 	eventId?: string;
 	roadSegmentId: string;
-	plannedFrom: string;
-	plannedTo: string;
-	impactType: "full_closure" | "partial_closure" | "one_way" | "speed_reduction";
+	plannedFrom: string | null;
+	plannedTo: string | null;
+	impactType: RoadImpactType;
 	diversionNote: string | null;
 	displayName?: string;
 	coverageArea?: string;
+	segment?: {
+		id: string;
+		displayName: string;
+		coverageArea: string;
+	} | null;
 	geometry?: {
 		type: string;
 		coordinates: unknown;
@@ -152,10 +213,40 @@ export interface RoadImpactRecord {
 
 export interface CreateRoadImpactPayload {
 	roadSegmentId: string;
-	plannedFrom: string;
-	plannedTo: string;
-	impactType: "full_closure" | "partial_closure" | "one_way" | "speed_reduction";
+	plannedFrom?: string | null;
+	plannedTo?: string | null;
+	impactType: RoadImpactType;
 	diversionNote?: string | null;
+}
+
+export interface EventAssignmentRecord {
+	id: string;
+	eventId: string;
+	userId: string;
+	userName: string;
+	userEmail: string;
+	canUpdateTraffic: boolean;
+	canUpdateCleanup: boolean;
+	createdAt: string;
+	assignedAt?: string;
+}
+
+export interface CreateEventInvitationPayload {
+	eventId: string;
+	canUpdateTraffic: boolean;
+	canUpdateCleanup: boolean;
+	expiresInDays?: number;
+}
+
+export interface CreatedInvitationResponse {
+	token: string;
+	inviteUrl: string;
+	invitePath?: string;
+	expiresAt: string;
+	permissions: {
+		canUpdateTraffic: boolean;
+		canUpdateCleanup: boolean;
+	};
 }
 
 export interface UpdateRoadStatusPayload {
@@ -442,6 +533,65 @@ export async function cancelEvent(
 	);
 }
 
+export async function completeEvent(
+	eventId: string,
+): Promise<{ event: EventRecord }> {
+	return apiFetch<{ event: EventRecord }>(
+		`/api/events/${encodeURIComponent(eventId)}/complete`,
+		{
+			method: "POST",
+			body: {},
+		},
+	);
+}
+
+export async function fetchEventAssignments(
+	eventId: string,
+): Promise<{ assignments: EventAssignmentRecord[] }> {
+	return apiFetch<{ assignments: EventAssignmentRecord[] }>(
+		`/api/events/${encodeURIComponent(eventId)}/assignments`,
+		{ method: "GET" },
+	);
+}
+
+export async function assignEventOfficer(
+	eventId: string,
+	payload: {
+		userId: string;
+		canUpdateTraffic: boolean;
+		canUpdateCleanup: boolean;
+	},
+): Promise<{ assignment: EventAssignmentRecord }> {
+	return apiFetch<{ assignment: EventAssignmentRecord }>(
+		`/api/events/${encodeURIComponent(eventId)}/assignments`,
+		{
+			method: "POST",
+			body: payload,
+		},
+	);
+}
+
+export async function revokeEventAssignment(
+	eventId: string,
+	assignmentId: string,
+): Promise<{ success: boolean; revokedId: string }> {
+	return apiFetch<{ success: boolean; revokedId: string }>(
+		`/api/events/${encodeURIComponent(eventId)}/assignments/${encodeURIComponent(assignmentId)}`,
+		{
+			method: "DELETE",
+		},
+	);
+}
+
+export async function createEventInvitation(
+	payload: CreateEventInvitationPayload,
+): Promise<CreatedInvitationResponse> {
+	return apiFetch<CreatedInvitationResponse>("/api/invitations", {
+		method: "POST",
+		body: payload,
+	});
+}
+
 // ---------------------------------------------------------------------------
 // 2. Documents & AI Extractions API
 // ---------------------------------------------------------------------------
@@ -511,11 +661,18 @@ export async function saveExtractedFields(
 	eventId: string,
 	corrections: ExtractedFieldsPayload,
 ): Promise<{ event: EventRecord }> {
+	const normalizedCorrections: ExtractedFieldsPayload = {
+		...corrections,
+		category:
+			corrections.category !== undefined
+				? normalizeEventCategory(corrections.category)
+				: undefined,
+	};
 	return apiFetch<{ event: EventRecord }>(
 		`/api/events/${encodeURIComponent(eventId)}/extracted-fields`,
 		{
 			method: "PATCH",
-			body: corrections,
+			body: normalizedCorrections,
 		},
 	);
 }
@@ -537,6 +694,15 @@ export async function fetchRoadSegments(
 	return { segments: list, roadSegments: list };
 }
 
+export async function createRoadSegment(
+	payload: CreateRoadSegmentPayload,
+): Promise<{ segment: RoadSegmentRecord }> {
+	return apiFetch<{ segment: RoadSegmentRecord }>("/api/road-segments", {
+		method: "POST",
+		body: payload,
+	});
+}
+
 export async function fetchEventRoadImpacts(
 	eventId: string,
 ): Promise<{ roadImpacts: RoadImpactRecord[] }> {
@@ -554,7 +720,22 @@ export async function createRoadImpact(
 		`/api/events/${encodeURIComponent(eventId)}/road-impacts`,
 		{
 			method: "POST",
-			body: payload,
+			body: {
+				...payload,
+				impactType: normalizeRoadImpactType(payload.impactType),
+			},
+		},
+	);
+}
+
+export async function deleteRoadImpact(
+	eventId: string,
+	impactId: string,
+): Promise<{ deleted: boolean; id: string }> {
+	return apiFetch<{ deleted: boolean; id: string }>(
+		`/api/events/${encodeURIComponent(eventId)}/road-impacts/${encodeURIComponent(impactId)}`,
+		{
+			method: "DELETE",
 		},
 	);
 }
@@ -1097,14 +1278,15 @@ export function mapPublicEventToCeremonyProfile(
 		}
 
 		const effStatus = r.operationalStatus?.effectiveStatus;
+		const normalizedImpact = normalizeRoadImpactType(r.impactType);
 		let roadStatus: OperationalRoadStatus = "unknown";
 		if (effStatus === "closed" || effStatus === "intermittent" || effStatus === "open") {
 			roadStatus = effStatus;
 		} else if (!effStatus) {
-			if (r.impactType === "full_closure") roadStatus = "closed";
-			else if (r.impactType === "partial_closure" || r.impactType === "one_way") {
+			if (normalizedImpact === "closure") roadStatus = "closed";
+			else if (normalizedImpact === "intermittent" || normalizedImpact === "narrowing") {
 				roadStatus = "intermittent";
-			} else if (r.impactType === "speed_reduction") {
+			} else if (normalizedImpact === "procession") {
 				roadStatus = "open";
 			}
 		}
@@ -1116,15 +1298,15 @@ export function mapPublicEventToCeremonyProfile(
 			roadName: r.displayName || "Ruas Jalan Terdampak",
 			corridorSection: r.coverageArea || villageName,
 			roleInCeremony:
-				r.impactType === "full_closure" ? "rute_utama" : "akses_penyangga",
+				normalizedImpact === "closure" ? "rute_utama" : "akses_penyangga",
 			roleLabel:
-				r.impactType === "full_closure"
+				normalizedImpact === "closure"
 					? "Penutupan Penuh"
-					: r.impactType === "partial_closure"
+					: normalizedImpact === "intermittent"
 						? "Buka-Tutup Berkala"
-						: r.impactType === "one_way"
-							? "Satu Arah"
-							: "Perlambatan Arus",
+						: normalizedImpact === "narrowing"
+							? "Penyempitan / Satu Arah"
+							: "Jalur Prosesi",
 			status: roadStatus,
 			windowWita: schedule.windowWita,
 			pecalangPost: orgName,

@@ -1,34 +1,21 @@
-import { Button } from "@astryxdesign/core/Button";
-import { Divider } from "@astryxdesign/core/Divider";
-import { Heading } from "@astryxdesign/core/Heading";
-import { Icon } from "@astryxdesign/core/Icon";
-import {
-	Layout,
-	LayoutContent,
-	LayoutHeader,
-	LayoutPanel,
-} from "@astryxdesign/core/Layout";
-import { List, ListItem } from "@astryxdesign/core/List";
-import {
-	SegmentedControl,
-	SegmentedControlItem,
-} from "@astryxdesign/core/SegmentedControl";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
-import { Text } from "@astryxdesign/core/Text";
-import { TextInput } from "@astryxdesign/core/TextInput";
 import { useQuery } from "@tanstack/react-query";
 import {
+	Building2,
 	CalendarDays,
+	CheckCircle2,
 	ClipboardCheck,
+	Clock,
 	FileText,
 	MapPinned,
 	PlusCircle,
 	Radio,
+	RefreshCw,
 	Search,
 	ShieldCheck,
+	Users,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { RouterLinkBridge } from "../components/layout/AppShellLayout";
+import { Link } from "react-router";
 import {
 	EmptyStateCard,
 	ErrorStateBanner,
@@ -36,16 +23,18 @@ import {
 	LoadingStateBlock,
 	RoadStatusBadge,
 } from "../components/rangkai";
-import { BaliMapTilerView } from "../features/map/BaliMapTilerView";
+import { DashboardRoadMapInput } from "../features/map/DashboardRoadMapInput";
 import type { EventLifecycleStatus } from "../lib/api-client";
+import { useAuthSession, useMyOrganizationsQuery } from "../lib/auth";
+import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
 import {
+	type EventRecord,
 	fetchEventRoadImpacts,
 	fetchEventsList,
-	mapPublicEventToCeremonyProfile,
-	type EventRecord,
+	getSavedOrganizationId,
+	saveOrganizationId,
 } from "../lib/events-api";
 import { formatWitaDateTime, formatWitaRange } from "../lib/wita";
-import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
 
 type StatusFilterValue = "all" | EventLifecycleStatus;
 
@@ -54,20 +43,40 @@ const STATUS_FILTER_OPTIONS: Array<{ value: StatusFilterValue; label: string }> 
 		{ value: "all", label: "Semua" },
 		{ value: "active", label: "Aktif" },
 		{ value: "published", label: "Diumumkan" },
-		{ value: "review", label: "Review" },
+		{ value: "review", label: "Ditinjau" },
 		{ value: "draft", label: "Draf" },
+		{ value: "completed", label: "Selesai" },
 	];
+
+const CATEGORY_LABELS: Record<string, string> = {
+	upacara_adat: "Upacara Adat",
+	odalan: "Piodalan / Pujawali",
+	melasti: "Melasti",
+	pengerupukan: "Pengerupukan / Ogoh-Ogoh",
+	karya: "Karya Agung",
+	lainnya: "Kegiatan Adat Lainnya",
+};
 
 export function OrganizerDashboardPage() {
 	const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("all");
 	const [searchQuery, setSearchQuery] = useState("");
 	const [selectedEventId, setSelectedEventId] = useState<string>("");
 
+	const { data: sessionData } = useAuthSession();
+	const myOrgsQuery = useMyOrganizationsQuery();
+	const organizations = useMemo(
+		() => myOrgsQuery.data?.organizations ?? [],
+		[myOrgsQuery.data?.organizations],
+	);
+
+	const [activeOrgFilter, setActiveOrgFilter] = useState<string>("all");
+
 	const eventsQuery = useQuery({
 		queryKey: [
 			"events",
 			{
 				status: statusFilter === "all" ? undefined : statusFilter,
+				organizationId: activeOrgFilter === "all" ? undefined : activeOrgFilter,
 			},
 		],
 		queryFn: () =>
@@ -75,11 +84,11 @@ export function OrganizerDashboardPage() {
 				page: 1,
 				limit: 50,
 				status: statusFilter === "all" ? undefined : statusFilter,
+				organizationId: activeOrgFilter === "all" ? undefined : activeOrgFilter,
 			}),
 		retry: false,
 	});
 
-	// Pure backend events from Neon PostgreSQL via Hono API
 	const allEvents: EventRecord[] = useMemo(() => {
 		return eventsQuery.data?.events ?? [];
 	}, [eventsQuery.data]);
@@ -109,105 +118,236 @@ export function OrganizerDashboardPage() {
 		queryKey: ["events", activeEvent?.id, "road-impacts"],
 		queryFn: () => fetchEventRoadImpacts(activeEvent!.id),
 		enabled: Boolean(activeEvent?.id),
-		staleTime: 30_000,
+		staleTime: 20_000,
 	});
 
-	const activeInspectorVillage = useMemo(() => {
-		if (!activeEvent) return null;
-		return mapPublicEventToCeremonyProfile(
-			{
-				id: activeEvent.id,
-				title: activeEvent.title,
-				slug: activeEvent.publicSlug || activeEvent.id,
-				category: activeEvent.category ?? null,
-				description: activeEvent.description ?? null,
-				venueName: activeEvent.venueName,
-				startsAt: activeEvent.startsAt,
-				endsAt: activeEvent.endsAt,
-				status: activeEvent.status,
-				publishedAt: activeEvent.publishedAt ?? null,
-				organizationName: "Desa Adat",
-				village: "Bali",
-				district: "Bali",
-			},
-			activeRoadImpactsQuery.data?.roadImpacts ?? [],
-		);
-	}, [activeEvent, activeRoadImpactsQuery.data]);
+	const activeRoadImpacts = activeRoadImpactsQuery.data?.roadImpacts ?? [];
+
+	const kpiCounts = useMemo(() => {
+		let draftReview = 0;
+		let publishedActive = 0;
+		let completedCancelled = 0;
+		for (const evt of allEvents) {
+			if (evt.status === "draft" || evt.status === "review") {
+				draftReview += 1;
+			} else if (evt.status === "published" || evt.status === "active") {
+				publishedActive += 1;
+			} else {
+				completedCancelled += 1;
+			}
+		}
+		return {
+			total: allEvents.length,
+			draftReview,
+			publishedActive,
+			completedCancelled,
+		};
+	}, [allEvents]);
+
+	const orgNameById = useMemo(() => {
+		const map = new Map<string, string>();
+		for (const org of organizations) {
+			map.set(
+				org.id,
+				`${org.name}${org.village ? ` (${org.village})` : ""}`,
+			);
+		}
+		return map;
+	}, [organizations]);
 
 	const quickActionTargetId = activeEvent?.id || allEvents[0]?.id || "";
 
 	return (
-		<Layout
-			defaultHasDividers
-			height="fill"
-			header={
-				<LayoutHeader hasDivider>
-					<VStack gap={3}>
-						<HStack justify="between" vAlign="center" wrap="wrap" gap={3}>
-							<Heading level={1}>Jadwal & Pengumuman Desa</Heading>
-							<HStack gap={2} wrap="wrap">
-								<Button
-									as={RouterLinkBridge}
-									href={`/field/events/${quickActionTargetId}`}
-									variant="secondary"
-									size="sm"
-									label="Pos Pecalang"
-									icon={<Icon icon={Radio} size="sm" />}
-								/>
-								<Button
-									as={RouterLinkBridge}
-									href="/dashboard/events/new"
-									variant="primary"
-									size="sm"
-									label="Buat Pengumuman"
-									icon={<Icon icon={PlusCircle} size="sm" />}
-								/>
-							</HStack>
-						</HStack>
+		<div>
+			{/* Header Workspace */}
+			<div className="teduh-workspace-header">
+				<div>
+					<div className="teduh-workspace-eyebrow">
+						<ShieldCheck className="w-3.5 h-3.5" />
+						<span>Pusat Koordinasi Desa Adat • Zona Waktu WITA</span>
+					</div>
+					<h1 className="teduh-workspace-title">
+						Jadwal &amp; Pengumuman Upacara
+					</h1>
+					<p className="teduh-workspace-subtitle">
+						Kelola draf pengumuman, ekstraksi surat edaran AI, verifikasi ruas
+						jalan terdampak, penugasan Pecalang, hingga dokumentasi kebersihan
+						pasca-acara.
+					</p>
+				</div>
 
-						<HStack justify="between" vAlign="center" wrap="wrap" gap={3}>
-							<SegmentedControl
-								label="Filter status"
-								value={statusFilter}
-								onChange={(val) => setStatusFilter(val as StatusFilterValue)}
-								size="sm"
+				<div className="flex flex-wrap items-center gap-2.5">
+					<button
+						type="button"
+						onClick={() => void eventsQuery.refetch()}
+						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] transition-colors"
+					>
+						<RefreshCw className="w-3.5 h-3.5 text-[#585854]" />
+						<span>Segarkan</span>
+					</button>
+					{quickActionTargetId ? (
+						<Link
+							to={`/field/events/${quickActionTargetId}`}
+							className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B]/25 bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4] transition-colors no-underline"
+						>
+							<Radio className="w-3.5 h-3.5" />
+							<span>Pos Pecalang</span>
+						</Link>
+					) : null}
+					<Link
+						to="/dashboard/events/new"
+						className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-xs font-semibold text-white hover:bg-[#1d3c2e] transition-colors no-underline"
+					>
+						<PlusCircle className="w-3.5 h-3.5" />
+						<span>Buat Pengumuman Baru</span>
+					</Link>
+				</div>
+			</div>
+
+			{/* Onboarding Banner if logged in user has no Desa Adat membership */}
+			{sessionData?.user &&
+			!myOrgsQuery.isLoading &&
+			organizations.length === 0 ? (
+				<div className="mb-6 rounded-2xl border border-[#F3D9A4] bg-[#FDF7EB] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+					<div className="space-y-1">
+						<div className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#9A5B13]">
+							<Building2 className="w-4 h-4" />
+							<span>Belum Terhubung ke Desa Adat</span>
+						</div>
+						<p className="text-sm font-medium text-[#181817]">
+							Akun Anda ({sessionData.user.email}) belum terdaftar sebagai
+							Panitia atau Petugas di Desa Adat mana pun.
+						</p>
+						<p className="text-xs text-[#585854]">
+							Daftarkan Desa Adat / Banjar Anda terlebih dahulu agar dapat
+							membuat draf pengumuman upacara dan mengatur penutupan jalan.
+						</p>
+					</div>
+					<div className="flex items-center gap-2 shrink-0">
+						<Link
+							to="/onboarding/organization"
+							className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-xs font-semibold text-white hover:bg-[#1d3c2e] transition-colors no-underline"
+						>
+							<Building2 className="w-3.5 h-3.5" />
+							<span>Daftarkan Desa Adat</span>
+						</Link>
+						<Link
+							to="/settings"
+							className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] transition-colors no-underline"
+						>
+							<span>Pengaturan Akun</span>
+						</Link>
+					</div>
+				</div>
+			) : null}
+
+			{/* KPI Summary Row */}
+			<div className="teduh-kpi-grid">
+				<div className="teduh-kpi-card">
+					<span className="teduh-kpi-label">Total Kegiatan</span>
+					<span className="teduh-kpi-value">{kpiCounts.total}</span>
+					<span className="teduh-kpi-meta">
+						Terdaftar pada pangkalan data operasional
+					</span>
+				</div>
+				<div className="teduh-kpi-card">
+					<span className="teduh-kpi-label">Draf &amp; Ditinjau</span>
+					<span className="teduh-kpi-value">{kpiCounts.draftReview}</span>
+					<span className="teduh-kpi-meta">
+						Menunggu verifikasi panitia sebelum terbit
+					</span>
+				</div>
+				<div className="teduh-kpi-card">
+					<span className="teduh-kpi-label">Diumumkan &amp; Aktif</span>
+					<span className="teduh-kpi-value text-[#264D3B]">
+						{kpiCounts.publishedActive}
+					</span>
+					<span className="teduh-kpi-meta">
+						Tampil pada peta publik &amp; pantauan Pecalang
+					</span>
+				</div>
+				<div className="teduh-kpi-card">
+					<span className="teduh-kpi-label">Selesai / Arsip</span>
+					<span className="teduh-kpi-value">{kpiCounts.completedCancelled}</span>
+					<span className="teduh-kpi-meta">
+						Riwayat kegiatan dan dokumentasi pasca-acara
+					</span>
+				</div>
+			</div>
+
+			{/* Filter & Search Bar */}
+			<div className="teduh-workspace-card mb-6 p-4">
+				<div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+					<div className="flex flex-wrap items-center gap-1.5">
+						{STATUS_FILTER_OPTIONS.map((opt) => {
+							const active = statusFilter === opt.value;
+							return (
+								<button
+									key={opt.value}
+									type="button"
+									onClick={() => setStatusFilter(opt.value)}
+									className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+										active
+											? "bg-[#264D3B] text-white"
+											: "bg-[#F3F1EC] text-[#585854] hover:text-[#181817]"
+									}`}
+								>
+									{opt.label}
+								</button>
+							);
+						})}
+					</div>
+
+					<div className="flex flex-wrap items-center gap-2.5">
+						{organizations.length > 0 ? (
+							<select
+								aria-label="Filter Desa Adat"
+								value={activeOrgFilter}
+								onChange={(e) => {
+									const val = e.target.value;
+									setActiveOrgFilter(val);
+									if (val !== "all") {
+										saveOrganizationId(val);
+									}
+								}}
+								className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs font-medium text-[#181817]"
 							>
-								{STATUS_FILTER_OPTIONS.map((opt) => (
-									<SegmentedControlItem
-										key={opt.value}
-										value={opt.value}
-										label={opt.label}
-									/>
+								<option value="all">Semua Desa Adat Saya</option>
+								{organizations.map((org) => (
+									<option key={org.id} value={org.id}>
+										{org.name} ({org.role === "organizer" ? "Panitia" : "Petugas"})
+									</option>
 								))}
-							</SegmentedControl>
+							</select>
+						) : null}
 
-							<TextInput
+						<div className="relative min-w-[230px] flex-1 sm:flex-initial">
+							<Search className="w-3.5 h-3.5 text-[#8A8984] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+							<input
 								type="search"
-								label="Cari kegiatan"
-								isLabelHidden
-								placeholder="Cari upacara atau lokasi..."
 								value={searchQuery}
-								onChange={setSearchQuery}
-								startIcon={Search}
-								hasClear
-								size="sm"
-								width={240}
+								onChange={(e) => setSearchQuery(e.target.value)}
+								placeholder="Cari nama upacara, lokasi, surat..."
+								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] pl-8 pr-3 py-2 text-xs text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
 							/>
-						</HStack>
-					</VStack>
-				</LayoutHeader>
-			}
-			content={
-				<LayoutContent>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			{/* Main Two-Column Grid: Event List + Spatial Inspector */}
+			<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+				{/* Left Column: Event List */}
+				<div className="xl:col-span-7 space-y-3">
 					{eventsQuery.isLoading ? (
-						<VStack padding={6}>
+						<div className="teduh-workspace-card">
 							<LoadingStateBlock
 								label={SYSTEM_STATE_MESSAGES.loadingData.description}
 								rows={4}
 							/>
-						</VStack>
+						</div>
 					) : eventsQuery.isError ? (
-						<VStack padding={6}>
+						<div className="teduh-workspace-card">
 							<ErrorStateBanner
 								title="Gagal Memuat Jadwal Upacara"
 								error={eventsQuery.error}
@@ -215,173 +355,314 @@ export function OrganizerDashboardPage() {
 									void eventsQuery.refetch();
 								}}
 							/>
-						</VStack>
+						</div>
 					) : filteredEvents.length === 0 ? (
-						<VStack padding={6}>
+						<div className="teduh-workspace-card">
 							<EmptyStateCard
 								title={SYSTEM_STATE_MESSAGES.noEvents.title}
 								description={SYSTEM_STATE_MESSAGES.noEvents.description}
 								actions={
-									<Button
-										variant="secondary"
-										size="sm"
-										label={SYSTEM_STATE_MESSAGES.noEvents.primaryAction || "Reset Filter"}
-										onClick={() => {
-											setStatusFilter("all");
-											setSearchQuery("");
-										}}
-									/>
+									<div className="flex flex-wrap items-center gap-2">
+										<button
+											type="button"
+											onClick={() => {
+												setStatusFilter("all");
+												setSearchQuery("");
+												setActiveOrgFilter("all");
+											}}
+											className="px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+										>
+											Reset Filter
+										</button>
+										<Link
+											to="/dashboard/events/new"
+											className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-xs font-semibold text-white hover:bg-[#1d3c2e] no-underline"
+										>
+											<PlusCircle className="w-3.5 h-3.5" />
+											<span>Buat Draf Pengumuman</span>
+										</Link>
+									</div>
 								}
 							/>
-						</VStack>
+						</div>
 					) : (
-						<List hasDividers density="spacious">
-							{filteredEvents.map((evt) => {
-								const scheduleText =
-									evt.startsAt && evt.endsAt
-										? formatWitaRange(evt.startsAt, evt.endsAt)
-										: evt.startsAt
-											? formatWitaDateTime(evt.startsAt)
-											: "Jadwal belum diisi";
+						filteredEvents.map((evt) => {
+							const isSelected = activeEvent?.id === evt.id;
+							const scheduleText =
+								evt.startsAt && evt.endsAt
+									? formatWitaRange(evt.startsAt, evt.endsAt)
+									: evt.startsAt
+										? formatWitaDateTime(evt.startsAt)
+										: "Jadwal WITA belum ditetapkan";
+							const orgLabel =
+								orgNameById.get(evt.organizationId) ||
+								(evt.organizationId === getSavedOrganizationId()
+									? "Desa Adat Aktif"
+									: "Desa Adat Penyelenggara");
+							const categoryLabel = evt.category
+								? CATEGORY_LABELS[evt.category] || evt.category
+								: "Upacara Adat";
 
-								return (
-									<ListItem
-										key={evt.id}
-										align="center"
-										startContent={<Icon icon={CalendarDays} size="sm" />}
-										label={
-											<HStack gap={2} vAlign="center" wrap="wrap">
-												<Text type="label" size="base">
+							return (
+								<div
+									key={evt.id}
+									onClick={() => setSelectedEventId(evt.id)}
+									className={`teduh-event-row-card cursor-pointer ${
+										isSelected
+											? "border-[#264D3B] ring-2 ring-[#264D3B]/10"
+											: ""
+									}`}
+								>
+									<div className="flex flex-col gap-3 w-full">
+										<div className="flex flex-wrap items-start justify-between gap-2">
+											<div className="space-y-1">
+												<div className="flex flex-wrap items-center gap-2">
+													<span className="text-[11px] font-semibold uppercase tracking-wider text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full">
+														{categoryLabel}
+													</span>
+													<EventLifecycleBadge status={evt.status} />
+													{evt.permitReference ? (
+														<span className="text-[11px] text-[#585854] font-mono">
+															No: {evt.permitReference}
+														</span>
+													) : null}
+												</div>
+												<h2 className="text-base font-bold text-[#181817] leading-snug">
 													{evt.title}
-												</Text>
-												<EventLifecycleBadge status={evt.status} />
-											</HStack>
-										}
-										description={`${evt.venueName || "Lokasi belum diisi"} • ${scheduleText}`}
-										endContent={
-											<HStack gap={1.5} vAlign="center">
-												<Button
-													variant={activeEvent?.id === evt.id ? "primary" : "ghost"}
-													size="sm"
-													label="Pratinjau"
-													onClick={() => {
-														setSelectedEventId(evt.id);
-													}}
-												/>
-												<Button
-													as={RouterLinkBridge}
-													href={`/dashboard/events/${evt.id}`}
-													variant="secondary"
-													size="sm"
-													label="Kelola"
-												/>
-											</HStack>
-										}
-									/>
-								);
-							})}
-						</List>
+												</h2>
+											</div>
+
+											<div
+												className="flex flex-wrap items-center gap-1.5"
+												onClick={(e) => e.stopPropagation()}
+											>
+												<Link
+													to={`/dashboard/events/${evt.id}`}
+													className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] transition-colors no-underline"
+												>
+													<FileText className="w-3.5 h-3.5" />
+													<span>Edit &amp; Wizard</span>
+												</Link>
+											</div>
+										</div>
+
+										<div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-[#585854]">
+											<div className="flex items-center gap-1.5">
+												<MapPinned className="w-3.5 h-3.5 text-[#264D3B] shrink-0" />
+												<span className="truncate">
+													{evt.venueName || "Lokasi utama belum diisi"} •{" "}
+													{orgLabel}
+												</span>
+											</div>
+											<div className="flex items-center gap-1.5">
+												<Clock className="w-3.5 h-3.5 text-[#264D3B] shrink-0" />
+												<span className="truncate">{scheduleText}</span>
+											</div>
+										</div>
+
+										{/* Direct Workflow Module Shortcuts */}
+										<div
+											className="pt-2.5 border-t border-[#F0EFEA] flex flex-wrap items-center justify-between gap-2"
+											onClick={(e) => e.stopPropagation()}
+										>
+											<div className="flex flex-wrap items-center gap-1.5">
+												<Link
+													to={`/dashboard/events/${evt.id}/roads`}
+													className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E5E3DC] bg-[#FBFBFA] text-[11px] font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+												>
+													<MapPinned className="w-3 h-3 text-[#264D3B]" />
+													<span>Peta &amp; Ruas Jalan</span>
+												</Link>
+												<Link
+													to={`/dashboard/events/${evt.id}/team`}
+													className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E5E3DC] bg-[#FBFBFA] text-[11px] font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+												>
+													<Users className="w-3 h-3 text-[#264D3B]" />
+													<span>Tim &amp; Undangan</span>
+												</Link>
+												<Link
+													to={`/field/events/${evt.id}`}
+													className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E5E3DC] bg-[#FBFBFA] text-[11px] font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+												>
+													<Radio className="w-3 h-3 text-[#264D3B]" />
+													<span>Pos Pecalang</span>
+												</Link>
+												<Link
+													to={`/dashboard/events/${evt.id}/cleanup`}
+													className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E5E3DC] bg-[#FBFBFA] text-[11px] font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+												>
+													<ClipboardCheck className="w-3 h-3 text-[#264D3B]" />
+													<span>Kebersihan</span>
+												</Link>
+											</div>
+
+											{evt.publicSlug &&
+											(evt.status === "published" || evt.status === "active") ? (
+												<Link
+													to={`/events/${evt.publicSlug}`}
+													className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#264D3B] hover:underline no-underline"
+												>
+													<CheckCircle2 className="w-3.5 h-3.5" />
+													<span>Lihat Halaman Publik</span>
+												</Link>
+											) : null}
+										</div>
+									</div>
+								</div>
+							);
+						})
 					)}
-				</LayoutContent>
-			}
-			end={
-				<LayoutPanel
-					width={380}
-					hasDivider
-					isScrollable
-					label="Ringkasan Peta & Tindakan Cepat"
-				>
-					{activeInspectorVillage && activeEvent ? (
-						<VStack gap={4}>
-							<HStack justify="between" vAlign="start" gap={2}>
-								<VStack gap={0.5}>
-									<Text type="supporting" size="xsm">
-										{activeInspectorVillage.desaAdatName} •{" "}
-										{activeInspectorVillage.scheduleWindowWita}
-									</Text>
-									<Heading level={2}>
-										{activeInspectorVillage.ceremonyTitle}
-									</Heading>
-								</VStack>
-								<RoadStatusBadge status={activeInspectorVillage.primaryStatus} />
-							</HStack>
+				</div>
 
-							<BaliMapTilerView village={activeInspectorVillage} height={220} />
+				{/* Right Column: Spatial Inspector & Road Impacts Summary */}
+				<div className="xl:col-span-5">
+					<div className="teduh-workspace-card sticky top-20 space-y-4">
+						{activeEvent ? (
+							<>
+								<div className="flex items-start justify-between gap-3">
+									<div className="space-y-1">
+										<span className="text-[11px] font-bold uppercase tracking-wider text-[#264D3B]">
+											Inspektur Spasial Kegiatan
+										</span>
+										<h3 className="teduh-workspace-card-title">
+											{activeEvent.title}
+										</h3>
+										<p className="text-xs text-[#585854]">
+											{activeEvent.venueName || "Lokasi belum ditetapkan"} •{" "}
+											{activeEvent.startsAt && activeEvent.endsAt
+												? formatWitaRange(
+														activeEvent.startsAt,
+														activeEvent.endsAt,
+													)
+												: "Jadwal WITA belum lengkap"}
+										</p>
+									</div>
+									<EventLifecycleBadge status={activeEvent.status} />
+								</div>
 
-							<VStack gap={1.5}>
-								<Text type="label" size="xsm" color="secondary">
-									Ruas Jalan Terdampak ({activeInspectorVillage.roadSegments.length})
-								</Text>
-								{activeInspectorVillage.roadSegments.length > 0 ? (
-									<List hasDividers edge="bleed" density="compact">
-										{activeInspectorVillage.roadSegments.map((seg) => (
-											<ListItem
-												key={seg.id}
-												label={seg.roadName}
-												description={seg.windowWita}
-												endContent={<RoadStatusBadge status={seg.status} />}
-											/>
-										))}
-									</List>
-								) : (
-									<Text size="sm" color="secondary">
-										Belum ada ruas jalan terdampak yang diverifikasi.
-									</Text>
-								)}
-							</VStack>
+								{/* Dedicated Dashboard Road Map (No Kecamatan polygons) */}
+								<DashboardRoadMapInput
+									mode="operational"
+									height={250}
+									attachedRoadImpacts={activeRoadImpacts}
+								/>
 
-							<Divider variant="subtle" />
+								{/* Attached Road Impacts List */}
+								<div className="space-y-2">
+									<div className="flex items-center justify-between">
+										<span className="text-xs font-bold text-[#181817]">
+											Ruas Jalan Terdampak ({activeRoadImpacts.length})
+										</span>
+										<Link
+											to={`/dashboard/events/${activeEvent.id}/roads`}
+											className="text-xs font-semibold text-[#264D3B] hover:underline no-underline"
+										>
+											+ Tambah / Ubah Ruas
+										</Link>
+									</div>
 
-							<VStack gap={2}>
-								<Text type="label" size="xsm" color="secondary">
-									Tindakan Cepat
-								</Text>
-								<HStack gap={2} wrap="wrap">
-									<Button
-										as={RouterLinkBridge}
-										href={`/dashboard/events/${activeEvent.id}`}
-										variant="secondary"
-										size="sm"
-										label="Surat Edaran"
-										icon={<Icon icon={FileText} size="sm" />}
-									/>
-									<Button
-										as={RouterLinkBridge}
-										href={`/dashboard/events/${activeEvent.id}/roads`}
-										variant="secondary"
-										size="sm"
-										label="Atur Rute"
-										icon={<Icon icon={MapPinned} size="sm" />}
-									/>
-									<Button
-										as={RouterLinkBridge}
-										href={`/field/events/${activeEvent.id}`}
-										variant="secondary"
-										size="sm"
-										label="Pecalang"
-										icon={<Icon icon={ShieldCheck} size="sm" />}
-									/>
-									<Button
-										as={RouterLinkBridge}
-										href={`/dashboard/events/${activeEvent.id}/cleanup`}
-										variant="secondary"
-										size="sm"
-										label="Kebersihan"
-										icon={<Icon icon={ClipboardCheck} size="sm" />}
-									/>
-								</HStack>
-							</VStack>
-						</VStack>
-					) : (
-						<VStack gap={3}>
-							<Heading level={2}>Ringkasan Wilayah</Heading>
-							<Text size="sm" color="secondary">
-								Pilih salah satu kegiatan upacara pada daftar di sebelah kiri untuk melihat peta spasial dan tindakan cepat.
-							</Text>
-						</VStack>
-					)}
-				</LayoutPanel>
-			}
-		/>
+									{activeRoadImpactsQuery.isLoading ? (
+										<p className="text-xs text-[#585854]">
+											Memuat data ruas jalan...
+										</p>
+									) : activeRoadImpacts.length === 0 ? (
+										<div className="rounded-xl border border-dashed border-[#D5D3CB] bg-[#FBFBFA] p-3.5 text-xs text-[#585854]">
+											Belum ada ruas jalan terdampak yang diverifikasi untuk
+											kegiatan ini. Buka menu{" "}
+											<Link
+												to={`/dashboard/events/${activeEvent.id}/roads`}
+												className="font-semibold text-[#264D3B] underline"
+											>
+												Peta &amp; Ruas Jalan
+											</Link>{" "}
+											untuk menggambar atau memilih ruas jalan di peta.
+										</div>
+									) : (
+										<div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+											{activeRoadImpacts.map((ri) => {
+												const rawEff =
+													ri.operationalStatus?.effectiveStatus ?? "unknown";
+												const effectiveStatus =
+													rawEff === "unconfirmed" ? "unknown" : rawEff;
+												return (
+													<div
+														key={ri.id}
+														className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-2.5 flex items-center justify-between gap-2"
+													>
+														<div className="min-w-0">
+															<p className="text-xs font-semibold text-[#181817] truncate">
+																{ri.segment?.displayName ||
+																	ri.displayName ||
+																	`Ruas #${ri.id.slice(0, 8)}`}
+															</p>
+															<p className="text-[11px] text-[#585854] truncate">
+																Tipe:{" "}
+																<span className="font-medium uppercase">
+																	{ri.impactType}
+																</span>
+																{ri.diversionNote
+																	? ` • Alihan: ${ri.diversionNote}`
+																	: ""}
+															</p>
+														</div>
+														<RoadStatusBadge
+															status={effectiveStatus}
+															expiresAt={ri.operationalStatus?.expiresAt}
+														/>
+													</div>
+												);
+											})}
+										</div>
+									)}
+								</div>
+
+								{/* Quick Action Buttons */}
+								<div className="pt-3 border-t border-[#E5E3DC] grid grid-cols-2 gap-2">
+									<Link
+										to={`/dashboard/events/${activeEvent.id}`}
+										className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+									>
+										<FileText className="w-3.5 h-3.5 text-[#264D3B]" />
+										<span>Surat &amp; AI</span>
+									</Link>
+									<Link
+										to={`/dashboard/events/${activeEvent.id}/roads`}
+										className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+									>
+										<MapPinned className="w-3.5 h-3.5 text-[#264D3B]" />
+										<span>Input Peta Jalan</span>
+									</Link>
+									<Link
+										to={`/field/events/${activeEvent.id}`}
+										className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+									>
+										<Radio className="w-3.5 h-3.5 text-[#264D3B]" />
+										<span>Update Status Jalan</span>
+									</Link>
+									<Link
+										to={`/dashboard/events/${activeEvent.id}/cleanup`}
+										className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+									>
+										<ClipboardCheck className="w-3.5 h-3.5 text-[#264D3B]" />
+										<span>Tugas Kebersihan</span>
+									</Link>
+								</div>
+							</>
+						) : (
+							<div className="py-8 text-center space-y-2">
+								<CalendarDays className="w-8 h-8 text-[#8A8984] mx-auto" />
+								<h3 className="teduh-workspace-card-title">
+									Inspektur Spasial
+								</h3>
+								<p className="text-xs text-[#585854] max-w-xs mx-auto">
+									Pilih salah satu kegiatan upacara di daftar kiri atau buat
+									pengumuman baru untuk menampilkan peta ruas jalan terdampak.
+								</p>
+							</div>
+						)}
+					</div>
+				</div>
+			</div>
+		</div>
 	);
 }

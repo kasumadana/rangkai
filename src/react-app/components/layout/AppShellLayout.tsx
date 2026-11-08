@@ -1,21 +1,6 @@
-import { AppShell } from "@astryxdesign/core/AppShell";
-import { Avatar } from "@astryxdesign/core/Avatar";
-import { Button } from "@astryxdesign/core/Button";
-import { Icon } from "@astryxdesign/core/Icon";
-import {
-	SideNav,
-	SideNavItem,
-	SideNavSection,
-} from "@astryxdesign/core/SideNav";
-import { HStack } from "@astryxdesign/core/Stack";
-import { Token } from "@astryxdesign/core/Token";
-import {
-	TopNav,
-	TopNavHeading,
-	TopNavItem,
-} from "@astryxdesign/core/TopNav";
 import {
 	Bell,
+	Building2,
 	ClipboardCheck,
 	Compass,
 	KeyRound,
@@ -25,15 +10,26 @@ import {
 	Menu,
 	PlusCircle,
 	Radio,
+	Settings,
 	ShieldCheck,
+	Users,
 	X,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { forwardRef, useEffect, useRef, useState, type AnchorHTMLAttributes } from "react";
 import { Link as RouterLink, Outlet, useLocation } from "react-router";
 import { RangkaiPreloader, shouldPlayPreloader } from "../rangkai";
-import { useAuthSession, useSignOutMutation } from "../../lib/auth";
-import { fetchPublicEvents, formatWitaEventSchedule } from "../../lib/events-api";
+import {
+	useAuthSession,
+	useMyOrganizationsQuery,
+	useSignOutMutation,
+} from "../../lib/auth";
+import {
+	fetchEventsList,
+	fetchPublicEvents,
+	formatWitaEventSchedule,
+	getSavedOrganizationId,
+} from "../../lib/events-api";
 import { useGsapRouteTransition } from "../../lib/gsap-motion";
 
 export const RouterLinkBridge = forwardRef<
@@ -46,56 +42,6 @@ export const RouterLinkBridge = forwardRef<
 		</RouterLink>
 	);
 });
-
-function WorkspaceHeaderActions() {
-	const { data: sessionData, isLoading: isSessionLoading } = useAuthSession();
-	const signOutMutation = useSignOutMutation();
-	const { pathname } = useLocation();
-	const isFieldMode =
-		pathname.startsWith("/field") || pathname.endsWith("/cleanup");
-
-	return (
-		<HStack gap={2} vAlign="center">
-			<Token
-				color={isFieldMode ? "orange" : "blue"}
-				size="sm"
-				label={isFieldMode ? "Pecalang" : "Panitia Desa"}
-			/>
-
-			{!isSessionLoading && sessionData?.user ? (
-				<HStack gap={1.5} vAlign="center">
-					<RouterLinkBridge href="/settings" title="Pengaturan Akun & Desa Adat" style={{ display: "inline-flex", textDecoration: "none" }}>
-						<Avatar
-							name={sessionData.user.name || sessionData.user.email}
-							size="xsm"
-							shape="circle"
-							tooltip={sessionData.user.email}
-						/>
-					</RouterLinkBridge>
-					<Button
-						variant="ghost"
-						size="sm"
-						label="Keluar"
-						icon={<Icon icon={LogOut} size="sm" />}
-						isLoading={signOutMutation.isPending}
-						onClick={() => {
-							signOutMutation.mutate();
-						}}
-					/>
-				</HStack>
-			) : (
-				<Button
-					as={RouterLinkBridge}
-					href="/login"
-					variant="secondary"
-					size="sm"
-					label="Akun"
-					icon={<Icon icon={KeyRound} size="sm" />}
-				/>
-			)}
-		</HStack>
-	);
-}
 
 export function PublicShellLayout() {
 	const { pathname } = useLocation();
@@ -295,24 +241,33 @@ export function PublicShellLayout() {
 
 						{/* Authenticated Profile or Akses Petugas CTA */}
 						{sessionData?.user ? (
-							<HStack gap={1.5} vAlign="center">
-								<RouterLinkBridge href="/dashboard" style={{ display: "inline-flex", textDecoration: "none" }}>
-									<Avatar
-										name={sessionData.user.name || sessionData.user.email}
-										size="xsm"
-										shape="circle"
-										tooltip={sessionData.user.email}
-									/>
+							<div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+								<RouterLinkBridge href="/dashboard" className="btn-nav-officer">
+									<LayoutDashboard size={15} />
+									<span>Panel Desa</span>
 								</RouterLinkBridge>
-								<Button
-									variant="ghost"
-									size="sm"
-									label="Keluar"
-									icon={<Icon icon={LogOut} size="sm" />}
-									isLoading={signOutMutation.isPending}
+								<button
+									type="button"
+									disabled={signOutMutation.isPending}
 									onClick={() => signOutMutation.mutate()}
-								/>
-							</HStack>
+									style={{
+										display: "inline-flex",
+										alignItems: "center",
+										gap: 6,
+										padding: "8px 12px",
+										borderRadius: 9999,
+										border: "1px solid #E5E3DC",
+										background: "#FFFFFF",
+										color: "#545B67",
+										fontSize: 13,
+										fontWeight: 500,
+										cursor: "pointer",
+									}}
+								>
+									<LogOut size={14} />
+									<span>Keluar</span>
+								</button>
+							</div>
 						) : (
 							<RouterLinkBridge href="/login" className="btn-nav-officer">
 								<ShieldCheck size={16} />
@@ -493,7 +448,7 @@ export function PublicShellLayout() {
 										<RouterLinkBridge href="/dashboard">Panel Panitia Desa</RouterLinkBridge>
 									</li>
 									<li>
-										<RouterLinkBridge href="/field/events/evt-pilot">Pos Komando Lapangan</RouterLinkBridge>
+										<RouterLinkBridge href="/dashboard">Pos Komando Lapangan</RouterLinkBridge>
 									</li>
 									<li>
 										<RouterLinkBridge href="/login">Akses Masuk Petugas</RouterLinkBridge>
@@ -530,124 +485,268 @@ export function WorkspaceShellLayout() {
 	const { pathname } = useLocation();
 	const workspaceContentRef = useRef<HTMLDivElement>(null);
 
+	const { data: sessionData, isLoading: isSessionLoading } = useAuthSession();
+	const signOutMutation = useSignOutMutation();
+	const myOrgsQuery = useMyOrganizationsQuery();
+
+	const eventsQuery = useQuery({
+		queryKey: ["events", "list", { page: 1, limit: 20 }],
+		queryFn: () => fetchEventsList({ page: 1, limit: 20 }),
+		enabled: Boolean(sessionData?.user),
+		retry: false,
+	});
+
 	useGsapRouteTransition(workspaceContentRef, pathname);
 
-	// Extract active event ID from current path if present (e.g. /dashboard/events/:id or /field/events/:id)
+	const organizations = myOrgsQuery.data?.organizations ?? [];
+	const savedOrgId = getSavedOrganizationId();
+	const activeOrg =
+		organizations.find((o) => o.id === savedOrgId) ?? organizations[0] ?? null;
+	const hasOrganizerRole = organizations.some((o) => o.role === "organizer");
+	const effectiveRole = activeOrg?.role ?? (hasOrganizerRole ? "organizer" : "officer");
+
+	// Extract active event ID from URL or fall back to the first real event from backend
 	const eventIdMatch = pathname.match(/(?:dashboard|field)\/events\/([^/]+)/);
-	const activeNavEventId =
-		eventIdMatch && eventIdMatch[1] !== "new" ? eventIdMatch[1] : "evt-pilot";
+	const urlEventId =
+		eventIdMatch && eventIdMatch[1] !== "new" ? eventIdMatch[1] : null;
+	const firstRealEventId = eventsQuery.data?.events?.[0]?.id ?? null;
+	const activeNavEventId = urlEventId || firstRealEventId;
 
-	const topNav = (
-		<TopNav
-			label="Navigasi Ruang Kerja Rangkai"
-			heading={
-				<TopNavHeading
-					as={RouterLinkBridge}
-					heading="Rangkai"
-					subheading="Panel Desa Adat"
-					headingHref="/dashboard"
-				/>
-			}
-			endContent={<WorkspaceHeaderActions />}
-		>
-			<TopNavItem
-				as={RouterLinkBridge}
-				href="/dashboard"
-				label="Panitia Desa"
-				icon={<Icon icon={LayoutDashboard} size="sm" />}
-				isSelected={
-					pathname.startsWith("/dashboard") && !pathname.endsWith("/cleanup")
-				}
-			/>
-			<TopNavItem
-				as={RouterLinkBridge}
-				href={`/field/events/${activeNavEventId}`}
-				label="Pos Pecalang"
-				icon={<Icon icon={Radio} size="sm" />}
-				isSelected={
-					pathname.startsWith("/field") || pathname.endsWith("/cleanup")
-				}
-			/>
-			<TopNavItem
-				as={RouterLinkBridge}
-				href="/"
-				label="Peta Warga"
-				icon={<Icon icon={Compass} size="sm" />}
-				isSelected={pathname === "/"}
-			/>
-		</TopNav>
-	);
-
-	const sideNav = (
-		<SideNav collapsible>
-			<SideNavSection title="Panitia Desa">
-				<SideNavItem
-					as={RouterLinkBridge}
-					href="/dashboard"
-					label="Daftar Upacara"
-					icon={LayoutDashboard}
-					isSelected={
-						pathname === "/dashboard" || pathname === "/dashboard/events"
-					}
-				/>
-				<SideNavItem
-					as={RouterLinkBridge}
-					href="/dashboard/events/new"
-					label="Buat Pengumuman"
-					icon={PlusCircle}
-					isSelected={pathname === "/dashboard/events/new"}
-				/>
-				<SideNavItem
-					as={RouterLinkBridge}
-					href={`/dashboard/events/${activeNavEventId}/review`}
-					label="Surat Edaran"
-					icon={ShieldCheck}
-					isSelected={
-						pathname.endsWith("/review") || pathname.endsWith("/document")
-					}
-				/>
-				<SideNavItem
-					as={RouterLinkBridge}
-					href={`/dashboard/events/${activeNavEventId}/roads`}
-					label="Rute & Jalan"
-					icon={MapPinned}
-					isSelected={pathname.endsWith("/roads")}
-				/>
-			</SideNavSection>
-
-			<SideNavSection title="Lapangan">
-				<SideNavItem
-					as={RouterLinkBridge}
-					href={`/field/events/${activeNavEventId}`}
-					label="Status Jalan Pecalang"
-					icon={Radio}
-					isSelected={pathname.startsWith("/field")}
-				/>
-				<SideNavItem
-					as={RouterLinkBridge}
-					href={`/dashboard/events/${activeNavEventId}/cleanup`}
-					label="Kebersihan Pasca-Karya"
-					icon={ClipboardCheck}
-					isSelected={pathname.endsWith("/cleanup")}
-				/>
-			</SideNavSection>
-		</SideNav>
-	);
+	const getWorkflowHref = (suffix: string, isFieldRoute = false) => {
+		if (activeNavEventId) {
+			return isFieldRoute
+				? `/field/events/${activeNavEventId}`
+				: `/dashboard/events/${activeNavEventId}${suffix}`;
+		}
+		return hasOrganizerRole || !sessionData?.user
+			? "/dashboard/events/new"
+			: "/dashboard";
+	};
 
 	return (
-		<AppShell
-			variant="elevated"
-			height="fill"
-			topNav={topNav}
-			sideNav={sideNav}
-			contentPadding={0}
-		>
-			<div
-				ref={workspaceContentRef}
-				style={{ height: "100%", display: "flex", flexDirection: "column" }}
-			>
-				<Outlet />
+		<div className="teduh-workspace-shell">
+			{/* Top Bar */}
+			<header className="teduh-workspace-topbar">
+				<div className="teduh-workspace-topbar-left">
+					<RouterLink to="/dashboard" className="teduh-workspace-brand">
+						<img src="/logo.png" alt="Rangkai" />
+					</RouterLink>
+
+					<span
+						className={`teduh-workspace-role-pill ${effectiveRole === "officer" && !hasOrganizerRole ? "is-officer" : ""}`}
+					>
+						{ !sessionData?.user
+							? "Mode Tamu / Pratinjau"
+							: effectiveRole === "organizer" || hasOrganizerRole
+								? "Panitia Desa (Organizer)"
+								: "Petugas Lapangan (Pecalang)" }
+					</span>
+
+					{activeOrg ? (
+						<span className="teduh-workspace-org-badge" title={activeOrg.name}>
+							<Building2 size={13} />
+							<span>{activeOrg.name}</span>
+						</span>
+					) : null}
+				</div>
+
+				<div className="teduh-workspace-topbar-right">
+					<RouterLink
+						to="/"
+						className="teduh-map-tool-btn"
+						style={{ textDecoration: "none" }}
+					>
+						<Compass size={14} />
+						<span>Portal Publik</span>
+					</RouterLink>
+
+					{!isSessionLoading && sessionData?.user ? (
+						<>
+							<RouterLink
+								to="/settings"
+								className="teduh-map-tool-btn"
+								style={{ textDecoration: "none" }}
+								title={sessionData.user.email}
+							>
+								<Settings size={14} />
+								<span>{sessionData.user.name || "Akun"}</span>
+							</RouterLink>
+							<button
+								type="button"
+								className="teduh-map-tool-btn is-danger"
+								disabled={signOutMutation.isPending}
+								onClick={() => signOutMutation.mutate()}
+							>
+								<LogOut size={14} />
+								<span>Keluar</span>
+							</button>
+						</>
+					) : (
+						<RouterLink
+							to="/login"
+							className="teduh-map-tool-btn"
+							style={{
+								textDecoration: "none",
+								background: "#264D3B",
+								color: "#FFFFFF",
+								borderColor: "#264D3B",
+							}}
+						>
+							<KeyRound size={14} />
+							<span>Masuk Akun</span>
+						</RouterLink>
+					)}
+				</div>
+			</header>
+
+			{/* Main Body: Sidebar + Content */}
+			<div className="teduh-workspace-body">
+				<aside className="teduh-workspace-sidebar" aria-label="Menu Ruang Kerja">
+					<div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+						<div className="teduh-sidebar-group">
+							<div className="teduh-sidebar-group-label">Manajemen Desa</div>
+							<RouterLink
+								to="/dashboard"
+								className={`teduh-sidebar-link ${pathname === "/dashboard" || pathname === "/dashboard/events" ? "is-active" : ""}`}
+							>
+								<LayoutDashboard size={16} />
+								<span>Ikhtisar Kegiatan</span>
+							</RouterLink>
+							<RouterLink
+								to="/dashboard/events/new"
+								className={`teduh-sidebar-link ${pathname === "/dashboard/events/new" ? "is-active" : ""}`}
+							>
+								<PlusCircle size={16} />
+								<span>Buat Kegiatan Baru</span>
+							</RouterLink>
+							<RouterLink
+								to="/settings"
+								className={`teduh-sidebar-link ${pathname === "/settings" ? "is-active" : ""}`}
+							>
+								<Building2 size={16} />
+								<span>Desa Adat & Akun</span>
+							</RouterLink>
+						</div>
+
+						<div className="teduh-sidebar-group">
+							<div className="teduh-sidebar-group-label">
+								Alur Kerja Kegiatan
+							</div>
+							<RouterLink
+								to={
+									activeNavEventId
+										? `/dashboard/events/${activeNavEventId}`
+										: "/dashboard/events/new"
+								}
+								className={`teduh-sidebar-link ${
+									Boolean(
+										urlEventId &&
+											pathname === `/dashboard/events/${urlEventId}`,
+									) || pathname.endsWith("/review")
+										? "is-active"
+										: ""
+								}`}
+							>
+								<ShieldCheck size={16} />
+								<span>Surat Edaran & Detail</span>
+							</RouterLink>
+							<RouterLink
+								to={getWorkflowHref("/roads")}
+								className={`teduh-sidebar-link ${pathname.endsWith("/roads") ? "is-active" : ""}`}
+							>
+								<MapPinned size={16} />
+								<span>Peta & Ruas Jalan</span>
+							</RouterLink>
+							<RouterLink
+								to={getWorkflowHref("/team")}
+								className={`teduh-sidebar-link ${pathname.endsWith("/team") ? "is-active" : ""}`}
+							>
+								<Users size={16} />
+								<span>Tim & Undangan Petugas</span>
+							</RouterLink>
+						</div>
+
+						<div className="teduh-sidebar-group">
+							<div className="teduh-sidebar-group-label">
+								Operasional Lapangan
+							</div>
+							<RouterLink
+								to={getWorkflowHref("", true)}
+								className={`teduh-sidebar-link ${pathname.startsWith("/field") ? "is-active" : ""}`}
+							>
+								<Radio size={16} />
+								<span>Pos Jaga Pecalang</span>
+							</RouterLink>
+							<RouterLink
+								to={getWorkflowHref("/cleanup")}
+								className={`teduh-sidebar-link ${pathname.endsWith("/cleanup") ? "is-active" : ""}`}
+							>
+								<ClipboardCheck size={16} />
+								<span>Kebersihan & Sampah</span>
+							</RouterLink>
+						</div>
+					</div>
+
+					<div
+						style={{
+							padding: "12px 14px",
+							borderRadius: 12,
+							background: "#EEECE6",
+							fontSize: 11.5,
+							lineHeight: 1.5,
+							color: "#545B67",
+						}}
+					>
+						<strong style={{ color: "#181B20", display: "block", marginBottom: 2 }}>
+							Koordinasi Adat & Sipil
+						</strong>
+						Setiap publikasi acara wajib melalui verifikasi Prajuru Adat dan ruas jalan terverifikasi.
+					</div>
+				</aside>
+
+				<main ref={workspaceContentRef} className="teduh-workspace-main">
+					<Outlet />
+				</main>
 			</div>
-		</AppShell>
+
+			{/* Mobile Bottom Navigation */}
+			<nav className="teduh-workspace-mobile-nav" aria-label="Navigasi Bawah Ruang Kerja">
+				<RouterLink
+					to="/dashboard"
+					className={`teduh-mobile-nav-item ${pathname === "/dashboard" || pathname === "/dashboard/events" ? "is-active" : ""}`}
+				>
+					<LayoutDashboard size={18} />
+					<span>Kegiatan</span>
+				</RouterLink>
+				<RouterLink
+					to="/dashboard/events/new"
+					className={`teduh-mobile-nav-item ${pathname === "/dashboard/events/new" ? "is-active" : ""}`}
+				>
+					<PlusCircle size={18} />
+					<span>Buat Baru</span>
+				</RouterLink>
+				<RouterLink
+					to={getWorkflowHref("", true)}
+					className={`teduh-mobile-nav-item ${pathname.startsWith("/field") ? "is-active" : ""}`}
+				>
+					<Radio size={18} />
+					<span>Pecalang</span>
+				</RouterLink>
+				<RouterLink
+					to={getWorkflowHref("/cleanup")}
+					className={`teduh-mobile-nav-item ${pathname.endsWith("/cleanup") ? "is-active" : ""}`}
+				>
+					<ClipboardCheck size={18} />
+					<span>Kebersihan</span>
+				</RouterLink>
+				<RouterLink
+					to="/settings"
+					className={`teduh-mobile-nav-item ${pathname === "/settings" ? "is-active" : ""}`}
+				>
+					<Settings size={18} />
+					<span>Akun</span>
+				</RouterLink>
+			</nav>
+		</div>
 	);
 }

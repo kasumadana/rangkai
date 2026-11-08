@@ -74,3 +74,43 @@ export const createRoadStatusSchema = z.object({
 	mutationId: uuidParamSchema,
 	note: z.string().trim().max(500).optional().nullable(),
 });
+
+export const createRoadSegmentSchema = z
+	.object({
+		displayName: z
+			.string()
+			.trim()
+			.min(3, "Nama ruas jalan minimal 3 karakter.")
+			.max(200, "Nama ruas jalan maksimal 200 karakter."),
+		coverageArea: z
+			.string()
+			.trim()
+			.min(2, "Nama kawasan/banjar minimal 2 karakter.")
+			.max(150, "Nama kawasan/banjar maksimal 150 karakter."),
+		coordinates: z
+			.array(
+				z.tuple([
+					z.number().min(-180).max(180),
+					z.number().min(-90).max(90),
+				]),
+			)
+			.min(2, "Tandai minimal 2 titik koordinat di peta untuk membentuk garis ruas jalan.")
+			.max(100, "Maksimal 100 titik koordinat per ruas jalan."),
+		humanVerified: z.boolean().refine((val) => val === true, {
+			message: "Konfirmasi verifikasi Prajuru/Panitia diperlukan untuk mendaftarkan ruas jalan.",
+		}),
+	})
+	.refine(
+		(data) => {
+			const [firstLng, firstLat] = data.coordinates[0];
+			return data.coordinates.some(
+				([lng, lat]) =>
+					Math.abs(lng - firstLng) > 0.00001 ||
+					Math.abs(lat - firstLat) > 0.00001,
+			);
+		},
+		{
+			message: "Titik awal dan titik akhir ruas jalan tidak boleh berada di satu titik yang sama.",
+			path: ["coordinates"],
+		},
+	);

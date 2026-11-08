@@ -4229,7 +4229,8 @@
 .schedule-title,
 .teduh-page-title,
 .teduh-detail-title,
-.teduh-section-heading {
+.teduh-section-heading,
+.teduh-workspace-title {
 	font-family: 'Fraunces', Georgia, serif !important;
 	font-weight: 300 !important;
 	letter-spacing: -0.015em;
@@ -4249,6 +4250,537 @@
 .teduh-stat-number,
 .btn-nav-officer,
 .navbar-link,
-.hero-label {
+.hero-label,
+.teduh-workspace-card-title {
 	font-family: var(--font-sans, 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif) !important;
+}
+
+/* ==========================================================================
+   TEDUH WORKSPACE & DASHBOARD SHELL (CONSISTENT OPERATIONAL UI)
+   ========================================================================== */
+.teduh-workspace-shell {
+	min-height: 100dvh;
+	background: #FBFBFA;
+	color: #181B20;
+	display: flex;
+	flex-direction: column;
+	font-family: var(--font-sans, 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif);
+}
+
+.teduh-workspace-topbar {
+	position: sticky;
+	top: 0;
+	z-index: 90;
+	height: 68px;
+	background: rgba(251, 251, 250, 0.94);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border-bottom: 1px solid #E6E4DF;
+	padding: 0 24px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.teduh-workspace-topbar-left {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	min-width: 0;
+}
+
+.teduh-workspace-brand {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	text-decoration: none;
+	color: #181B20;
+	font-weight: 700;
+	font-size: 17px;
+	letter-spacing: -0.02em;
+}
+
+.teduh-workspace-brand img {
+	height: 30px;
+	width: auto;
+	display: block;
+}
+
+.teduh-workspace-role-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 11px;
+	border-radius: 999px;
+	font-size: 11.5px;
+	font-weight: 600;
+	background: #ECF3EF;
+	color: #264D3B;
+	white-space: nowrap;
+}
+
+.teduh-workspace-role-pill.is-officer {
+	background: #FEF3C7;
+	color: #92400E;
+}
+
+.teduh-workspace-org-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 11px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 500;
+	background: #F3F2EE;
+	color: #545B67;
+	max-width: 240px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.teduh-workspace-topbar-right {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.teduh-workspace-body {
+	flex: 1;
+	display: grid;
+	grid-template-columns: 260px minmax(0, 1fr);
+	min-height: calc(100dvh - 68px);
+}
+
+.teduh-workspace-sidebar {
+	background: #F6F5F2;
+	border-right: 1px solid #E6E4DF;
+	padding: 22px 16px;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+	gap: 24px;
+	position: sticky;
+	top: 68px;
+	height: calc(100dvh - 68px);
+	overflow-y: auto;
+}
+
+.teduh-sidebar-group {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.teduh-sidebar-group-label {
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.06em;
+	color: #71717A;
+	padding: 0 12px 6px;
+}
+
+.teduh-sidebar-link {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 12px;
+	border-radius: 12px;
+	font-size: 13.5px;
+	font-weight: 500;
+	color: #3F444E;
+	text-decoration: none;
+	transition: all 0.16s ease;
+	border: none;
+	background: transparent;
+	width: 100%;
+	text-align: left;
+	cursor: pointer;
+}
+
+.teduh-sidebar-link:hover {
+	background: rgba(38, 77, 59, 0.07);
+	color: #181B20;
+}
+
+.teduh-sidebar-link.is-active {
+	background: #264D3B;
+	color: #FFFFFF;
+	font-weight: 600;
+	box-shadow: 0 4px 12px rgba(38, 77, 59, 0.18);
+}
+
+.teduh-sidebar-link.is-disabled {
+	opacity: 0.48;
+	cursor: not-allowed;
+}
+
+.teduh-workspace-main {
+	min-width: 0;
+	padding: 28px 32px 64px;
+	max-width: 1240px;
+	width: 100%;
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+}
+
+.teduh-workspace-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+	padding-bottom: 18px;
+	border-bottom: 1px solid #E6E4DF;
+}
+
+.teduh-workspace-title {
+	margin: 0;
+	font-size: clamp(24px, 3vw, 32px);
+	line-height: 1.2;
+	color: #181B20;
+}
+
+.teduh-workspace-subtitle {
+	margin: 6px 0 0;
+	font-size: 14px;
+	line-height: 1.55;
+	color: #545B67;
+	max-width: 680px;
+}
+
+.teduh-workspace-card {
+	background: #FFFFFF;
+	border: 1px solid #E6E4DF;
+	border-radius: 18px;
+	padding: 24px;
+	box-shadow: 0 4px 18px rgba(15, 23, 42, 0.03);
+	display: flex;
+	flex-direction: column;
+	gap: 18px;
+}
+
+.teduh-workspace-card.is-subtle {
+	background: #F8FAF8;
+	border-color: rgba(38, 77, 59, 0.16);
+}
+
+.teduh-workspace-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.teduh-workspace-card-title {
+	margin: 0;
+	font-size: 16.5px;
+	font-weight: 600;
+	color: #181B20;
+	letter-spacing: -0.01em;
+}
+
+.teduh-kpi-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+	gap: 16px;
+}
+
+.teduh-kpi-card {
+	background: #FFFFFF;
+	border: 1px solid #E6E4DF;
+	border-radius: 16px;
+	padding: 18px 20px;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	box-shadow: 0 2px 10px rgba(15, 23, 42, 0.02);
+}
+
+.teduh-kpi-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: #64748B;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+}
+
+.teduh-kpi-value {
+	font-size: 26px;
+	font-weight: 700;
+	color: #181B20;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.15;
+}
+
+.teduh-kpi-meta {
+	font-size: 12.5px;
+	color: #545B67;
+}
+
+.teduh-event-row-card {
+	background: #FFFFFF;
+	border: 1px solid #E6E4DF;
+	border-radius: 16px;
+	padding: 18px 20px;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+	transition: all 0.18s ease;
+}
+
+.teduh-event-row-card:hover {
+	border-color: rgba(38, 77, 59, 0.35);
+	box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05);
+}
+
+.teduh-event-row-card.is-selected {
+	border-color: #264D3B;
+	background: #FAFDFB;
+	box-shadow: 0 0 0 2px rgba(38, 77, 59, 0.12);
+}
+
+/* Dashboard Interactive Map Input */
+.teduh-dashboard-map-wrapper {
+	border: 1px solid #E6E4DF;
+	border-radius: 16px;
+	overflow: hidden;
+	background: #FFFFFF;
+	display: flex;
+	flex-direction: column;
+}
+
+.teduh-dashboard-map-toolbar {
+	padding: 12px 16px;
+	background: #F8F7F4;
+	border-bottom: 1px solid #E6E4DF;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.teduh-dashboard-map-toolbar-group {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.teduh-map-mode-pills {
+	display: inline-flex;
+	background: #EAE8E2;
+	padding: 3px;
+	border-radius: 10px;
+	gap: 3px;
+}
+
+.teduh-map-mode-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 12px;
+	border-radius: 8px;
+	border: none;
+	background: transparent;
+	font-size: 12.5px;
+	font-weight: 600;
+	color: #545B67;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.teduh-map-mode-pill.is-active {
+	background: #264D3B;
+	color: #FFFFFF;
+	box-shadow: 0 2px 6px rgba(38, 77, 59, 0.2);
+}
+
+.teduh-map-operational-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 13px;
+	font-weight: 600;
+	color: #264D3B;
+}
+
+.teduh-map-area-select {
+	padding: 6px 10px;
+	border-radius: 8px;
+	border: 1px solid #D6D3CD;
+	background: #FFFFFF;
+	font-size: 12.5px;
+	color: #181B20;
+	font-family: inherit;
+}
+
+.teduh-map-tool-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 6px 11px;
+	border-radius: 8px;
+	border: 1px solid #D6D3CD;
+	background: #FFFFFF;
+	font-size: 12px;
+	font-weight: 600;
+	color: #181B20;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.teduh-map-tool-btn:hover {
+	background: #F3F2EE;
+}
+
+.teduh-map-tool-btn.is-danger {
+	color: #9E2A2B;
+	border-color: rgba(158, 42, 43, 0.3);
+}
+
+.teduh-dashboard-map-hint {
+	position: absolute;
+	top: 12px;
+	left: 12px;
+	right: 12px;
+	max-width: 540px;
+	background: rgba(255, 255, 255, 0.95);
+	backdrop-filter: blur(8px);
+	border: 1px solid #E6E4DF;
+	border-radius: 10px;
+	padding: 8px 12px;
+	font-size: 12.5px;
+	color: #181B20;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	z-index: 5;
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+	pointer-events: none;
+}
+
+.teduh-hint-dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	flex-shrink: 0;
+	background: #264D3B;
+}
+
+.teduh-hint-dot.is-draw {
+	background: #9E2A2B;
+}
+
+.teduh-hint-dot.is-catalog {
+	background: #0284C7;
+}
+
+.teduh-dashboard-map-draw-actions {
+	position: absolute;
+	top: 56px;
+	left: 12px;
+	display: flex;
+	gap: 6px;
+	z-index: 6;
+}
+
+.teduh-dashboard-map-legend {
+	position: absolute;
+	bottom: 12px;
+	left: 12px;
+	background: rgba(255, 255, 255, 0.94);
+	backdrop-filter: blur(8px);
+	border: 1px solid #E6E4DF;
+	border-radius: 8px;
+	padding: 6px 12px;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+	font-size: 11.5px;
+	font-weight: 600;
+	color: #181B20;
+	z-index: 5;
+}
+
+.teduh-legend-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.teduh-legend-item i {
+	display: inline-block;
+	width: 12px;
+	height: 4px;
+	border-radius: 2px;
+}
+
+.teduh-workspace-mobile-nav {
+	display: none;
+}
+
+@media (max-width: 960px) {
+	.teduh-workspace-body {
+		grid-template-columns: 1fr;
+	}
+
+	.teduh-workspace-sidebar {
+		display: none;
+	}
+
+	.teduh-workspace-main {
+		padding: 20px 16px 96px;
+	}
+
+	.teduh-workspace-topbar {
+		padding: 0 16px;
+	}
+
+	.teduh-workspace-org-badge {
+		display: none;
+	}
+
+	.teduh-workspace-mobile-nav {
+		display: flex;
+		position: fixed;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		z-index: 95;
+		background: rgba(255, 255, 255, 0.96);
+		backdrop-filter: blur(12px);
+		border-top: 1px solid #E6E4DF;
+		padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+		justify-content: space-around;
+		align-items: center;
+	}
+
+	.teduh-mobile-nav-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 3px;
+		padding: 6px 10px;
+		border-radius: 10px;
+		text-decoration: none;
+		color: #545B67;
+		font-size: 11px;
+		font-weight: 600;
+	}
+
+	.teduh-mobile-nav-item.is-active {
+		color: #264D3B;
+		background: #ECF3EF;
+	}
 }
