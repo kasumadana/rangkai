@@ -12,6 +12,12 @@ export interface Env {
 	GEMINI_API_KEY?: string;
 	GEMINI_MODEL?: string;
 	AI_REQUEST_TIMEOUT_MS?: string;
+	AI_IMPACT_PLANNER_ENABLED?: string;
+	AI_NOTICE_GENERATOR_ENABLED?: string;
+	AI_WASTE_PLANNER_ENABLED?: string;
+	NETWORK_ROUTING_ENABLED?: string;
+	PUBLIC_ASSISTANT_ENABLED?: string;
+	ORS_API_KEY?: string;
 }
 
 export interface AppVariables {

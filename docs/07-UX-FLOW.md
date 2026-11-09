@@ -285,3 +285,28 @@ Prioritize readable typography and functional maps.
 Do not add ceremonial imagery to every screen.
 Cultural context belongs in event information,
 not in decorative UI that slows task completion.
+
+## 10. Design System & P1 Workflow Extensions
+
+### 10.1 Astryx Design System Integration
+The frontend is standardized on Astryx (`@astryxdesign/core`, `@astryxdesign/theme-stone`):
+- Semantic tokens: `bg-stone-50`, `text-stone-900`, `border-stone-200`, `bg-emerald-900` (`#264D3B`).
+- Components: `AlertDialog`, `Banner`, `Badge`, `Token`, `VStack`, `Text`.
+- Impeccable craft floor: Touch targets strictly >= 48px on mobile devices; form inputs strictly >= 16px font-size to prevent iOS viewport auto-zooming.
+
+### 10.2 P1 Operational Panels
+1. **Road Candidate Matching Panel (`/dashboard/events/:id/roads`):**
+   - Automatically queries verified catalog roads based on extracted announcement names.
+   - Organizers click to attach verified corridors without manual coordinates drawing.
+2. **Grounded Impact Planner (`/dashboard/events/:id/document`):**
+   - Renders findings, potential bottlenecks, and proposed officer actions based on selected roads.
+   - Shows explicit decision buttons: "Terima sebagai Catatan Operasional" or "Abaikan".
+3. **Public Notice & WhatsApp Broadcast Generator (`/dashboard/events/:id/document`):**
+   - Provides ready-to-copy WhatsApp Banjar notice text adhering to brevity limits (≤100 words).
+   - "Salin Teks" button provides instant copy feedback.
+4. **Reviewed Manual Alternative Routes Panel (`/dashboard/events/:id/roads` & `/events/:slug`):**
+   - Organizer manager supports adding diversion paths, approving for public visibility, or revoking.
+   - Public view renders verified bypass corridors on the interactive map and fallback list.
+5. **Waste Logistics & Scenario Planner (`/dashboard/events/:id/cleanup`):**
+   - Calculates sack count, drop-point recommendations, and waste breakdown (~0.35 kg/person/day).
+   - Honest disclosure: `forecastKg: null` avoids unverified AI claims without historical labeled scale data.

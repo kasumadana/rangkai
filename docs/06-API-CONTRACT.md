@@ -636,3 +636,117 @@ Every endpoint needs:
 - Wrong organization test
 - State conflict test where applicable
 - Database failure test where applicable
+
+## 14. Public Road Geometry & Alternative Routes (P0 & P1)
+
+### GET /api/public/road-impacts
+Read-only anonymous list of operational road impacts across all published events.
+- **Query parameters:**
+  - `status`: Optional filter (`open`, `intermittent`, `closed`, `unknown`, `unconfirmed`).
+  - `from`: Optional ISO 8601 start window timestamp.
+  - `to`: Optional ISO 8601 end window timestamp.
+  - `bbox`: Optional Bali bounding box `minLng,minLat,maxLng,maxLat`.
+  - `limit`: Optional pagination limit (default 100, max 300).
+- **TTL Semantics:**
+  - Evaluates operational status dynamically against `ROAD_STATUS_TTL_MS` (30 minutes).
+  - Statuses older than 30 minutes return `effectiveStatus: "unconfirmed"`.
+  - Never silently coerces unconfirmed status to `open`.
+- **Response:**
+  ```json
+  {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "geometry": { "type": "LineString", "coordinates": [[115.258, -8.691], [115.260, -8.695]] },
+        "properties": {
+          "id": "imp_01",
+          "eventId": "evt_01",
+          "eventSlug": "melasti-sanur-2026",
+          "eventTitle": "Karya Melasti Desa Adat Sanur Kauh",
+          "roadName": "Jl. Danau Tamblingan",
+          "coverageArea": "Kawasan Pesisir Sanur",
+          "impactType": "full_closure",
+          "rawStatus": "closed",
+          "effectiveStatus": "closed",
+          "isStale": false,
+          "isSimulation": false,
+          "plannedFrom": "2026-11-12T08:00:00Z",
+          "plannedTo": "2026-11-12T12:00:00Z"
+        }
+      }
+    ]
+  }
+  ```
+
+### GET /api/public/events/:slug/alternative-routes
+Anonymous list of organizer-approved manual alternative routes for a published event.
+- **Response:**
+  ```json
+  {
+    "eventSlug": "melasti-sanur-2026",
+    "isSimulation": false,
+    "alternativeRoutes": [
+      {
+        "id": "alt_01",
+        "name": "Jalur Pengalihan Jl. Danau Poso",
+        "description": "Pengalihan kendaraan roda dua dan empat ringan.",
+        "provenance": "organizer_approved_manual_simulation",
+        "approvedAt": "2026-11-10T10:00:00Z",
+        "geometry": { "type": "LineString", "coordinates": [[115.258, -8.691], [115.260, -8.695]] }
+      }
+    ]
+  }
+  ```
+
+### POST /api/public/routes/alternatives
+Conditional network routing candidate avoiding road closures.
+- **Gate:** If `NETWORK_ROUTING_ENABLED !== 'true'` or `ORS_API_KEY` is not configured, returns `HTTP 503 SERVICE_UNAVAILABLE` pointing to verified manual alternative routes without inventing fake network routes.
+
+## 15. Road Candidate Matching (Ticket 04)
+
+### GET /api/events/:eventId/road-candidates
+Ranked road candidates from the verified catalog matching user search terms.
+- **Permission:** Organizer or assigned field officer.
+- **Query:** `query` string (min 2 chars).
+- **Matching Methods:** `exact_normalized` (1.0), `substring` (0.8), `token_overlap` (0.5..0.7).
+- **Response:**
+  ```json
+  {
+    "query": "Gajah Mada",
+    "candidates": [
+      {
+        "candidateId": "seg_01",
+        "displayName": "Jl. Gajah Mada",
+        "coverageArea": "Denpasar Barat",
+        "matchScore": 1.0,
+        "matchMethod": "exact_normalized",
+        "reviewRequired": true,
+        "explanation": "Nama ruas jalan cocok persis dengan katalog resmi terverifikasi.",
+        "geometry": { "type": "LineString", "coordinates": [...] }
+      }
+    ]
+  }
+  ```
+
+## 16. Reviewed Manual Alternative Routes (Ticket 06)
+
+- `POST /api/events/:eventId/alternative-routes`: Create draft alternative route.
+- `GET /api/events/:eventId/alternative-routes`: List all alternative routes (draft, approved, revoked) for event organizers.
+- `POST /api/events/:eventId/alternative-routes/:routeId/approve`: Approve draft route, making it visible to the public.
+- `POST /api/events/:eventId/alternative-routes/:routeId/revoke`: Revoke approved route, removing it from public view.
+- `DELETE /api/events/:eventId/alternative-routes/:routeId`: Delete draft route.
+
+## 17. AI Advisory Operations (Tickets 05, 08, 09)
+
+Shared advisory runs are stored in `advisory_runs` with an immutable snapshot hash of material inputs (`input_snapshot_hash`).
+Organizer decisions (`approved`, `dismissed`) are recorded in `advisory_decisions`.
+Advisory decisions NEVER directly mutate domain operational state (events, road statuses, cleanup tasks, or permissions).
+
+- `POST /api/events/:eventId/impact-analysis`: Runs grounded impact analysis.
+- `GET /api/events/:eventId/impact-analysis/latest`: Retrieves latest analysis with staleness evaluation against current event state.
+- `POST /api/events/:eventId/impact-analysis/:runId/decision`: Records organizer review decision.
+- `POST /api/events/:eventId/public-notice-draft`: Generates public notice drafts adhering to word and character limits.
+- `GET /api/events/:eventId/public-notice-draft/latest`: Retrieves latest notice draft and approval status.
+- `POST /api/events/:eventId/public-notice-draft/:runId/decision`: Records approval/rejection.
+- `POST /api/events/:eventId/waste-plan`: Calculates scenario waste logistics with explicit math (~0.35 kg/person/day) and `forecastKg: null` per domain integrity.

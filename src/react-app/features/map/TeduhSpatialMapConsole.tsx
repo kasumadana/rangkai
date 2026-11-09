@@ -29,7 +29,10 @@ import {
 	buildDistrictFeaturesFromEvents,
 	fetchPublicEventRoads,
 	fetchPublicEvents,
+	fetchPublicRoadImpacts,
 	mapPublicEventToCeremonyProfile,
+	roadImpactFeatureToRecord,
+	type RoadImpactRecord,
 } from "../../lib/events-api";
 import { useGsapPageReveal } from "../../lib/gsap-motion";
 import { BaliMapTilerView } from "./BaliMapTilerView";
@@ -120,6 +123,15 @@ export function TeduhSpatialMapConsole() {
 		queryFn: () => fetchPublicEventRoads(activeSlug),
 		enabled: Boolean(activeSlug),
 		staleTime: 30_000,
+		refetchInterval: 30_000,
+	});
+
+	// 2b. Aggregate verified public road impacts across all events for spatial background lines
+	const { data: allRoadImpactsData } = useQuery({
+		queryKey: ["public", "road-impacts", { limit: 100 }],
+		queryFn: () => fetchPublicRoadImpacts({ limit: 100 }),
+		staleTime: 30_000,
+		refetchInterval: 30_000,
 	});
 
 	const activeEventRoads = useMemo(
@@ -127,19 +139,45 @@ export function TeduhSpatialMapConsole() {
 		[activeRoadsData],
 	);
 
+	const allImpactsByEvent = useMemo(() => {
+		const map = new Map<string, RoadImpactRecord[]>();
+		if (!allRoadImpactsData?.features) return map;
+		for (const feat of allRoadImpactsData.features) {
+			const rec = roadImpactFeatureToRecord(feat);
+			const eId = feat.properties.eventId;
+			const eSlug = feat.properties.eventSlug;
+			if (eId) {
+				const list = map.get(eId) ?? [];
+				list.push(rec);
+				map.set(eId, list);
+			}
+			if (eSlug && eSlug !== eId) {
+				const list = map.get(eSlug) ?? [];
+				list.push(rec);
+				map.set(eSlug, list);
+			}
+		}
+		return map;
+	}, [allRoadImpactsData]);
+
 	// Map all live backend events into spatial profiles for the map
 	const allCeremonyProfiles = useMemo(() => {
 		return liveEvents.map((evt, idx) => {
 			const isCurrent =
 				activeBackendEvent &&
 				(evt.id === activeBackendEvent.id || evt.slug === activeBackendEvent.slug);
+			const roads = isCurrent
+				? (activeEventRoads.length > 0
+						? activeEventRoads
+						: (allImpactsByEvent.get(evt.id) ?? (evt.slug ? allImpactsByEvent.get(evt.slug) : undefined) ?? []))
+				: (allImpactsByEvent.get(evt.id) ?? (evt.slug ? allImpactsByEvent.get(evt.slug) : undefined) ?? []);
 			return mapPublicEventToCeremonyProfile(
 				evt,
-				isCurrent ? activeEventRoads : [],
+				roads,
 				idx,
 			);
 		});
-	}, [liveEvents, activeBackendEvent, activeEventRoads]);
+	}, [liveEvents, activeBackendEvent, activeEventRoads, allImpactsByEvent]);
 
 	const activeVillage = useMemo<BaliVillageCeremonyProfile | null>(() => {
 		if (allCeremonyProfiles.length === 0) return null;

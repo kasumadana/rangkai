@@ -1140,6 +1140,7 @@ export function BaliMapTilerView({
 								impactType: "closure",
 								plannedFrom: new Date().toISOString(),
 								plannedTo: new Date(Date.now() + 3600000).toISOString(),
+								isSimulation: village.isSimulation !== false,
 								status: (seg.status === "closed"
 									? "closed"
 									: seg.status === "intermittent"

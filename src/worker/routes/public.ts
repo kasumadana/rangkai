@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { z } from "zod";
 import {
 	cleanupTasks,
 	events,
@@ -9,8 +10,12 @@ import {
 } from "../../db/schema";
 import { sendError } from "../lib/errors";
 import type { AppVariables, Env } from "../types";
-import { publicEventsQuerySchema } from "../validators/public";
+import {
+	publicEventsQuerySchema,
+	publicRoadImpactsQuerySchema,
+} from "../validators/public";
 import { evaluateEffectiveRoadStatus } from "./roads";
+import { BALI_GEOGRAPHIC_BOUNDS } from "../validators/roads";
 
 const publicRouter = new Hono<{
 	Bindings: Env;
@@ -359,6 +364,187 @@ publicRouter.get("/events/:slug/roads", async (c) => {
 });
 
 /**
+ * GET /api/public/road-impacts
+ * Aggregate read-only GeoJSON FeatureCollection of verified public road impacts across all active/published events.
+ * Filterable by bounding box (bbox=west,south,east,north), time interval (from, to), status, and bounded limit.
+ * Excludes drafts, reviews, unverified geometry, and private operational data.
+ */
+publicRouter.get("/road-impacts", async (c) => {
+	const db = c.get("db");
+	const queryParse = publicRoadImpactsQuerySchema.safeParse(c.req.query());
+	if (!queryParse.success) {
+		return sendError(
+			c,
+			"VALIDATION_FAILED",
+			queryParse.error.issues[0]?.message || "Invalid query parameters.",
+			422,
+		);
+	}
+
+	const { bbox, from, to, status, page, limit } = queryParse.data;
+
+	const conditions: Array<ReturnType<typeof sql>> = [
+		sql`(${events.isSimulation} IS DISTINCT FROM FALSE OR EXISTS (
+			SELECT 1 FROM organizations o WHERE o.id = ${events.organizationId} AND o.has_operational_authority = TRUE
+		))`,
+		status
+			? sql`${events.status} = ${status}`
+			: sql`${events.status} IN ('published', 'active')`,
+		sql`((rs.source_type = 'catalog' AND rs.verified_by IS NOT NULL AND rs.verified_at IS NOT NULL)
+			OR (${events.isSimulation} AND rs.source_type = 'simulation_draft' AND rs.organization_id = ${events.organizationId}))`,
+	];
+
+	if (from) {
+		const fromDate = new Date(from);
+		conditions.push(sql`${events.endsAt} >= ${fromDate}`);
+		conditions.push(sql`ri.planned_to >= ${fromDate}`);
+	}
+
+	if (to) {
+		const toDate = new Date(to);
+		conditions.push(sql`${events.startsAt} <= ${toDate}`);
+		conditions.push(sql`ri.planned_from <= ${toDate}`);
+	}
+
+	if (bbox) {
+		const [minLng, minLat, maxLng, maxLat] = bbox
+			.split(",")
+			.map((s) => Number(s.trim()));
+		conditions.push(
+			sql`ST_Intersects(rs.geom, ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326))`,
+		);
+	}
+
+	const whereSql = sql.join(conditions, sql` AND `);
+
+	// Count total matching impacts
+	const countQuery = sql`
+		SELECT count(*)::int AS total
+		FROM road_impacts ri
+		INNER JOIN events ON events.id = ri.event_id
+		INNER JOIN road_segments rs ON rs.id = ri.road_segment_id
+		WHERE ${whereSql};
+	`;
+
+	const countRes = await db.execute(countQuery);
+	const total = (countRes.rows[0] as { total: number } | undefined)?.total ?? 0;
+	const totalPages = Math.ceil(total / limit);
+	const offset = (page - 1) * limit;
+
+	// Fetch page with latest status update joined atomically via DISTINCT ON
+	const dataQuery = sql`
+		SELECT
+			ri.id AS "impactId",
+			ri.road_segment_id AS "roadSegmentId",
+			ri.event_id AS "eventId",
+			events.public_slug AS "eventSlug",
+			events.title AS "eventTitle",
+			events.is_simulation AS "isSimulation",
+			rs.display_name AS "displayName",
+			rs.coverage_area AS "coverageArea",
+			ri.planned_from AS "plannedFrom",
+			ri.planned_to AS "plannedTo",
+			ri.impact_type AS "impactType",
+			ri.diversion_note AS "diversionNote",
+			ST_AsGeoJSON(rs.geom)::json AS geometry,
+			latest_status.status AS "status",
+			latest_status.observed_at AS "observedAt",
+			latest_status.expires_at AS "expiresAt",
+			latest_status.updated_by AS "updatedBy"
+		FROM road_impacts ri
+		INNER JOIN events ON events.id = ri.event_id
+		INNER JOIN road_segments rs ON rs.id = ri.road_segment_id
+		LEFT JOIN LATERAL (
+			SELECT rsu.status, rsu.observed_at, rsu.expires_at, rsu.updated_by
+			FROM road_status_updates rsu
+			WHERE rsu.road_impact_id = ri.id
+			ORDER BY rsu.observed_at DESC, rsu.created_at DESC
+			LIMIT 1
+		) latest_status ON true
+		WHERE ${whereSql}
+		ORDER BY ri.planned_from ASC, ri.id ASC
+		LIMIT ${limit}
+		OFFSET ${offset};
+	`;
+
+	const dataRes = await db.execute(dataQuery);
+	const rows = dataRes.rows as Array<{
+		impactId: string;
+		roadSegmentId: string;
+		eventId: string;
+		eventSlug: string;
+		eventTitle: string;
+		isSimulation: boolean;
+		displayName: string;
+		coverageArea: string;
+		plannedFrom: string | Date;
+		plannedTo: string | Date;
+		impactType: string;
+		diversionNote: string | null;
+		geometry: Record<string, unknown>;
+		status: string | null;
+		observedAt: string | Date | null;
+		expiresAt: string | Date | null;
+		updatedBy: string | null;
+	}>;
+
+	const now = new Date();
+	const features = rows.map((r) => {
+		const statusEval = evaluateEffectiveRoadStatus(
+			r.status
+				? {
+						status: r.status,
+						observedAt: r.observedAt!,
+						expiresAt: r.expiresAt!,
+						updatedBy: r.updatedBy ?? "",
+					}
+				: null,
+			now,
+		);
+
+		return {
+			type: "Feature" as const,
+			id: r.impactId,
+			geometry: r.geometry,
+			properties: {
+				impactId: r.impactId,
+				roadSegmentId: r.roadSegmentId,
+				eventId: r.eventId,
+				eventSlug: r.eventSlug,
+				eventTitle: r.eventTitle,
+				displayName: r.displayName,
+				coverageArea: r.coverageArea,
+				impactType: r.impactType,
+				plannedFrom: r.plannedFrom ? new Date(r.plannedFrom).toISOString() : null,
+				plannedTo: r.plannedTo ? new Date(r.plannedTo).toISOString() : null,
+				diversionNote: r.diversionNote ?? null,
+				effectiveStatus: statusEval.effectiveStatus,
+				rawStatus: statusEval.rawStatus,
+				isStale: statusEval.isStale,
+				observedAt: statusEval.observedAt,
+				expiresAt: statusEval.expiresAt,
+				isSimulation: r.isSimulation !== false,
+			},
+		};
+	});
+
+	return c.json(
+		{
+			type: "FeatureCollection" as const,
+			features,
+			pagination: {
+				page,
+				limit,
+				total,
+				totalPages,
+				truncated: total > page * limit,
+			},
+		},
+		200,
+	);
+});
+
+/**
  * GET /api/public/events/:slug/cleanup-summary
  * Public post-event cleanup and waste summary.
  * Distinguishes weighed weight, estimated weight, and sack counts (never converts estimates into measured facts).
@@ -532,6 +718,238 @@ publicRouter.get("/events/:slug/cleanup-summary", async (c) => {
 		},
 		200,
 	);
+});
+
+/**
+ * GET /api/public/events/:slug/alternative-routes
+ * Anonymous read-only list of approved alternative routes for a published/active/completed event.
+ * Never returns draft or revoked alternative routes.
+ */
+publicRouter.get("/events/:slug/alternative-routes", async (c) => {
+	const slug = c.req.param("slug")?.trim();
+	if (!slug) {
+		return sendError(c, "VALIDATION_FAILED", "Event slug is required.", 422);
+	}
+
+	const db = c.get("db");
+	const eventRows = await db
+		.select({
+			id: events.id,
+			slug: events.publicSlug,
+			status: events.status,
+			isSimulation: events.isSimulation,
+		})
+		.from(events)
+		.where(
+			and(
+				eq(events.publicSlug, slug),
+				inArray(events.status, ["published", "active", "completed"]),
+				publicAuthority,
+			),
+		)
+		.limit(1);
+
+	const event = eventRows[0];
+	if (!event) {
+		return sendError(c, "NOT_FOUND", "Published event not found.", 404);
+	}
+
+	const query = sql`
+		SELECT
+			id,
+			name,
+			description,
+			approved_at AS "approvedAt",
+			ST_AsGeoJSON(geom)::json AS geometry
+		FROM event_alternative_routes
+		WHERE event_id = ${event.id} AND status = 'approved'
+		ORDER BY approved_at ASC;
+	`;
+
+	const res = await db.execute(query);
+	const rows = res.rows as Array<{
+		id: string;
+		name: string;
+		description: string | null;
+		approvedAt: string | Date;
+		geometry: Record<string, unknown>;
+	}>;
+
+	return c.json(
+		{
+			eventSlug: event.slug,
+			isSimulation: event.isSimulation !== false,
+			alternativeRoutes: rows.map((r) => ({
+				id: r.id,
+				name: r.name,
+				description: r.description,
+				provenance: "organizer_approved_manual_simulation",
+				approvedAt: new Date(r.approvedAt).toISOString(),
+				geometry: r.geometry,
+			})),
+		},
+		200,
+	);
+});
+
+const networkRoutingSchema = z.object({
+	origin: z.tuple([
+		z.number().refine(
+			(n) =>
+				Number.isFinite(n) &&
+				n >= BALI_GEOGRAPHIC_BOUNDS.minLng &&
+				n <= BALI_GEOGRAPHIC_BOUNDS.maxLng,
+			{ message: "Titik asal (origin longitude) harus di wilayah Bali." },
+		),
+		z.number().refine(
+			(n) =>
+				Number.isFinite(n) &&
+				n >= BALI_GEOGRAPHIC_BOUNDS.minLat &&
+				n <= BALI_GEOGRAPHIC_BOUNDS.maxLat,
+			{ message: "Titik asal (origin latitude) harus di wilayah Bali." },
+		),
+	]),
+	destination: z.tuple([
+		z.number().refine(
+			(n) =>
+				Number.isFinite(n) &&
+				n >= BALI_GEOGRAPHIC_BOUNDS.minLng &&
+				n <= BALI_GEOGRAPHIC_BOUNDS.maxLng,
+			{ message: "Titik tujuan (destination longitude) harus di wilayah Bali." },
+		),
+		z.number().refine(
+			(n) =>
+				Number.isFinite(n) &&
+				n >= BALI_GEOGRAPHIC_BOUNDS.minLat &&
+				n <= BALI_GEOGRAPHIC_BOUNDS.maxLat,
+			{ message: "Titik tujuan (destination latitude) harus di wilayah Bali." },
+		),
+	]),
+	profile: z
+		.enum(["driving-car", "cycling-regular", "foot-walking"])
+		.default("driving-car"),
+	eventSlug: z.string().trim().max(100).optional(),
+});
+
+/**
+ * POST /api/public/routes/alternatives (Ticket 07)
+ * Network routing candidate with avoidance of road closures.
+ * Enforces conditional gate: if ORS_API_KEY is not configured or NETWORK_ROUTING_ENABLED !== 'true',
+ * returns honest 503 SERVICE_UNAVAILABLE pointing to verified manual alternative routes.
+ */
+publicRouter.post("/routes/alternatives", async (c) => {
+	let body: unknown;
+	try {
+		body = await c.req.json();
+	} catch {
+		return sendError(c, "BAD_REQUEST", "Invalid JSON payload.", 400);
+	}
+
+	const parsed = networkRoutingSchema.safeParse(body);
+	if (!parsed.success) {
+		return sendError(
+			c,
+			"VALIDATION_FAILED",
+			parsed.error.issues[0]?.message || "Invalid routing parameters.",
+			422,
+		);
+	}
+
+	const orsApiKey = c.env?.ORS_API_KEY;
+	const isEnabled = c.env?.NETWORK_ROUTING_ENABLED === "true";
+
+	// Conditional gate check (Ticket 07)
+	if (!isEnabled || !orsApiKey) {
+		return c.json(
+			{
+				status: "unavailable",
+				configured: false,
+				message:
+					"Layanan penghitungan rute otomatis OpenRouteService belum diaktifkan/dikonfigurasi. Silakan gunakan rute alternatif manual yang telah diverifikasi dan disetujui panitia.",
+				manualFallbackRecommended: true,
+			},
+			503,
+		);
+	}
+
+	// Real provider call if key and flag are present
+	const { origin, destination, profile } = parsed.data;
+	try {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 6000);
+
+		const orsRes = await fetch(
+			`https://api.openrouteservice.org/v2/directions/${profile}/geojson`,
+			{
+				method: "POST",
+				headers: {
+					Authorization: orsApiKey,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					coordinates: [origin, destination],
+				}),
+				signal: controller.signal,
+			},
+		);
+		clearTimeout(timeout);
+
+		if (!orsRes.ok) {
+			return c.json(
+				{
+					status: "unavailable",
+					configured: true,
+					message:
+						"Layanan penyedia rute mengembalikan galat. Gunakan rute alternatif manual panitia.",
+					manualFallbackRecommended: true,
+				},
+				503,
+			);
+		}
+
+		const routeGeoJson = (await orsRes.json()) as {
+			features?: Array<{
+				geometry: Record<string, unknown>;
+				properties: { summary?: { distance: number; duration: number } };
+			}>;
+		};
+
+		const firstFeature = routeGeoJson.features?.[0];
+		if (!firstFeature) {
+			return c.json(
+				{
+					status: "not_found",
+					message:
+						"Tidak ditemukan rute jaringan jalan untuk koordinat tersebut.",
+				},
+				404,
+			);
+		}
+
+		return c.json(
+			{
+				status: "success",
+				provider: "openrouteservice",
+				route: firstFeature.geometry,
+				distanceMeters: firstFeature.properties?.summary?.distance,
+				durationSeconds: firstFeature.properties?.summary?.duration,
+				disclaimer:
+					"Estimasi rute jaringan jalan. Perhatikan rambu dan arahan pecalang di lapangan.",
+			},
+			200,
+		);
+	} catch {
+		return c.json(
+			{
+				status: "unavailable",
+				configured: true,
+				message:
+					"Gagal terhubung ke penyedia rute. Gunakan rute alternatif manual panitia.",
+				manualFallbackRecommended: true,
+			},
+			503,
+		);
+	}
 });
 
 export { publicRouter };

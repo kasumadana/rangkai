@@ -11,8 +11,11 @@ import { Link } from "react-router";
 import { BaliLandingSatelliteMap } from "../features/map/BaliLandingSatelliteMap";
 import {
 	fetchPublicEvents,
+	fetchPublicRoadImpacts,
 	formatWitaEventSchedule,
 	mapPublicEventToCeremonyProfile,
+	roadImpactFeatureToRecord,
+	type RoadImpactRecord,
 } from "../lib/events-api";
 import { useGsapLandingScroll } from "../lib/gsap-motion";
 
@@ -32,11 +35,19 @@ export function LandingPage() {
 	const [selectedRegencyFilter, setSelectedRegencyFilter] = useState("all");
 	const landingRef = useRef<HTMLDivElement>(null);
 
-	// Live API connection for published/active events from backend
+	// Live API connection for published/active events and road impacts from backend
 	const { data: publicEventsData, isLoading: isEventsLoading } = useQuery({
 		queryKey: ["public", "events", { limit: 20 }],
 		queryFn: () => fetchPublicEvents({ limit: 20 }),
-		staleTime: 60_000,
+		staleTime: 30_000,
+		refetchInterval: 30_000,
+	});
+
+	const { data: roadImpactsData } = useQuery({
+		queryKey: ["public", "road-impacts", { limit: 100 }],
+		queryFn: () => fetchPublicRoadImpacts({ limit: 100 }),
+		staleTime: 30_000,
+		refetchInterval: 30_000,
 	});
 
 	const liveEvents = useMemo(
@@ -44,31 +55,68 @@ export function LandingPage() {
 		[publicEventsData],
 	);
 
+	const impactsByEvent = useMemo(() => {
+		const map = new Map<string, RoadImpactRecord[]>();
+		if (!roadImpactsData?.features) return map;
+		for (const feat of roadImpactsData.features) {
+			const rec = roadImpactFeatureToRecord(feat);
+			const eId = feat.properties.eventId;
+			const eSlug = feat.properties.eventSlug;
+			if (eId) {
+				const existing = map.get(eId) ?? [];
+				existing.push(rec);
+				map.set(eId, existing);
+			}
+			if (eSlug && eSlug !== eId) {
+				const existing = map.get(eSlug) ?? [];
+				existing.push(rec);
+				map.set(eSlug, existing);
+			}
+		}
+		return map;
+	}, [roadImpactsData]);
+
 	const ceremonyProfiles = useMemo(
 		() =>
-			liveEvents.map((evt, idx) =>
-				mapPublicEventToCeremonyProfile(evt, [], idx),
-			),
-		[liveEvents],
+			liveEvents.map((evt, idx) => {
+				const roads =
+					impactsByEvent.get(evt.id) ??
+					(evt.slug ? impactsByEvent.get(evt.slug) : undefined) ??
+					[];
+				return mapPublicEventToCeremonyProfile(evt, roads, idx);
+			}),
+		[liveEvents, impactsByEvent],
 	);
 
 	const displayEvents: NormalizedLandingEvent[] = useMemo(
 		() =>
 			liveEvents.map((e) => {
 				const schedule = formatWitaEventSchedule(e.startsAt, e.endsAt);
+				const roads =
+					impactsByEvent.get(e.id) ??
+					(e.slug ? impactsByEvent.get(e.slug) : undefined) ??
+					[];
+				const primaryRoad = roads[0];
+				let effStatus: "open" | "intermittent" | "closed" | "unknown" = "unknown";
+				if (primaryRoad?.operationalStatus) {
+					const s = primaryRoad.operationalStatus;
+					if (!s.isStale && (s.effectiveStatus === "open" || s.effectiveStatus === "intermittent" || s.effectiveStatus === "closed")) {
+						effStatus = s.effectiveStatus;
+					}
+				}
 				return {
 					id: e.id,
 					slug: e.slug || e.id,
 					title: e.title,
 					village: e.organizationName || e.village || "Desa Adat",
 					regency: e.district || "Bali",
-					roadName: e.venueName || e.village || "Koridor Wilayah Desa",
-					status: "unknown" as const,
+					roadName: primaryRoad?.displayName || e.venueName || e.village || "Koridor Wilayah Desa",
+					status: effStatus,
 					isSimulation: e.isSimulation !== false,
 					timeLabel: `${schedule.dateLabel} • ${schedule.windowWita}`,
 				};
 			}),
-		[liveEvents],
+		[liveEvents, impactsByEvent],
 	);
 
 	const filteredEvents = displayEvents.filter((evt: NormalizedLandingEvent) => {

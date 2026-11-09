@@ -51,6 +51,7 @@ import {
 	deleteRoadImpact,
 	fetchEventDetail,
 	fetchEventRoadImpacts,
+	fetchRoadCandidates,
 	fetchRoadSegments,
 	fromIsoToWitaInput,
 	getSavedOrganizationId,
@@ -359,6 +360,16 @@ export function EventWizardPage() {
 		enabled: activeStep === 2,
 		staleTime: 60_000,
 	});
+
+	// 2b. Fetch Road Segment Candidates matched from AI extraction
+	const roadCandidatesQuery = useQuery({
+		queryKey: ["road-candidates", routeEventId],
+		queryFn: () => fetchRoadCandidates(routeEventId!),
+		enabled: Boolean(activeStep === 2 && routeEventId && isRealUuidEvent),
+		staleTime: 30_000,
+	});
+
+	const roadCandidates = roadCandidatesQuery.data?.candidates ?? [];
 
 	// 3. Fetch Real Road Impacts attached to this event
 	const eventRoadImpactsQuery = useQuery({
@@ -1715,6 +1726,52 @@ export function EventWizardPage() {
 										</button>
 									</div>
 								</div>
+
+								{/* Road Candidate Suggestions from Document Extraction */}
+								{roadCandidates.length > 0 ? (
+									<div className="rounded-xl border border-stone-200 bg-[#FBFBFA] p-3 text-xs space-y-2">
+										<div className="flex items-center justify-between">
+											<span className="font-semibold text-stone-900">
+												Kandidat Ruas Jalan dari Dokumen ({roadCandidates.length} saran)
+											</span>
+											<span className="text-[11px] text-stone-500">
+												Pilihan memerlukan konfirmasi panitia
+											</span>
+										</div>
+										<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+											{roadCandidates.map((cand) => (
+												<div
+													key={cand.candidateId}
+													className="p-2.5 rounded-lg border border-stone-200 bg-white flex flex-col justify-between gap-2"
+												>
+													<div>
+														<p className="font-bold text-stone-900">{cand.displayName}</p>
+														<p className="text-[11px] text-stone-500">
+															Kawasan: {cand.coverageArea} • Skor: {Math.round(cand.matchScore * 100)}%
+														</p>
+														<p className="text-[11px] text-stone-600 italic mt-0.5">{cand.explanation}</p>
+													</div>
+													<button
+														type="button"
+														onClick={() => {
+															setRoadInputMode("catalog");
+															setSelectedRoadSegmentId(cand.roadSegmentId);
+														}}
+														className={`w-full py-1.5 px-2 rounded-md font-semibold text-xs transition-colors ${
+															selectedRoadSegmentId === cand.roadSegmentId
+																? "bg-[#264D3B] text-white"
+																: "bg-stone-100 hover:bg-stone-200 text-stone-800"
+														}`}
+													>
+														{selectedRoadSegmentId === cand.roadSegmentId
+															? "Terpilih di Peta"
+															: "Pilih Ruas Ini"}
+													</button>
+												</div>
+											))}
+										</div>
+									</div>
+								) : null}
 
 								{/* Dedicated Dashboard Road Map Component */}
 								{roadSegmentsQuery.isLoading ? (

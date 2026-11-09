@@ -33,6 +33,14 @@ This runbook establishes the fail-closed operational procedure for provisioning,
   - `DATABASE_URL`: Production Neon PostgreSQL connection pooler string.
   - `BETTER_AUTH_SECRET`: Minimum 32-byte cryptographically secure random string.
   - `GEMINI_API_KEY`: Production Google AI Gemini API credential.
+  - *(Optional Feature Flags)*:
+    - `AI_IMPACT_PLANNER_ENABLED`: Defaults to `"true"`.
+    - `AI_NOTICE_GENERATOR_ENABLED`: Defaults to `"true"`.
+    - `AI_WASTE_PLANNER_ENABLED`: Defaults to `"true"`.
+    - `NETWORK_ROUTING_ENABLED`: Defaults to `"false"` (requires valid `ORS_API_KEY`).
+    - `PUBLIC_ASSISTANT_ENABLED`: Defaults to `"false"` (P2 deferred).
+    - `PHOTO_ASSESSMENT_ENABLED`: Defaults to `"false"` (P2 deferred).
+    - `ORS_API_KEY`: OpenRouteService API credential for optional automated network routing.
 
 ---
 

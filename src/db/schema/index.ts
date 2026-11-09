@@ -480,3 +480,139 @@ export const auditLogs = pgTable(
 		),
 	],
 );
+
+// ---------------------------------------------------------------------------
+// Additive tables for AI Advisory (Impact Planner & Notices) and Alternative Routes
+// ---------------------------------------------------------------------------
+
+export const ADVISORY_KINDS = [
+	"impact_analysis",
+	"public_notice",
+	"waste_plan",
+] as const;
+export type AdvisoryKind = (typeof ADVISORY_KINDS)[number];
+
+export const ADVISORY_RUN_STATUSES = [
+	"pending",
+	"completed",
+	"failed",
+] as const;
+export type AdvisoryRunStatus = (typeof ADVISORY_RUN_STATUSES)[number];
+
+export const advisoryRuns = pgTable(
+	"advisory_runs",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		actorId: text("actor_id")
+			.notNull()
+			.references(() => user.id),
+		kind: text("kind").$type<AdvisoryKind>().notNull(),
+		inputSnapshotHash: text("input_snapshot_hash").notNull(),
+		modelName: text("model_name").notNull(),
+		promptVersion: text("prompt_version").notNull(),
+		schemaVersion: text("schema_version").notNull(),
+		status: text("status").$type<AdvisoryRunStatus>().default("pending").notNull(),
+		outputJson: jsonb("output_json"),
+		errorCode: text("error_code"),
+		errorMessage: text("error_message"),
+		latencyMs: integer("latency_ms"),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check(
+			"advisory_runs_kind_check",
+			sql`kind IN ('impact_analysis', 'public_notice', 'waste_plan')`,
+		),
+		check(
+			"advisory_runs_status_check",
+			sql`status IN ('pending', 'completed', 'failed')`,
+		),
+		index("advisory_runs_event_kind_idx").on(
+			table.eventId,
+			table.kind,
+			table.createdAt.desc(),
+		),
+	],
+);
+
+export const ADVISORY_DECISIONS = [
+	"approved",
+	"rejected",
+	"dismissed",
+] as const;
+export type AdvisoryDecision = (typeof ADVISORY_DECISIONS)[number];
+
+export const advisoryDecisions = pgTable(
+	"advisory_decisions",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		advisoryRunId: uuid("advisory_run_id")
+			.notNull()
+			.references(() => advisoryRuns.id, { onDelete: "cascade" }),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		actorId: text("actor_id")
+			.notNull()
+			.references(() => user.id),
+		decision: text("decision").$type<AdvisoryDecision>().notNull(),
+		reason: text("reason"),
+		inputSnapshotHash: text("input_snapshot_hash").notNull(),
+		correctedOutputJson: jsonb("corrected_output_json"),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check(
+			"advisory_decisions_decision_check",
+			sql`decision IN ('approved', 'rejected', 'dismissed')`,
+		),
+		index("advisory_decisions_run_idx").on(table.advisoryRunId),
+		index("advisory_decisions_event_idx").on(table.eventId, table.createdAt.desc()),
+	],
+);
+
+export const ALTERNATIVE_ROUTE_STATUSES = [
+	"draft",
+	"approved",
+	"revoked",
+] as const;
+export type AlternativeRouteStatus = (typeof ALTERNATIVE_ROUTE_STATUSES)[number];
+
+export const eventAlternativeRoutes = pgTable(
+	"event_alternative_routes",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		name: text("name").notNull(),
+		description: text("description"),
+		geom: lineStringGeometry("geom").notNull(),
+		status: text("status").$type<AlternativeRouteStatus>().default("draft").notNull(),
+		createdBy: text("created_by")
+			.notNull()
+			.references(() => user.id),
+		approvedBy: text("approved_by").references(() => user.id),
+		approvedAt: timestamp("approved_at", { withTimezone: true }),
+		revokedAt: timestamp("revoked_at", { withTimezone: true }),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check(
+			"event_alternative_routes_status_check",
+			sql`status IN ('draft', 'approved', 'revoked')`,
+		),
+		index("event_alternative_routes_event_idx").on(table.eventId, table.status),
+		index("event_alternative_routes_geom_gist_idx").using("gist", table.geom),
+	],
+);

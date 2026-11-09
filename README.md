@@ -106,7 +106,7 @@ identified as simulated.
 | Layer          | Technology                      |
 | -------------- | ------------------------------- |
 | Frontend       | React, Vite, TypeScript         |
-| UI             | Tailwind CSS, shadcn/ui, Lucide |
+| UI             | Astryx Design System (@astryxdesign/core, @astryxdesign/theme-stone), Tailwind CSS, Lucide |
 | Routing        | React Router                    |
 | Data fetching  | TanStack Query                  |
 | Forms          | React Hook Form, Zod            |

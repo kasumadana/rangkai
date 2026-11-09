@@ -1,6 +1,8 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import {
+	aiExtractions,
+	documents,
 	events,
 	memberships,
 	organizations,
@@ -544,6 +546,220 @@ roadsRouter.get("/events/:eventId/road-impacts", async (c) => {
 		},
 		200,
 	);
+});
+
+/**
+ * GET /api/events/:eventId/road-candidates?query=...
+ * Suggest verified catalog road candidates based on event announcement extraction and optional user search.
+ * Restricted to organizers of the event's organization.
+ * Purely deterministic heuristic ranking; no extra AI API call required.
+ * Quarantined or unverified segments are strictly excluded.
+ */
+roadsRouter.get("/events/:eventId/road-candidates", async (c) => {
+	const currentUser = c.get("user")!;
+	const eventId = c.req.param("eventId");
+
+	if (!uuidParamSchema.safeParse(eventId).success) {
+		return sendError(c, "VALIDATION_FAILED", "Invalid event ID format.", 422);
+	}
+
+	const db = c.get("db");
+	const access = await getEventAndCheckAccess(db, eventId, currentUser.id);
+	if (access === "NOT_FOUND") {
+		return sendError(c, "NOT_FOUND", "Event not found.", 404);
+	}
+	if (access === "FORBIDDEN" || !access.isOrganizer) {
+		return sendError(
+			c,
+			"FORBIDDEN",
+			"Organizer permission required to view road segment candidates.",
+			403,
+		);
+	}
+
+	const searchQuery = c.req.query("query")?.trim() || "";
+	if (searchQuery.length > 100) {
+		return sendError(
+			c,
+			"VALIDATION_FAILED",
+			"Search query too long (max 100 characters).",
+			422,
+		);
+	}
+
+	// 1. Gather search targets from optional query and from AI extractions on this event
+	const searchTargets: string[] = [];
+	if (searchQuery) {
+		searchTargets.push(searchQuery);
+	}
+
+	// Query latest completed AI extraction for this event to find affected_road_names
+	const extractionRows = await db
+		.select({ outputJson: aiExtractions.outputJson })
+		.from(aiExtractions)
+		.innerJoin(documents, eq(documents.id, aiExtractions.documentId))
+		.where(
+			and(
+				eq(documents.eventId, eventId),
+				eq(aiExtractions.status, "completed"),
+			),
+		)
+		.orderBy(desc(aiExtractions.createdAt))
+		.limit(1);
+
+	const extraction = extractionRows[0]?.outputJson as {
+		affected_road_names?: Array<string | { name?: string; value?: string }>;
+	} | null;
+
+	if (extraction?.affected_road_names && Array.isArray(extraction.affected_road_names)) {
+		for (const item of extraction.affected_road_names) {
+			const str = typeof item === "string" ? item : item.name || item.value || "";
+			if (str && str.trim()) {
+				searchTargets.push(str.trim());
+			}
+		}
+	}
+
+	// 2. Query human-verified catalog segments (quarantined/unverified strictly excluded)
+	const segmentsQuery = sql`
+		SELECT
+			id,
+			display_name AS "displayName",
+			coverage_area AS "coverageArea",
+			verified_by AS "verifiedBy",
+			verified_at AS "verifiedAt",
+			ST_AsGeoJSON(geom)::json AS geometry
+		FROM road_segments
+		WHERE verified_by IS NOT NULL
+			AND verified_at IS NOT NULL
+			AND source_type = 'catalog'
+		ORDER BY display_name ASC
+		LIMIT 200;
+	`;
+
+	const segmentsRes = await db.execute(segmentsQuery);
+	const allSegments = segmentsRes.rows as Array<{
+		id: string;
+		displayName: string;
+		coverageArea: string;
+		verifiedBy: string;
+		verifiedAt: string;
+		geometry: Record<string, unknown>;
+	}>;
+
+	// 3. Normalization and deterministic heuristic scoring
+	function normalizeRoad(s: string): string {
+		return s
+			.toLowerCase()
+			.replace(/\b(jalan|jln|jl)\b\.?/gi, "")
+			.replace(/[^a-z0-9]/g, " ")
+			.trim()
+			.replace(/\s+/g, " ");
+	}
+
+	const candidatesMap = new Map<
+		string,
+		{
+			candidateId: string;
+			roadSegmentId: string;
+			displayName: string;
+			coverageArea: string;
+			matchScore: number;
+			matchMethod: "exact_normalized" | "substring" | "token_overlap" | "catalog_browse";
+			reviewRequired: true;
+			explanation: string;
+			sourceType: "catalog";
+			geometry: Record<string, unknown>;
+		}
+	>();
+
+	// If no search targets, return top catalog segments with catalog_browse method
+	if (searchTargets.length === 0) {
+		const defaultCandidates = allSegments.slice(0, 10).map((seg) => ({
+			candidateId: seg.id,
+			roadSegmentId: seg.id,
+			displayName: seg.displayName,
+			coverageArea: seg.coverageArea,
+			matchScore: 0.5,
+			matchMethod: "catalog_browse" as const,
+			reviewRequired: true as const,
+			explanation: "Kandidat dari katalog terverifikasi di wilayah operasional.",
+			sourceType: "catalog" as const,
+			geometry: seg.geometry,
+		}));
+
+		return c.json({ candidates: defaultCandidates }, 200);
+	}
+
+	for (const target of searchTargets) {
+		const normTarget = normalizeRoad(target);
+		if (!normTarget) continue;
+		const targetTokens = new Set(
+			normTarget.split(" ").filter((t) => t.length > 1),
+		);
+
+		for (const seg of allSegments) {
+			const normName = normalizeRoad(seg.displayName);
+			const normArea = normalizeRoad(seg.coverageArea);
+			const nameTokens = normName.split(" ").filter((t) => t.length > 1);
+
+			let score = 0;
+			let method: "exact_normalized" | "substring" | "token_overlap" =
+				"token_overlap";
+			let explanation = "";
+
+			if (normTarget === normName) {
+				score = 0.95;
+				method = "exact_normalized";
+				explanation = `Nama ruas cocok persis dengan '${target}' pada dokumen pengumuman.`;
+			} else if (normName.includes(normTarget) || normTarget.includes(normName)) {
+				score = 0.85;
+				method = "substring";
+				explanation = `Nama ruas mengandung bagian dari frasa '${target}' di dokumen.`;
+			} else {
+				let overlapCount = 0;
+				for (const token of nameTokens) {
+					if (targetTokens.has(token)) overlapCount++;
+				}
+				if (overlapCount > 0 && targetTokens.size > 0) {
+					const ratio =
+						overlapCount / Math.max(nameTokens.length, targetTokens.size);
+					score = 0.5 + ratio * 0.35;
+					method = "token_overlap";
+					explanation = `Memiliki ${overlapCount} kata yang sama dengan '${target}'.`;
+				}
+			}
+
+			// Area overlap bonus
+			if (normArea && normTarget.includes(normArea)) {
+				score = Math.min(score + 0.05, 0.99);
+			}
+
+			if (score >= 0.4) {
+				const existing = candidatesMap.get(seg.id);
+				if (!existing || existing.matchScore < score) {
+					candidatesMap.set(seg.id, {
+						candidateId: seg.id,
+						roadSegmentId: seg.id,
+						displayName: seg.displayName,
+						coverageArea: seg.coverageArea,
+						matchScore: Math.round(score * 100) / 100,
+						matchMethod: method,
+						reviewRequired: true,
+						explanation,
+						sourceType: "catalog",
+						geometry: seg.geometry,
+					});
+				}
+			}
+		}
+	}
+
+	const sortedCandidates = Array.from(candidatesMap.values())
+		.sort((a, b) => b.matchScore - a.matchScore)
+		.slice(0, 10);
+
+	return c.json({ candidates: sortedCandidates }, 200);
 });
 
 /**

@@ -14,6 +14,8 @@ import { roadsRouter } from "./routes/roads";
 import { organizationsRouter } from "./routes/organizations";
 import { invitationsRouter } from "./routes/invitations";
 import { fieldRouter } from "./routes/field";
+import { advisoryRouter } from "./routes/advisory";
+import { alternativeRoutesRouter } from "./routes/alternative-routes";
 import type { AppVariables, Env } from "./types";
 
 declare global {
@@ -26,6 +28,12 @@ declare global {
 		GEMINI_API_KEY?: string;
 		GEMINI_MODEL?: string;
 		AI_REQUEST_TIMEOUT_MS?: string;
+		AI_IMPACT_PLANNER_ENABLED?: string;
+		AI_NOTICE_GENERATOR_ENABLED?: string;
+		AI_WASTE_PLANNER_ENABLED?: string;
+		NETWORK_ROUTING_ENABLED?: string;
+		PUBLIC_ASSISTANT_ENABLED?: string;
+		ORS_API_KEY?: string;
 	}
 }
 
@@ -134,6 +142,8 @@ app.route("/api/events", documentsRouter);
 app.route("/api", extractionsRouter);
 app.route("/api", roadsRouter);
 app.route("/api", cleanupRouter);
+app.route("/api", advisoryRouter);
+app.route("/api", alternativeRoutesRouter);
 
 // Mount Events and Assignments routes
 app.route("/api/events", assignmentsRouter);

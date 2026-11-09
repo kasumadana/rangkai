@@ -39,6 +39,15 @@ import {
 import { useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
+	ImpactPlannerPanel,
+	PublicNoticeDraftPanel,
+	WastePlanningPanel,
+} from "../components/rangkai/AdvisoryPanels";
+import {
+	OrganizerAlternativeRoutesManager,
+	PublicAlternativeRoutesList,
+} from "../components/rangkai/AlternativeRoutesPanel";
+import {
 	CleanupStatusBadge,
 	type CleanupTaskStatus,
 	EmptyStateCard,
@@ -70,6 +79,7 @@ import {
 
 	fetchFieldEventDetail,
 
+	fetchRoadCandidates,
 	fetchRoadSegments,
 
 	formatWitaEventSchedule,
@@ -884,6 +894,13 @@ export function PublicEventDetailPage({
 					</div>
 				</section>
 
+				{/* 4.5 JALUR ALTERNATIF TERVERIFIKASI PANITIA */}
+				{slug ? (
+					<section className="teduh-detail-section" data-gsap="scroll-section">
+						<PublicAlternativeRoutesList slug={slug} />
+					</section>
+				) : null}
+
 				{/* 5. POST-EVENT CLEANUP & WASTE SUMMARY (FROM BACKEND) */}
 				{cleanupData &&
 				(cleanupData.summary.totalTasks > 0 ||
@@ -1045,10 +1062,22 @@ export function WorkflowRouteShellPage({
 		staleTime: 60_000,
 	});
 
+	const roadCandidatesQuery = useQuery({
+		queryKey: ["road-candidates", eventId],
+		queryFn: () => fetchRoadCandidates(eventId),
+		enabled: Boolean(isRealUuidEvent && pathname.endsWith("/roads") && isOrganizer),
+		staleTime: 30_000,
+	});
+	const roadCandidates = roadCandidatesQuery.data?.candidates ?? [];
+
 	const cleanupTasksQuery = useQuery({
 		queryKey: ["cleanup-tasks", eventId],
 		queryFn: () => fetchCleanupTasks(eventId),
-		enabled: Boolean(isRealUuidEvent && /\/cleanup(?:\/[^/]+)?$/.test(pathname)),
+		enabled: Boolean(
+			isRealUuidEvent &&
+				(/\/cleanup(?:\/[^/]+)?$/.test(pathname) ||
+					(pathname.startsWith("/field") && !isOrganizer && !canTraffic && canCleanup)),
+		),
 		retry: false,
 	});
 
@@ -2095,6 +2124,14 @@ export function WorkflowRouteShellPage({
 							</div>
 						</div>
 					</div>
+
+					{/* AI Advisory: Impact Analysis & Notice Draft Panels */}
+					{isRealUuidEvent && isOrganizer ? (
+						<div className="xl:col-span-12 space-y-6 mt-2">
+							<ImpactPlannerPanel eventId={eventId!} isOrganizer={isOrganizer} />
+							<PublicNoticeDraftPanel eventId={eventId!} isOrganizer={isOrganizer} />
+						</div>
+					) : null}
 				</div>
 			) : null}
 
@@ -2143,6 +2180,52 @@ export function WorkflowRouteShellPage({
 								</button>
 							</div>
 						</div>
+
+						{/* Road Candidate Suggestions from Document Extraction */}
+						{roadCandidates.length > 0 ? (
+							<div className="rounded-xl border border-stone-200 bg-[#FBFBFA] p-3 text-xs space-y-2">
+								<div className="flex items-center justify-between">
+									<span className="font-semibold text-stone-900">
+										Kandidat Ruas Jalan dari Dokumen ({roadCandidates.length} saran)
+									</span>
+									<span className="text-[11px] text-stone-500">
+										Pilihan memerlukan konfirmasi panitia
+									</span>
+								</div>
+								<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+									{roadCandidates.map((cand) => (
+										<div
+											key={cand.candidateId}
+											className="p-2.5 rounded-lg border border-stone-200 bg-white flex flex-col justify-between gap-2"
+										>
+											<div>
+												<p className="font-bold text-stone-900">{cand.displayName}</p>
+												<p className="text-[11px] text-stone-500">
+													Kawasan: {cand.coverageArea} • Skor: {Math.round(cand.matchScore * 100)}%
+												</p>
+												<p className="text-[11px] text-stone-600 italic mt-0.5">{cand.explanation}</p>
+											</div>
+											<button
+												type="button"
+												onClick={() => {
+													setRoadInputMode("catalog");
+													setSelectedCatalogSegmentId(cand.roadSegmentId);
+												}}
+												className={`w-full py-1.5 px-2 rounded-md font-semibold text-xs transition-colors ${
+													selectedCatalogSegmentId === cand.roadSegmentId
+														? "bg-[#264D3B] text-white"
+														: "bg-stone-100 hover:bg-stone-200 text-stone-800"
+												}`}
+											>
+												{selectedCatalogSegmentId === cand.roadSegmentId
+													? "Terpilih di Peta"
+													: "Pilih Ruas Ini"}
+											</button>
+										</div>
+									))}
+								</div>
+							</div>
+						) : null}
 
 						{roadSegmentsCatalogQuery.isLoading ? <p role="status">Memuat katalog ruas jalan...</p> : roadSegmentsCatalogQuery.isError ? <div role="alert">Katalog ruas jalan tidak tersedia. <button type="button" onClick={() => void roadSegmentsCatalogQuery.refetch()}>Coba lagi</button></div> : catalogSegments.length === 0 ? <p>Katalog ruas jalan kosong.</p> : null}
 						<DashboardRoadMapInput
@@ -2389,6 +2472,13 @@ export function WorkflowRouteShellPage({
 							)}
 						</div>
 					</div>
+
+					{/* Organizer Reviewed Alternative Routes Manager */}
+					{isRealUuidEvent ? (
+						<div className="xl:col-span-12 mt-4">
+							<OrganizerAlternativeRoutesManager eventId={eventId!} isOrganizer={isOrganizer} />
+						</div>
+					) : null}
 				</div>
 			) : null}
 
@@ -2914,6 +3004,13 @@ export function WorkflowRouteShellPage({
 							</div>
 						</div>
 					</div>
+
+					{/* Post-Event Waste Logistics & Scenario Planning Tool */}
+					{isRealUuidEvent ? (
+						<div className="xl:col-span-12 mt-4">
+							<WastePlanningPanel eventId={eventId!} isOrganizer={isOrganizer} />
+						</div>
+					) : null}
 				</div>
 			) : null}
 

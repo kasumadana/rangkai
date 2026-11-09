@@ -703,6 +703,33 @@ export async function saveExtractedFields(
 // 3. Road Catalog, Impacts & Pecalang Live Status API
 // ---------------------------------------------------------------------------
 
+export interface RoadCandidateSuggestion {
+	candidateId: string;
+	roadSegmentId: string;
+	displayName: string;
+	coverageArea: string;
+	matchScore: number;
+	matchMethod: "exact_normalized" | "substring" | "token_overlap" | "catalog_browse";
+	reviewRequired: boolean;
+	explanation: string;
+	sourceType: "catalog";
+	geometry: {
+		type: string;
+		coordinates: unknown;
+	};
+}
+
+export async function fetchRoadCandidates(
+	eventId: string,
+	query?: string,
+): Promise<{ candidates: RoadCandidateSuggestion[] }> {
+	const qs = query ? `?query=${encodeURIComponent(query)}` : "";
+	return apiFetch<{ candidates: RoadCandidateSuggestion[] }>(
+		`/api/events/${encodeURIComponent(eventId)}/road-candidates${qs}`,
+		{ method: "GET" },
+	);
+}
+
 export async function fetchRoadSegments(
 	bbox = "114.4,-8.9,115.8,-8.0",
 ): Promise<{ segments: RoadSegmentRecord[]; roadSegments: RoadSegmentRecord[] }> {
@@ -1052,6 +1079,107 @@ export async function fetchPublicEventRoads(slug: string): Promise<{
 		roadImpacts: list,
 	};
 }
+
+export interface PublicRoadImpactFeature {
+	type: "Feature";
+	id: string;
+	geometry: {
+		type: "LineString" | "MultiLineString";
+		coordinates: Array<[number, number]> | Array<Array<[number, number]>>;
+	};
+	properties: {
+		impactId: string;
+		roadSegmentId: string;
+		eventId: string;
+		eventSlug: string;
+		eventTitle: string;
+		displayName: string;
+		coverageArea: string;
+		impactType: string;
+		plannedFrom: string | null;
+		plannedTo: string | null;
+		diversionNote: string | null;
+		effectiveStatus: OperationalRoadStatus | "unconfirmed";
+		rawStatus: OperationalRoadStatus;
+		isStale: boolean;
+		observedAt: string | null;
+		expiresAt: string | null;
+		isSimulation: boolean;
+	};
+}
+
+export interface PublicRoadImpactsResponse {
+	type: "FeatureCollection";
+	features: PublicRoadImpactFeature[];
+	pagination: {
+		page: number;
+		limit: number;
+		total: number;
+		totalPages: number;
+		truncated: boolean;
+	};
+}
+
+export async function fetchPublicRoadImpacts(params?: {
+	bbox?: string;
+	from?: string;
+	to?: string;
+	status?: "published" | "active" | "completed";
+	page?: number;
+	limit?: number;
+}): Promise<PublicRoadImpactsResponse> {
+	const search = new URLSearchParams();
+	if (params?.bbox) search.set("bbox", params.bbox);
+	if (params?.from) search.set("from", params.from);
+	if (params?.to) search.set("to", params.to);
+	if (params?.status) search.set("status", params.status);
+	if (params?.page) search.set("page", String(params.page));
+	if (params?.limit) search.set("limit", String(params.limit));
+
+	const qs = search.toString();
+	return apiFetch<PublicRoadImpactsResponse>(
+		`/api/public/road-impacts${qs ? `?${qs}` : ""}`,
+		{ method: "GET" },
+	);
+}
+
+export function roadImpactFeatureToRecord(
+	feature: PublicRoadImpactFeature,
+): RoadImpactRecord {
+	const p = feature.properties;
+	const eff: "open" | "intermittent" | "closed" | "unconfirmed" =
+		p.effectiveStatus === "open" ||
+		p.effectiveStatus === "intermittent" ||
+		p.effectiveStatus === "closed"
+			? p.effectiveStatus
+			: "unconfirmed";
+	const raw: "open" | "intermittent" | "closed" | "unknown" =
+		p.rawStatus === "open" ||
+		p.rawStatus === "intermittent" ||
+		p.rawStatus === "closed"
+			? p.rawStatus
+			: "unknown";
+
+	return {
+		id: p.impactId,
+		roadSegmentId: p.roadSegmentId,
+		displayName: p.displayName,
+		coverageArea: p.coverageArea,
+		plannedFrom: p.plannedFrom,
+		plannedTo: p.plannedTo,
+		impactType: normalizeRoadImpactType(p.impactType),
+		diversionNote: p.diversionNote,
+		geometry: feature.geometry,
+		operationalStatus: {
+			effectiveStatus: eff,
+			rawStatus: raw,
+			isStale: p.isStale,
+			observedAt: p.observedAt,
+			expiresAt: p.expiresAt,
+		},
+	};
+}
+
 
 export interface PublicCleanupSummaryData {
 	eventSlug: string;
@@ -1546,3 +1674,281 @@ export async function fetchFieldEventDetail(
 		{ method: "GET" },
 	);
 }
+
+// ---------------------------------------------------------------------------
+// 8. Alternative Routes API (Ticket 06)
+// ---------------------------------------------------------------------------
+
+export interface AlternativeRouteRecord {
+	id: string;
+	eventId?: string;
+	name: string;
+	description?: string | null;
+	status?: "draft" | "approved" | "revoked";
+	createdBy?: string;
+	approvedBy?: string | null;
+	approvedAt?: string | null;
+	revokedAt?: string | null;
+	createdAt?: string;
+	provenance?: string;
+	geometry: {
+		type: string;
+		coordinates: Array<[number, number]>;
+	};
+}
+
+export async function createAlternativeRoute(
+	eventId: string,
+	payload: {
+		name: string;
+		description?: string | null;
+		coordinates: Array<[number, number]>;
+	},
+): Promise<{ alternativeRoute: AlternativeRouteRecord }> {
+	return apiFetch<{ alternativeRoute: AlternativeRouteRecord }>(
+		`/api/events/${encodeURIComponent(eventId)}/alternative-routes`,
+		{
+			method: "POST",
+			body: payload,
+		},
+	);
+}
+
+export async function fetchAlternativeRoutes(
+	eventId: string,
+): Promise<{ alternativeRoutes: AlternativeRouteRecord[] }> {
+	return apiFetch<{ alternativeRoutes: AlternativeRouteRecord[] }>(
+		`/api/events/${encodeURIComponent(eventId)}/alternative-routes`,
+		{ method: "GET" },
+	);
+}
+
+export async function approveAlternativeRoute(
+	eventId: string,
+	routeId: string,
+): Promise<{ alternativeRoute: { id: string; name: string; status: string; approvedAt: string } }> {
+	return apiFetch(
+		`/api/events/${encodeURIComponent(eventId)}/alternative-routes/${encodeURIComponent(routeId)}/approve`,
+		{ method: "POST" },
+	);
+}
+
+export async function revokeAlternativeRoute(
+	eventId: string,
+	routeId: string,
+): Promise<{ alternativeRoute: { id: string; name: string; status: string; revokedAt: string } }> {
+	return apiFetch(
+		`/api/events/${encodeURIComponent(eventId)}/alternative-routes/${encodeURIComponent(routeId)}/revoke`,
+		{ method: "POST" },
+	);
+}
+
+export async function deleteAlternativeRoute(
+	eventId: string,
+	routeId: string,
+): Promise<{ deleted: boolean; id: string }> {
+	return apiFetch(
+		`/api/events/${encodeURIComponent(eventId)}/alternative-routes/${encodeURIComponent(routeId)}`,
+		{ method: "DELETE" },
+	);
+}
+
+export async function fetchPublicAlternativeRoutes(
+	slug: string,
+): Promise<{
+	eventSlug: string;
+	isSimulation: boolean;
+	alternativeRoutes: AlternativeRouteRecord[];
+}> {
+	return apiFetch(
+		`/api/public/events/${encodeURIComponent(slug)}/alternative-routes`,
+		{ method: "GET" },
+	);
+}
+
+// ---------------------------------------------------------------------------
+// 9. AI Advisory APIs (Impact Planner, Notice Drafts, Waste Plan)
+// ---------------------------------------------------------------------------
+
+export interface ImpactSignalItem {
+	id: string;
+	type: string;
+	title: string;
+	description: string;
+	severity: "low" | "medium" | "high" | "critical";
+}
+
+export interface ImpactFindingItem {
+	id: string;
+	title: string;
+	description: string;
+	severity: "low" | "medium" | "high" | "critical";
+	factRefs: string[];
+}
+
+export interface ImpactTaskSuggestionItem {
+	id: string;
+	category: "traffic" | "cleanup" | "coordination";
+	suggestedAction: string;
+	reasonRefs: string[];
+}
+
+export interface ImpactAnalysisRun {
+	id: string;
+	kind: "impact_analysis";
+	status: string;
+	inputSnapshotHash: string;
+	output: {
+		signals: ImpactSignalItem[];
+		findings: ImpactFindingItem[];
+		taskSuggestions: ImpactTaskSuggestionItem[];
+		unknowns: string[];
+		disclaimer: string;
+	};
+	createdAt: string;
+}
+
+export async function runImpactAnalysis(
+	eventId: string,
+): Promise<{ advisoryRun: ImpactAnalysisRun }> {
+	return apiFetch<{ advisoryRun: ImpactAnalysisRun }>(
+		`/api/events/${encodeURIComponent(eventId)}/impact-analysis`,
+		{ method: "POST" },
+	);
+}
+
+export async function fetchLatestImpactAnalysis(
+	eventId: string,
+): Promise<{
+	advisoryRun: ImpactAnalysisRun | null;
+	isStale: boolean;
+	latestDecision: { id: string; decision: string; reason?: string | null; createdAt: string } | null;
+}> {
+	return apiFetch(
+		`/api/events/${encodeURIComponent(eventId)}/impact-analysis/latest`,
+		{ method: "GET" },
+	);
+}
+
+export async function submitImpactDecision(
+	eventId: string,
+	runId: string,
+	payload: {
+		decision: "approved" | "rejected" | "dismissed";
+		reason?: string;
+	},
+): Promise<{ decision: { id: string; decision: string; reason?: string | null; createdAt: string } }> {
+	return apiFetch(
+		`/api/events/${encodeURIComponent(eventId)}/impact-analysis/${encodeURIComponent(runId)}/decision`,
+		{
+			method: "POST",
+			body: payload,
+		},
+	);
+}
+
+export interface NoticeDraftRun {
+	id: string;
+	output: {
+		publicSummary: string;
+		whatsappNotice: string;
+		officerBrief: string;
+		isSimulation: boolean;
+		wordCount: number;
+		charCount: number;
+	};
+	inputSnapshotHash: string;
+	createdAt: string;
+}
+
+export async function generatePublicNoticeDraft(
+	eventId: string,
+): Promise<{ noticeDraft: NoticeDraftRun }> {
+	return apiFetch<{ noticeDraft: NoticeDraftRun }>(
+		`/api/events/${encodeURIComponent(eventId)}/public-notice-draft`,
+		{ method: "POST" },
+	);
+}
+
+export async function fetchLatestPublicNoticeDraft(
+	eventId: string,
+): Promise<{
+	noticeDraft: NoticeDraftRun | null;
+	isStale: boolean;
+	latestDecision: {
+		id: string;
+		decision: string;
+		reason?: string | null;
+		correctedOutputJson?: Record<string, unknown> | null;
+		createdAt: string;
+	} | null;
+}> {
+	return apiFetch(
+		`/api/events/${encodeURIComponent(eventId)}/public-notice-draft/latest`,
+		{ method: "GET" },
+	);
+}
+
+export async function submitPublicNoticeDecision(
+	eventId: string,
+	runId: string,
+	payload: {
+		decision: "approved" | "rejected" | "dismissed";
+		reason?: string;
+		correctedPublicSummary?: string;
+		correctedWhatsappNotice?: string;
+	},
+): Promise<{ decision: { id: string; decision: string; createdAt: string } }> {
+	return apiFetch(
+		`/api/events/${encodeURIComponent(eventId)}/public-notice-draft/${encodeURIComponent(runId)}/decision`,
+		{
+			method: "POST",
+			body: payload,
+		},
+	);
+}
+
+export interface WastePlanRun {
+	id: string;
+	output: {
+		status: string;
+		forecastKg: null;
+		sampleSize: number;
+		method: string;
+		assumptions: {
+			rateKgPerParticipantPerDay: number;
+			organicFraction: number;
+			recyclableFraction: number;
+			residualFraction: number;
+			averageKgPerSack: number;
+		};
+		scenarioLogistics: {
+			estimatedOrganicKg: number;
+			estimatedRecyclableKg: number;
+			estimatedResidualKg: number;
+			estimatedTotalKg: number;
+			estimatedSackCount: number;
+		};
+		checklist: string[];
+		disclaimer: string;
+	};
+	createdAt: string;
+}
+
+export async function generateWastePlan(
+	eventId: string,
+	payload: {
+		estimatedParticipants: number;
+		durationHours: number;
+		eventType?: string;
+	},
+): Promise<{ wastePlan: WastePlanRun }> {
+	return apiFetch<{ wastePlan: WastePlanRun }>(
+		`/api/events/${encodeURIComponent(eventId)}/waste-plan`,
+		{
+			method: "POST",
+			body: payload,
+		},
+	);
+}
+
