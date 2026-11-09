@@ -43,9 +43,13 @@ export function LandingPage() {
 		refetchInterval: 30_000,
 	});
 
-	const { data: roadImpactsData } = useQuery({
-		queryKey: ["public", "road-impacts", { limit: 100 }],
-		queryFn: () => fetchPublicRoadImpacts({ limit: 100 }),
+	const {
+		data: roadImpactsData,
+		isError: isRoadsError,
+		refetch: refetchRoads,
+	} = useQuery({
+		queryKey: ["public", "road-impacts", { limit: 300 }],
+		queryFn: () => fetchPublicRoadImpacts({ limit: 300 }),
 		staleTime: 30_000,
 		refetchInterval: 30_000,
 	});
@@ -175,6 +179,29 @@ export function LandingPage() {
 					<h2 className="landing-map-title">
 						Peta Wilayah Upacara & Rekayasa Jalur Bali
 					</h2>
+					{isRoadsError ? (
+						<p style={{ fontSize: 13, color: "#DC2626", marginTop: 4 }}>
+							Sebagian data ruas jalan belum dapat dimuat.{" "}
+							<button
+								type="button"
+								onClick={() => refetchRoads()}
+								style={{
+									textDecoration: "underline",
+									background: "none",
+									border: "none",
+									color: "#DC2626",
+									cursor: "pointer",
+									fontWeight: 600,
+								}}
+							>
+								Muat Ulang
+							</button>
+						</p>
+					) : roadImpactsData?.pagination?.truncated ? (
+						<p style={{ fontSize: 13, color: "#D97706", marginTop: 4 }}>
+							Menampilkan {roadImpactsData.features.length} dari {roadImpactsData.pagination.total} ruas jalan terdampak di Bali.
+						</p>
+					) : null}
 				</div>
 				<div className="landing-map-inner">
 					<BaliLandingSatelliteMap ceremonies={ceremonyProfiles} />

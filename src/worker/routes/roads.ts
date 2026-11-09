@@ -620,7 +620,21 @@ roadsRouter.get("/events/:eventId/road-candidates", async (c) => {
 		}
 	}
 
-	// 2. Query human-verified catalog segments (quarantined/unverified strictly excluded)
+	// Fetch event's organization regional context (Ticket 04)
+	const orgQuery = await db
+		.select({
+			village: organizations.village,
+			district: organizations.district,
+		})
+		.from(organizations)
+		.where(eq(organizations.id, access.event.organizationId))
+		.limit(1);
+
+	const orgVillage = orgQuery[0]?.village?.trim() || "";
+	const orgDistrict = orgQuery[0]?.district?.trim() || "";
+
+	// 2. Query human-verified catalog segments scoped and ranked by authorized region
+	// Quarantined (quarantined_at IS NOT NULL) and unverified segments are strictly excluded.
 	const segmentsQuery = sql`
 		SELECT
 			id,
@@ -633,7 +647,13 @@ roadsRouter.get("/events/:eventId/road-candidates", async (c) => {
 		WHERE verified_by IS NOT NULL
 			AND verified_at IS NOT NULL
 			AND source_type = 'catalog'
-		ORDER BY display_name ASC
+		ORDER BY
+			CASE
+				WHEN ${orgVillage !== ""} AND coverage_area ILIKE ${`%${orgVillage}%`} THEN 0
+				WHEN ${orgDistrict !== ""} AND coverage_area ILIKE ${`%${orgDistrict}%`} THEN 1
+				ELSE 2
+			END ASC,
+			display_name ASC
 		LIMIT 200;
 	`;
 
@@ -728,6 +748,15 @@ roadsRouter.get("/events/:eventId/road-candidates", async (c) => {
 					method = "token_overlap";
 					explanation = `Memiliki ${overlapCount} kata yang sama dengan '${target}'.`;
 				}
+			}
+
+			// Add regional match bonus for authorized organization area
+			const isRegionMatch =
+				(orgVillage && normArea.includes(normalizeRoad(orgVillage))) ||
+				(orgDistrict && normArea.includes(normalizeRoad(orgDistrict)));
+			if (isRegionMatch && score > 0) {
+				score = Math.min(1.0, score + 0.04);
+				explanation += ` Berada di wilayah operasional ${seg.coverageArea}.`;
 			}
 
 			// Area overlap bonus

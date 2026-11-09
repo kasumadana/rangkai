@@ -162,12 +162,9 @@ const WIZARD_STEPS = [
 	},
 	{
 		id: 3,
-		label: "4. Kebersihan",
-		description: "Atur tugas kebersihan",
+		label: "4. Verifikasi & Terbitkan",
+		description: "Periksa ringkasan & umumkan kegiatan",
 	},
-	{ id: 4, label: "5. Tim", description: "Kelola petugas dan undangan" },
-	{ id: 5, label: "6. Tinjau", description: "Periksa dan konfirmasi data" },
-	{ id: 6, label: "7. Terbitkan", description: "Umumkan kegiatan" },
 ];
 
 const wizardFormSchema = z
@@ -2168,15 +2165,7 @@ export function EventWizardPage() {
 					{/* ================================================================= */}
 					{/* STEP 3: VERIFIKASI PRAJURU & TERBITKAN KE WARGA                   */}
 					{/* ================================================================= */}
-					{activeStep === 3 || activeStep === 4 ? (
-						<section className="teduh-workspace-card space-y-4">
-							<h2>{activeStep === 3 ? "Tugas kebersihan" : "Tim dan undangan"}</h2>
-							<p>{activeStep === 3 ? "Atur tugas kebersihan pada halaman kegiatan yang tersimpan." : "Kelola penugasan dan undangan pada halaman kegiatan yang tersimpan."}</p>
-							{routeEventId && isRealUuidEvent ? <Link to={`/dashboard/events/${routeEventId}/${activeStep === 3 ? "cleanup" : "team"}`}>Buka pengaturan {activeStep === 3 ? "kebersihan" : "tim"}</Link> : <p>Simpan draf untuk membuka pengaturan ini.</p>}
-							<button type="button" onClick={() => setActiveStep(activeStep + 1)}>Lanjut</button>
-						</section>
-					) : null}
-					{activeStep === 5 || activeStep === 6 ? (
+					{activeStep === 3 ? (
 						<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 							<div className="xl:col-span-7 teduh-workspace-card space-y-5">
 								<div className="border-b border-[#F0EFEA] pb-3">

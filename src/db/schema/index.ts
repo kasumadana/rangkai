@@ -603,7 +603,11 @@ export const eventAlternativeRoutes = pgTable(
 			.references(() => user.id),
 		approvedBy: text("approved_by").references(() => user.id),
 		approvedAt: timestamp("approved_at", { withTimezone: true }),
+		revokedBy: text("revoked_by").references(() => user.id),
 		revokedAt: timestamp("revoked_at", { withTimezone: true }),
+		revocationReason: text("revocation_reason"),
+		sourceSnapshotHash: text("source_snapshot_hash"),
+		expiresAt: timestamp("expires_at", { withTimezone: true }),
 		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -614,5 +618,51 @@ export const eventAlternativeRoutes = pgTable(
 		),
 		index("event_alternative_routes_event_idx").on(table.eventId, table.status),
 		index("event_alternative_routes_geom_gist_idx").using("gist", table.geom),
+	],
+);
+
+export const ALTERNATIVE_ROUTE_ACTIONS = [
+	"created",
+	"approved",
+	"reapproved",
+	"revoked",
+] as const;
+export type AlternativeRouteAction = (typeof ALTERNATIVE_ROUTE_ACTIONS)[number];
+
+export const eventAlternativeRouteHistory = pgTable(
+	"event_alternative_route_history",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		routeId: uuid("route_id")
+			.notNull()
+			.references(() => eventAlternativeRoutes.id, { onDelete: "cascade" }),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		actorId: text("actor_id")
+			.notNull()
+			.references(() => user.id),
+		action: text("action").$type<AlternativeRouteAction>().notNull(),
+		sourceSnapshotHash: text("source_snapshot_hash"),
+		expiresAt: timestamp("expires_at", { withTimezone: true }),
+		metadata: jsonb("metadata"),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check(
+			"event_alternative_route_history_action_check",
+			sql`action IN ('created', 'approved', 'reapproved', 'revoked')`,
+		),
+		index("event_alternative_route_history_route_idx").on(
+			table.routeId,
+			table.createdAt.desc(),
+		),
+		index("event_alternative_route_history_event_idx").on(
+			table.eventId,
+			table.createdAt.desc(),
+		),
 	],
 );

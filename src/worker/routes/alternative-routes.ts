@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -130,31 +131,78 @@ alternativeRoutesRouter.post(
 		const ewkt = `SRID=4326;LINESTRING(${data.coordinates.map(([lng, lat]) => `${lng} ${lat}`).join(", ")})`;
 
 		const insertQuery = sql`
-			INSERT INTO event_alternative_routes (
-				id, event_id, organization_id, name, description, geom, status, created_by
+			WITH inserted_route AS (
+				INSERT INTO event_alternative_routes (
+					id, event_id, organization_id, name, description, geom, status, created_by
+				)
+				SELECT
+					${routeId}::uuid,
+					${eventId}::uuid,
+					${access.event.organizationId}::uuid,
+					${data.name},
+					${data.description ?? null},
+					ST_GeomFromEWKT(${ewkt}),
+					'draft',
+					${currentUser.id}
+				WHERE EXISTS (
+					SELECT 1 FROM memberships
+					WHERE user_id = ${currentUser.id}
+						AND organization_id = ${access.event.organizationId}
+						AND role = 'organizer'
+				)
+				RETURNING
+					id,
+					name,
+					description,
+					status,
+					created_by AS "createdBy",
+					created_at AS "createdAt",
+					ST_AsGeoJSON(geom)::json AS geometry
+			),
+			logged_history AS (
+				INSERT INTO event_alternative_route_history (
+					id, route_id, event_id, organization_id, actor_id, action, metadata, created_at
+				)
+				SELECT
+					gen_random_uuid(),
+					id,
+					${eventId}::uuid,
+					${access.event.organizationId}::uuid,
+					${currentUser.id},
+					'created',
+					jsonb_build_object('name', name, 'description', description),
+					NOW()
+				FROM inserted_route
+			),
+			logged_audit AS (
+				INSERT INTO audit_logs (
+					id, organization_id, event_id, actor_id, action, entity_type, entity_id, after_json, created_at
+				)
+				SELECT
+					gen_random_uuid(),
+					${access.event.organizationId}::uuid,
+					${eventId}::uuid,
+					${currentUser.id},
+					'alternative_route.created',
+					'event_alternative_route',
+					id::text,
+					jsonb_build_object('id', id, 'name', name, 'status', status),
+					NOW()
+				FROM inserted_route
 			)
-			VALUES (
-				${routeId}::uuid,
-				${eventId}::uuid,
-				${access.event.organizationId}::uuid,
-				${data.name},
-				${data.description ?? null},
-				ST_GeomFromEWKT(${ewkt}),
-				'draft',
-				${currentUser.id}
-			)
-			RETURNING
-				id,
-				name,
-				description,
-				status,
-				created_by AS "createdBy",
-				created_at AS "createdAt",
-				ST_AsGeoJSON(geom)::json AS geometry;
+			SELECT * FROM inserted_route;
 		`;
 
 		const res = await db.execute(insertQuery);
-		const created = res.rows[0] as Record<string, unknown>;
+		const created = res.rows[0] as Record<string, unknown> | undefined;
+		if (!created) {
+			return sendError(
+				c,
+				"FORBIDDEN",
+				"Keanggotaan panitia Anda tidak lagi aktif untuk kegiatan ini.",
+				403,
+			);
+		}
 
 		return c.json(
 			{
@@ -260,6 +308,8 @@ alternativeRoutesRouter.get(
 /**
  * POST /api/events/:eventId/alternative-routes/:routeId/approve
  * Approve a draft alternative route, making it public for eligible events.
+ * Binds approval to material event/closure geometry + time snapshot and expiry.
+ * Atomic membership check, append-only history, and atomic audit logging.
  */
 alternativeRoutesRouter.post(
 	"/events/:eventId/alternative-routes/:routeId/approve",
@@ -290,22 +340,180 @@ alternativeRoutesRouter.post(
 			);
 		}
 
-		const now = new Date();
+		// Eligible event lifecycle check (SPEC-07)
+		if (!["review", "published", "active"].includes(access.event.status)) {
+			return sendError(
+				c,
+				"INVALID_LIFECYCLE",
+				"Rute alternatif hanya dapat disetujui untuk kegiatan berstatus review, terpublikasi, atau aktif.",
+				400,
+			);
+		}
+
+		// Fetch road impacts to calculate snapshot hash and expiry
+		const impactsQuery = sql`
+			SELECT id, planned_from AS "plannedFrom", planned_to AS "plannedTo", impact_type AS "impactType"
+			FROM road_impacts
+			WHERE event_id = ${eventId}
+			ORDER BY planned_from ASC;
+		`;
+		const impactsRes = await db.execute(impactsQuery);
+		const impacts = impactsRes.rows as Array<{
+			id: string;
+			plannedFrom: string | Date;
+			plannedTo: string | Date;
+			impactType: string;
+		}>;
+
+		if (impacts.length === 0) {
+			return sendError(
+				c,
+				"NO_ROAD_IMPACTS",
+				"Tidak dapat menyetujui rute: kegiatan belum memiliki ruas penutupan jalan.",
+				400,
+			);
+		}
+
+		// Calculate expiry: latest plannedTo across impacts or event endsAt
+		const impactExpiries = impacts.map((i) => new Date(i.plannedTo).getTime());
+		const maxExpiryMs = Math.max(...impactExpiries, access.event.endsAt ? new Date(access.event.endsAt).getTime() : 0);
+		const expiresAt = new Date(maxExpiryMs);
+
+		if (expiresAt.getTime() <= Date.now()) {
+			return sendError(
+				c,
+				"EXPIRED_CLOSURE",
+				"Tidak dapat menyetujui rute: seluruh rencana penutupan jalan telah kedaluwarsa.",
+				400,
+			);
+		}
+
+		const sourceSnapshotHash = crypto
+			.createHash("sha256")
+			.update(JSON.stringify(impacts.map((i) => ({
+				id: i.id,
+				plannedFrom: new Date(i.plannedFrom).toISOString(),
+				plannedTo: new Date(i.plannedTo).toISOString(),
+				impactType: i.impactType,
+			}))))
+			.digest("hex");
+
+		// Check existing route state
+		const existingQuery = sql`
+			SELECT id, name, status, approved_at AS "approvedAt", source_snapshot_hash AS "sourceSnapshotHash", expires_at AS "expiresAt"
+			FROM event_alternative_routes
+			WHERE id = ${routeId} AND event_id = ${eventId};
+		`;
+		const existingRes = await db.execute(existingQuery);
+		const existing = existingRes.rows[0] as {
+			id: string;
+			name: string;
+			status: string;
+			approvedAt: string | Date | null;
+			sourceSnapshotHash: string | null;
+			expiresAt: string | Date | null;
+		} | undefined;
+
+		if (!existing) {
+			return sendError(c, "NOT_FOUND", "Alternative route not found for this event.", 404);
+		}
+
+		// Idempotent repeat approval if already approved with same active source snapshot
+		if (
+			existing.status === "approved" &&
+			existing.sourceSnapshotHash === sourceSnapshotHash &&
+			existing.expiresAt &&
+			new Date(existing.expiresAt).getTime() > Date.now() &&
+			existing.approvedAt
+		) {
+			return c.json(
+				{
+					alternativeRoute: {
+						id: existing.id,
+						name: existing.name,
+						status: existing.status,
+						approvedAt: new Date(existing.approvedAt).toISOString(),
+					},
+				},
+				200,
+			);
+		}
+
+		const isReapproval = existing.status === "approved";
+		const action = isReapproval ? "reapproved" : "approved";
+		const expiresAtIso = expiresAt.toISOString();
+
+		// Atomic guarded update + append-only history + audit log
 		const updateQuery = sql`
-			UPDATE event_alternative_routes
-			SET
-				status = 'approved',
-				approved_by = ${currentUser.id},
-				approved_at = ${now},
-				updated_at = ${now}
-			WHERE id = ${routeId} AND event_id = ${eventId}
-			RETURNING id, name, status, approved_at AS "approvedAt";
+			WITH updated_route AS (
+				UPDATE event_alternative_routes
+				SET
+					status = 'approved',
+					approved_by = ${currentUser.id},
+					approved_at = NOW(),
+					source_snapshot_hash = ${sourceSnapshotHash},
+					expires_at = ${expiresAtIso}::timestamptz,
+					updated_at = NOW()
+				WHERE id = ${routeId}::uuid
+					AND event_id = ${eventId}::uuid
+					AND EXISTS (
+						SELECT 1 FROM memberships
+						WHERE user_id = ${currentUser.id}
+							AND organization_id = ${access.event.organizationId}
+							AND role = 'organizer'
+					)
+				RETURNING id, name, status, approved_at AS "approvedAt"
+			),
+			logged_history AS (
+				INSERT INTO event_alternative_route_history (
+					id, route_id, event_id, organization_id, actor_id, action, source_snapshot_hash, expires_at, created_at
+				)
+				SELECT
+					gen_random_uuid(),
+					id,
+					${eventId}::uuid,
+					${access.event.organizationId}::uuid,
+					${currentUser.id}::text,
+					${action}::text,
+					${sourceSnapshotHash}::text,
+					${expiresAtIso}::timestamptz,
+					NOW()
+				FROM updated_route
+			),
+			logged_audit AS (
+				INSERT INTO audit_logs (
+					id, organization_id, event_id, actor_id, action, entity_type, entity_id, after_json, created_at
+				)
+				SELECT
+					gen_random_uuid(),
+					${access.event.organizationId}::uuid,
+					${eventId}::uuid,
+					${currentUser.id}::text,
+					${`alternative_route.${action}`}::text,
+					'event_alternative_route',
+					id::text,
+					jsonb_build_object(
+						'id', id,
+						'name', name,
+						'status', status,
+						'sourceSnapshotHash', ${sourceSnapshotHash}::text,
+						'expiresAt', ${expiresAtIso}::text
+					),
+					NOW()
+				FROM updated_route
+			)
+			SELECT * FROM updated_route;
 		`;
 
 		const res = await db.execute(updateQuery);
 		const updated = res.rows[0] as { id: string; name: string; status: string; approvedAt: string | Date } | undefined;
 		if (!updated) {
-			return sendError(c, "NOT_FOUND", "Alternative route not found for this event.", 404);
+			return sendError(
+				c,
+				"FORBIDDEN",
+				"Keanggotaan panitia Anda tidak lagi aktif untuk kegiatan ini.",
+				403,
+			);
 		}
 
 		return c.json(
@@ -325,6 +533,7 @@ alternativeRoutesRouter.post(
 /**
  * POST /api/events/:eventId/alternative-routes/:routeId/revoke
  * Revoke an approved alternative route.
+ * Atomic membership check, append-only history, and atomic audit logging.
  */
 alternativeRoutesRouter.post(
 	"/events/:eventId/alternative-routes/:routeId/revoke",
@@ -355,21 +564,94 @@ alternativeRoutesRouter.post(
 			);
 		}
 
-		const now = new Date();
+		// Check if already revoked (idempotent repeat)
+		const existingQuery = sql`
+			SELECT id, name, status, revoked_at AS "revokedAt"
+			FROM event_alternative_routes
+			WHERE id = ${routeId} AND event_id = ${eventId};
+		`;
+		const existingRes = await db.execute(existingQuery);
+		const existing = existingRes.rows[0] as { id: string; name: string; status: string; revokedAt: string | Date | null } | undefined;
+
+		if (!existing) {
+			return sendError(c, "NOT_FOUND", "Alternative route not found for this event.", 404);
+		}
+
+		if (existing.status === "revoked" && existing.revokedAt) {
+			return c.json(
+				{
+					alternativeRoute: {
+						id: existing.id,
+						name: existing.name,
+						status: existing.status,
+						revokedAt: new Date(existing.revokedAt).toISOString(),
+					},
+				},
+				200,
+			);
+		}
+
+		// Atomic guarded update + history + audit log
 		const updateQuery = sql`
-			UPDATE event_alternative_routes
-			SET
-				status = 'revoked',
-				revoked_at = ${now},
-				updated_at = ${now}
-			WHERE id = ${routeId} AND event_id = ${eventId}
-			RETURNING id, name, status, revoked_at AS "revokedAt";
+			WITH updated_route AS (
+				UPDATE event_alternative_routes
+				SET
+					status = 'revoked',
+					revoked_by = ${currentUser.id},
+					revoked_at = NOW(),
+					updated_at = NOW()
+				WHERE id = ${routeId}::uuid
+					AND event_id = ${eventId}::uuid
+					AND EXISTS (
+						SELECT 1 FROM memberships
+						WHERE user_id = ${currentUser.id}
+							AND organization_id = ${access.event.organizationId}
+							AND role = 'organizer'
+					)
+				RETURNING id, name, status, revoked_at AS "revokedAt"
+			),
+			logged_history AS (
+				INSERT INTO event_alternative_route_history (
+					id, route_id, event_id, organization_id, actor_id, action, created_at
+				)
+				SELECT
+					gen_random_uuid(),
+					id,
+					${eventId}::uuid,
+					${access.event.organizationId}::uuid,
+					${currentUser.id},
+					'revoked',
+					NOW()
+				FROM updated_route
+			),
+			logged_audit AS (
+				INSERT INTO audit_logs (
+					id, organization_id, event_id, actor_id, action, entity_type, entity_id, after_json, created_at
+				)
+				SELECT
+					gen_random_uuid(),
+					${access.event.organizationId}::uuid,
+					${eventId}::uuid,
+					${currentUser.id},
+					'alternative_route.revoked',
+					'event_alternative_route',
+					id::text,
+					jsonb_build_object('id', id, 'name', name, 'status', status),
+					NOW()
+				FROM updated_route
+			)
+			SELECT * FROM updated_route;
 		`;
 
 		const res = await db.execute(updateQuery);
 		const updated = res.rows[0] as { id: string; name: string; status: string; revokedAt: string | Date } | undefined;
 		if (!updated) {
-			return sendError(c, "NOT_FOUND", "Alternative route not found for this event.", 404);
+			return sendError(
+				c,
+				"FORBIDDEN",
+				"Keanggotaan panitia Anda tidak lagi aktif untuk kegiatan ini.",
+				403,
+			);
 		}
 
 		return c.json(
@@ -420,9 +702,36 @@ alternativeRoutesRouter.delete(
 		}
 
 		const deleteQuery = sql`
-			DELETE FROM event_alternative_routes
-			WHERE id = ${routeId} AND event_id = ${eventId} AND status = 'draft'
-			RETURNING id;
+			WITH deleted_route AS (
+				DELETE FROM event_alternative_routes
+				WHERE id = ${routeId}::uuid
+					AND event_id = ${eventId}::uuid
+					AND status = 'draft'
+					AND EXISTS (
+						SELECT 1 FROM memberships
+						WHERE user_id = ${currentUser.id}
+							AND organization_id = ${access.event.organizationId}
+							AND role = 'organizer'
+					)
+				RETURNING id, name
+			),
+			logged_audit AS (
+				INSERT INTO audit_logs (
+					id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, created_at
+				)
+				SELECT
+					gen_random_uuid(),
+					${access.event.organizationId}::uuid,
+					${eventId}::uuid,
+					${currentUser.id},
+					'alternative_route.deleted',
+					'event_alternative_route',
+					id::text,
+					jsonb_build_object('id', id, 'name', name),
+					NOW()
+				FROM deleted_route
+			)
+			SELECT id FROM deleted_route;
 		`;
 		const res = await db.execute(deleteQuery);
 		if (res.rows.length === 0) {

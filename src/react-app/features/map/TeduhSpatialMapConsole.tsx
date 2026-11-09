@@ -27,6 +27,7 @@ import type {
 } from "../../lib/bali-villages";
 import {
 	buildDistrictFeaturesFromEvents,
+	fetchPublicAlternativeRoutes,
 	fetchPublicEventRoads,
 	fetchPublicEvents,
 	fetchPublicRoadImpacts,
@@ -126,12 +127,23 @@ export function TeduhSpatialMapConsole() {
 		refetchInterval: 30_000,
 	});
 
-	// 2b. Aggregate verified public road impacts across all events for spatial background lines
-	const { data: allRoadImpactsData } = useQuery({
-		queryKey: ["public", "road-impacts", { limit: 100 }],
-		queryFn: () => fetchPublicRoadImpacts({ limit: 100 }),
+	// 2b. Aggregate verified public road impacts across all events for spatial background lines (SPEC-11: limit 300)
+	const {
+		data: allRoadImpactsData,
+		isError: isAllRoadsError,
+	} = useQuery({
+		queryKey: ["public", "road-impacts", { limit: 300 }],
+		queryFn: () => fetchPublicRoadImpacts({ limit: 300 }),
 		staleTime: 30_000,
 		refetchInterval: 30_000,
+	});
+
+	// 2c. Fetch public alternative routes for the active event (SPEC-08)
+	const { data: altRoutesData } = useQuery({
+		queryKey: ["public", "events", activeSlug, "alternative-routes"],
+		queryFn: () => fetchPublicAlternativeRoutes(activeSlug),
+		enabled: Boolean(activeSlug),
+		staleTime: 30_000,
 	});
 
 	const activeEventRoads = useMemo(
@@ -932,6 +944,22 @@ export function TeduhSpatialMapConsole() {
 					<span>{cursorCoords}</span>
 					<span>•</span>
 					<span>WITA (UTC+8)</span>
+					{allRoadImpactsData?.pagination?.truncated ? (
+						<>
+							<span>•</span>
+							<span style={{ color: "#D97706" }}>
+								Menampilkan {allRoadImpactsData.features.length} dari {allRoadImpactsData.pagination.total} ruas jalan
+							</span>
+						</>
+					) : null}
+					{isAllRoadsError ? (
+						<>
+							<span>•</span>
+							<span style={{ color: "#EF4444" }}>
+								Sebagian ruas jalan belum dapat dimuat
+							</span>
+						</>
+					) : null}
 				</div>
 			</div>
 
@@ -940,6 +968,7 @@ export function TeduhSpatialMapConsole() {
 				<BaliMapTilerView
 					village={activeVillage}
 					allVillages={allCeremonyProfiles}
+					alternativeRoutes={altRoutesData?.alternativeRoutes ?? []}
 					selectedRegionName={selectedRegionName}
 					onSelectRegion={(regName, district) => {
 						handleSelectDistrict(regName, district);

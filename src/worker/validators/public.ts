@@ -41,8 +41,14 @@ export const publicEventsQuerySchema = z.object({
 export const publicRoadImpactsQuerySchema = z
 	.object({
 		page: z.coerce.number().int().min(1).default(1),
-		limit: z.coerce.number().int().min(1).max(200).default(50),
-		status: z.enum(["published", "active", "completed"]).optional(),
+		limit: z.coerce.number().int().min(1).max(300).default(100),
+		status: z
+			.enum(["open", "intermittent", "closed", "unknown", "unconfirmed"])
+			.optional(),
+		operationalStatus: z
+			.enum(["open", "intermittent", "closed", "unknown", "unconfirmed"])
+			.optional(),
+		eventStatus: z.enum(["published", "active", "completed"]).optional(),
 		from: isoDateSchema.optional(),
 		to: isoDateSchema.optional(),
 		bbox: z

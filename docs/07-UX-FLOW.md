@@ -90,15 +90,14 @@ Show:
 
 Primary CTA: Create Event.
 
-### D. Create Event
+### D. Create Event Wizard (4 Steps)
 
-Step 1: Basic details.
-Step 2: Upload announcement.
-Step 3: Extract with AI.
-Step 4: Review and correct fields.
-Step 5: Select road segments.
-Step 6: Configure cleanup tasks.
-Step 7: Review and publish.
+Step 1: Surat Edaran & AI (Unggah berkas edaran dan ekstraksi Gemini multimodal).
+Step 2: Detail Upacara & Jadwal WITA (Periksa, lengkapi, dan konfirmasi rincian acara).
+Step 3: Input Peta & Ruas Jalan Terdampak (Katalog resmi jalan terverifikasi dan preview spasial).
+Step 4: Verifikasi Prajuru & Penerbitan Resmi (Tinjauan akhir human-in-the-loop dan publikasi).
+
+*Catatan: Modul penugasan petugas lapangan (`team`) dan pencatatan kebersihan pasca-acara (`cleanup`) dikelola melalui dasbor operasional kegiatan setelah draf disimpan.*
 
 Allow save as draft at every step.
 
@@ -226,7 +225,7 @@ Standard microcopy adheres to Pramana ethics (Honest System States). Titles adop
 
 ### D5: Stale Road Status (Warning State)
 - Title: "Kasinahang durung pasti"
-- Subtitle: "Status terakhir belum dikonfirmasi ulang oleh petugas lapangan lebih dari 2 jam. Sesuai aturan operasional, kondisi jalan tidak otomatis dianggap lancar."
+- Subtitle: "Status terakhir belum dikonfirmasi ulang oleh petugas lapangan lebih dari 30 menit. Sesuai aturan operasional, kondisi jalan tidak otomatis dianggap lancar."
 - Actions: [Lihat Waktu Pembaruan] [Minta Konfirmasi Petugas]
 
 ### D6: Map Unavailable (Fallback State)

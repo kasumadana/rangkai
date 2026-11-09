@@ -132,7 +132,7 @@ Palet warna menggunakan fondasi Tri Datu yang ditransformasikan menjadi sistem w
 - **OPEN / Lancar** (`#15803D` / bg: `#F0FDF4`): Ruas jalan dapat dilalui secara normal.
 - **INTERMITTENT / Buka-Tutup** (`#D97706` / bg: `#FEF3C7`): Pengalihan berkala atau antrean prosesi adat.
 - **CLOSED / Ditutup** (`#B91C1C` / bg: `#FEF2F2`): Penutupan penuh untuk iring-iringan atau pendirian sarana upacara.
-- **UNKNOWN / STALE** (`#64748B` / bg: `#F1F5F9`): Data status melebihi batas waktu konfirmasi (> 2 jam tanpa pembaruan petugas). Tidak boleh disamarkan sebagai jalan lancar.
+- **UNKNOWN / STALE** (`#64748B` / bg: `#F1F5F9`): Data status melebihi batas waktu konfirmasi (> 30 menit tanpa pembaruan petugas). Tidak boleh disamarkan sebagai jalan lancar.
 
 #### 2. Kategori Pengelolaan Sampah Pasca-Acara
 - **Organik** (`#166534`): Canang sari, banten, daun pisang, janur, bunga sisa upakara.

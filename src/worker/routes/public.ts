@@ -381,18 +381,25 @@ publicRouter.get("/road-impacts", async (c) => {
 		);
 	}
 
-	const { bbox, from, to, status, page, limit } = queryParse.data;
+	const { bbox, from, to, status, operationalStatus, eventStatus, page, limit } = queryParse.data;
+	const roadStatusFilter = status || operationalStatus;
 
 	const conditions: Array<ReturnType<typeof sql>> = [
 		sql`(${events.isSimulation} IS DISTINCT FROM FALSE OR EXISTS (
 			SELECT 1 FROM organizations o WHERE o.id = ${events.organizationId} AND o.has_operational_authority = TRUE
 		))`,
-		status
-			? sql`${events.status} = ${status}`
+		eventStatus
+			? sql`${events.status} = ${eventStatus}`
 			: sql`${events.status} IN ('published', 'active')`,
 		sql`((rs.source_type = 'catalog' AND rs.verified_by IS NOT NULL AND rs.verified_at IS NOT NULL)
 			OR (${events.isSimulation} AND rs.source_type = 'simulation_draft' AND rs.organization_id = ${events.organizationId}))`,
 	];
+
+	if (roadStatusFilter === "unconfirmed") {
+		conditions.push(sql`(latest_status.status IS NULL OR latest_status.expires_at < NOW())`);
+	} else if (roadStatusFilter) {
+		conditions.push(sql`(latest_status.status = ${roadStatusFilter} AND latest_status.expires_at >= NOW())`);
+	}
 
 	if (from) {
 		const fromDate = new Date(from);
@@ -423,6 +430,13 @@ publicRouter.get("/road-impacts", async (c) => {
 		FROM road_impacts ri
 		INNER JOIN events ON events.id = ri.event_id
 		INNER JOIN road_segments rs ON rs.id = ri.road_segment_id
+		LEFT JOIN LATERAL (
+			SELECT rsu.status, rsu.observed_at, rsu.expires_at
+			FROM road_status_updates rsu
+			WHERE rsu.road_impact_id = ri.id
+			ORDER BY rsu.observed_at DESC, rsu.created_at DESC
+			LIMIT 1
+		) latest_status ON true
 		WHERE ${whereSql};
 	`;
 
@@ -743,7 +757,7 @@ publicRouter.get("/events/:slug/alternative-routes", async (c) => {
 		.where(
 			and(
 				eq(events.publicSlug, slug),
-				inArray(events.status, ["published", "active", "completed"]),
+				inArray(events.status, ["published", "active"]),
 				publicAuthority,
 			),
 		)
@@ -762,7 +776,14 @@ publicRouter.get("/events/:slug/alternative-routes", async (c) => {
 			approved_at AS "approvedAt",
 			ST_AsGeoJSON(geom)::json AS geometry
 		FROM event_alternative_routes
-		WHERE event_id = ${event.id} AND status = 'approved'
+		WHERE event_id = ${event.id}
+			AND status = 'approved'
+			AND (expires_at IS NULL OR expires_at > NOW())
+			AND EXISTS (
+				SELECT 1 FROM road_impacts ri
+				WHERE ri.event_id = ${event.id}
+					AND ri.planned_to > NOW()
+			)
 		ORDER BY approved_at ASC;
 	`;
 
@@ -857,99 +878,30 @@ publicRouter.post("/routes/alternatives", async (c) => {
 
 	const orsApiKey = c.env?.ORS_API_KEY;
 	const isEnabled = c.env?.NETWORK_ROUTING_ENABLED === "true";
+	const requestId = (c.get("requestId") as string) || "unknown";
 
-	// Conditional gate check (Ticket 07)
-	if (!isEnabled || !orsApiKey) {
-		return c.json(
-			{
-				status: "unavailable",
-				configured: false,
+	// Ticket 07: Unconditionally unavailable safe gate (SPEC-01)
+	// Network routing capability is deferred. Real-network obstacle avoidance polygon
+	// calculation and LineString safety validation against closures is not implemented/reviewed.
+	// We strictly do NOT retain a dormant unsafe success path that config/keys can activate.
+	// Never makes external requests to providers and never invents pretend network geometry.
+	return c.json(
+		{
+			error: {
+				code: "SERVICE_UNAVAILABLE",
 				message:
-					"Layanan penghitungan rute otomatis OpenRouteService belum diaktifkan/dikonfigurasi. Silakan gunakan rute alternatif manual yang telah diverifikasi dan disetujui panitia.",
-				manualFallbackRecommended: true,
-			},
-			503,
-		);
-	}
-
-	// Real provider call if key and flag are present
-	const { origin, destination, profile } = parsed.data;
-	try {
-		const controller = new AbortController();
-		const timeout = setTimeout(() => controller.abort(), 6000);
-
-		const orsRes = await fetch(
-			`https://api.openrouteservice.org/v2/directions/${profile}/geojson`,
-			{
-				method: "POST",
-				headers: {
-					Authorization: orsApiKey,
-					"Content-Type": "application/json",
+					"Network routing is temporarily unavailable. Avoidance polygon validation is not certified. Please consult reviewed manual alternative routes for active events.",
+				requestId,
+				details: {
+					configured: Boolean(isEnabled && orsApiKey),
+					deferred: true,
+					alternativeRoutesUrl: "/api/public/events/:slug/alternative-routes",
+					ticket: "07",
 				},
-				body: JSON.stringify({
-					coordinates: [origin, destination],
-				}),
-				signal: controller.signal,
 			},
-		);
-		clearTimeout(timeout);
-
-		if (!orsRes.ok) {
-			return c.json(
-				{
-					status: "unavailable",
-					configured: true,
-					message:
-						"Layanan penyedia rute mengembalikan galat. Gunakan rute alternatif manual panitia.",
-					manualFallbackRecommended: true,
-				},
-				503,
-			);
-		}
-
-		const routeGeoJson = (await orsRes.json()) as {
-			features?: Array<{
-				geometry: Record<string, unknown>;
-				properties: { summary?: { distance: number; duration: number } };
-			}>;
-		};
-
-		const firstFeature = routeGeoJson.features?.[0];
-		if (!firstFeature) {
-			return c.json(
-				{
-					status: "not_found",
-					message:
-						"Tidak ditemukan rute jaringan jalan untuk koordinat tersebut.",
-				},
-				404,
-			);
-		}
-
-		return c.json(
-			{
-				status: "success",
-				provider: "openrouteservice",
-				route: firstFeature.geometry,
-				distanceMeters: firstFeature.properties?.summary?.distance,
-				durationSeconds: firstFeature.properties?.summary?.duration,
-				disclaimer:
-					"Estimasi rute jaringan jalan. Perhatikan rambu dan arahan pecalang di lapangan.",
-			},
-			200,
-		);
-	} catch {
-		return c.json(
-			{
-				status: "unavailable",
-				configured: true,
-				message:
-					"Gagal terhubung ke penyedia rute. Gunakan rute alternatif manual panitia.",
-				manualFallbackRecommended: true,
-			},
-			503,
-		);
-	}
+		},
+		503,
+	);
 });
 
 export { publicRouter };

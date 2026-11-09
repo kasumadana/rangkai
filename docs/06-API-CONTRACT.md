@@ -642,10 +642,12 @@ Every endpoint needs:
 ### GET /api/public/road-impacts
 Read-only anonymous list of operational road impacts across all published events.
 - **Query parameters:**
-  - `status`: Optional filter (`open`, `intermittent`, `closed`, `unknown`, `unconfirmed`).
+  - `status` or `operationalStatus`: Optional filter (`open`, `intermittent`, `closed`, `unknown`, `unconfirmed`).
+  - `eventStatus`: Optional filter for event lifecycle status (`published`, `active`, `completed`). Defaults to published or active events.
   - `from`: Optional ISO 8601 start window timestamp.
   - `to`: Optional ISO 8601 end window timestamp.
   - `bbox`: Optional Bali bounding box `minLng,minLat,maxLng,maxLat`.
+  - `page`: Optional integer page number (default 1).
   - `limit`: Optional pagination limit (default 100, max 300).
 - **TTL Semantics:**
   - Evaluates operational status dynamically against `ROAD_STATUS_TTL_MS` (30 minutes).
@@ -658,29 +660,42 @@ Read-only anonymous list of operational road impacts across all published events
     "features": [
       {
         "type": "Feature",
+        "id": "imp_01",
         "geometry": { "type": "LineString", "coordinates": [[115.258, -8.691], [115.260, -8.695]] },
         "properties": {
-          "id": "imp_01",
+          "impactId": "imp_01",
+          "roadSegmentId": "seg_01",
           "eventId": "evt_01",
           "eventSlug": "melasti-sanur-2026",
           "eventTitle": "Karya Melasti Desa Adat Sanur Kauh",
-          "roadName": "Jl. Danau Tamblingan",
+          "displayName": "Jl. Danau Tamblingan",
           "coverageArea": "Kawasan Pesisir Sanur",
           "impactType": "full_closure",
+          "plannedFrom": "2026-11-12T08:00:00Z",
+          "plannedTo": "2026-11-12T12:00:00Z",
+          "diversionNote": "Gunakan jalur bypass timur",
           "rawStatus": "closed",
           "effectiveStatus": "closed",
           "isStale": false,
-          "isSimulation": false,
-          "plannedFrom": "2026-11-12T08:00:00Z",
-          "plannedTo": "2026-11-12T12:00:00Z"
+          "observedAt": "2026-11-12T08:15:00Z",
+          "expiresAt": "2026-11-12T08:45:00Z",
+          "isSimulation": false
         }
       }
-    ]
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 100,
+      "total": 1,
+      "totalPages": 1,
+      "truncated": false
+    }
   }
   ```
 
 ### GET /api/public/events/:slug/alternative-routes
 Anonymous list of organizer-approved manual alternative routes for a published event.
+- **Eligibility:** Restricted to `published` and `active` events with active impacts. Unapproved, revoked, or expired alternative routes are never exposed.
 - **Response:**
   ```json
   {
@@ -693,6 +708,7 @@ Anonymous list of organizer-approved manual alternative routes for a published e
         "description": "Pengalihan kendaraan roda dua dan empat ringan.",
         "provenance": "organizer_approved_manual_simulation",
         "approvedAt": "2026-11-10T10:00:00Z",
+        "expiresAt": "2026-11-12T12:00:00Z",
         "geometry": { "type": "LineString", "coordinates": [[115.258, -8.691], [115.260, -8.695]] }
       }
     ]
@@ -701,15 +717,15 @@ Anonymous list of organizer-approved manual alternative routes for a published e
 
 ### POST /api/public/routes/alternatives
 Conditional network routing candidate avoiding road closures.
-- **Gate:** If `NETWORK_ROUTING_ENABLED !== 'true'` or `ORS_API_KEY` is not configured, returns `HTTP 503 SERVICE_UNAVAILABLE` pointing to verified manual alternative routes without inventing fake network routes.
+- **Gate:** Unconditionally returns `HTTP 503 SERVICE_UNAVAILABLE` (Ticket 07 deferred). Real road-network avoidance routing is not active, preventing any unsafe fallback paths, external network calls, or pretend geometry. Points caller to verified manual alternative routes.
 
 ## 15. Road Candidate Matching (Ticket 04)
 
 ### GET /api/events/:eventId/road-candidates
 Ranked road candidates from the verified catalog matching user search terms.
-- **Permission:** Organizer or assigned field officer.
+- **Permission:** Organizer only.
 - **Query:** `query` string (min 2 chars).
-- **Matching Methods:** `exact_normalized` (1.0), `substring` (0.8), `token_overlap` (0.5..0.7).
+- **Matching Methods:** `exact_normalized` (1.0), `substring` (0.8), `token_overlap` (0.5..0.7). Regional priority boosts candidates located in the event organization's village or district. Quarantined roads are excluded.
 - **Response:**
   ```json
   {
@@ -731,11 +747,11 @@ Ranked road candidates from the verified catalog matching user search terms.
 
 ## 16. Reviewed Manual Alternative Routes (Ticket 06)
 
-- `POST /api/events/:eventId/alternative-routes`: Create draft alternative route.
+- `POST /api/events/:eventId/alternative-routes`: Create draft alternative route (Organizer only).
 - `GET /api/events/:eventId/alternative-routes`: List all alternative routes (draft, approved, revoked) for event organizers.
-- `POST /api/events/:eventId/alternative-routes/:routeId/approve`: Approve draft route, making it visible to the public.
-- `POST /api/events/:eventId/alternative-routes/:routeId/revoke`: Revoke approved route, removing it from public view.
-- `DELETE /api/events/:eventId/alternative-routes/:routeId`: Delete draft route.
+- `POST /api/events/:eventId/alternative-routes/:routeId/approve`: Approve draft route with atomic membership and road impact snapshot binding (`sourceSnapshotHash`, `expiresAt`), recording append-only audit and history.
+- `POST /api/events/:eventId/alternative-routes/:routeId/revoke`: Revoke approved route with atomic organizer membership check and audit logging.
+- `DELETE /api/events/:eventId/alternative-routes/:routeId`: Delete draft route (Organizer only).
 
 ## 17. AI Advisory Operations (Tickets 05, 08, 09)
 
@@ -743,10 +759,10 @@ Shared advisory runs are stored in `advisory_runs` with an immutable snapshot ha
 Organizer decisions (`approved`, `dismissed`) are recorded in `advisory_decisions`.
 Advisory decisions NEVER directly mutate domain operational state (events, road statuses, cleanup tasks, or permissions).
 
-- `POST /api/events/:eventId/impact-analysis`: Runs grounded impact analysis.
-- `GET /api/events/:eventId/impact-analysis/latest`: Retrieves latest analysis with staleness evaluation against current event state.
-- `POST /api/events/:eventId/impact-analysis/:runId/decision`: Records organizer review decision.
-- `POST /api/events/:eventId/public-notice-draft`: Generates public notice drafts adhering to word and character limits.
+- `POST /api/events/:eventId/impact-analysis`: Runs grounded impact analysis using configured Gemini model or honest `rule_based_fallback`. Cross-org conflict analysis strictly respects organization privacy (no simulation leaks, only operational authority events).
+- `GET /api/events/:eventId/impact-analysis/latest`: Retrieves latest analysis with dynamic staleness evaluation against current event snapshot hash.
+- `POST /api/events/:eventId/impact-analysis/:runId/decision`: Records organizer review decision with atomic membership validation and 409 conflict on stale snapshot.
+- `POST /api/events/:eventId/public-notice-draft`: Generates public notice drafts adhering to word (<= 120 words) and character (<= 600 characters for WhatsApp) limits, with server-enforced simulation notices and verified facts only.
 - `GET /api/events/:eventId/public-notice-draft/latest`: Retrieves latest notice draft and approval status.
-- `POST /api/events/:eventId/public-notice-draft/:runId/decision`: Records approval/rejection.
-- `POST /api/events/:eventId/waste-plan`: Calculates scenario waste logistics with explicit math (~0.35 kg/person/day) and `forecastKg: null` per domain integrity.
+- `POST /api/events/:eventId/public-notice-draft/:runId/decision`: Records approval/rejection or validated human correction. Validates length limits, rejects unsupported safety/authority claims (e.g., "dijamin aman", "resmi oleh polisi") or unlisted road names, and forces simulation tag.
+- `POST /api/events/:eventId/waste-plan`: Calculates scenario waste logistics. Supports user-specified generation rates (`wastePerPersonDayKg`) and fractions (`organicFraction`, `recyclableFraction`, `residualFraction`). If omitted or 0, returns `forecastKg: null`, `method: "operational_checklist"`, and checklist only without fabricated numeric assumptions.

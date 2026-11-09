@@ -44,7 +44,16 @@ export const ROAD_STATUS_LABELS = {
 		value: "unknown",
 		label: "Butuh Konfirmasi",
 		fullLabel: "Butuh Konfirmasi / Kedaluwarsa",
-		description: "Status belum diperbarui petugas lapangan (>2 jam)",
+		description: "Status belum diperbarui petugas lapangan (>30 menit)",
+		badgeBg: "#F1F5F9",
+		badgeText: "#64748B",
+		badgeBorder: "#E2E8F0",
+	},
+	unconfirmed: {
+		value: "unconfirmed",
+		label: "Butuh Konfirmasi",
+		fullLabel: "Butuh Konfirmasi / Kedaluwarsa",
+		description: "Status belum diperbarui petugas lapangan (>30 menit)",
 		badgeBg: "#F1F5F9",
 		badgeText: "#64748B",
 		badgeBorder: "#E2E8F0",
@@ -251,12 +260,12 @@ export const SYSTEM_STATE_MESSAGES: Record<string, SystemStateMessage> = {
 		secondaryAction: "Pilih Berkas Lain",
 	},
 
-	// D5: Status Jalan Kedaluwarsa / Stale (>2 Jam)
+	// D5: Status Jalan Kedaluwarsa / Stale (>30 Menit)
 	staleRoadStatus: {
 		code: "D5",
 		title: "Kasinahang durung pasti",
 		description:
-			"Status terakhir belum dikonfirmasi ulang oleh petugas lapangan lebih dari 2 jam. Sesuai aturan operasional, kondisi jalan tidak otomatis dianggap lancar.",
+			"Status terakhir belum dikonfirmasi ulang oleh petugas lapangan lebih dari 30 menit. Sesuai aturan operasional, kondisi jalan tidak otomatis dianggap lancar.",
 		primaryAction: "Lihat Waktu Pembaruan",
 		secondaryAction: "Minta Konfirmasi Petugas",
 	},

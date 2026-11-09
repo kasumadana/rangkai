@@ -1463,6 +1463,11 @@ export function mapPublicEventToCeremonyProfile(
 							? "Penyempitan / Satu Arah"
 							: "Jalur Prosesi",
 			status: roadStatus,
+			plannedFrom: r.plannedFrom ? new Date(r.plannedFrom).toISOString() : null,
+			plannedTo: r.plannedTo ? new Date(r.plannedTo).toISOString() : null,
+			observedAt: r.operationalStatus?.observedAt || null,
+			expiresAt: r.operationalStatus?.expiresAt || null,
+			impactType: r.impactType || "closure",
 			windowWita: schedule.windowWita,
 			pecalangPost: orgName,
 			lastConfirmedLabel: r.operationalStatus?.observedAt
@@ -1518,6 +1523,10 @@ export function mapPublicEventToCeremonyProfile(
 		participatingBanjars: [villageName],
 		scheduleDateLabel: schedule.dateLabel,
 		scheduleWindowWita: schedule.windowWita,
+		scheduleIso: {
+			startsAt: evt.startsAt ? new Date(evt.startsAt).toISOString() : null,
+			endsAt: evt.endsAt ? new Date(evt.endsAt).toISOString() : null,
+		},
 		coordinatorName: evt.organizerName || orgName,
 		primaryStatus,
 		overview:
@@ -1689,6 +1698,8 @@ export interface AlternativeRouteRecord {
 	approvedBy?: string | null;
 	approvedAt?: string | null;
 	revokedAt?: string | null;
+	expiresAt?: string | null;
+	sourceSnapshotHash?: string | null;
 	createdAt?: string;
 	provenance?: string;
 	geometry: {
@@ -1784,6 +1795,7 @@ export interface ImpactFindingItem {
 	description: string;
 	severity: "low" | "medium" | "high" | "critical";
 	factRefs: string[];
+	mitigationSuggestion?: string;
 }
 
 export interface ImpactTaskSuggestionItem {
@@ -1797,11 +1809,18 @@ export interface ImpactAnalysisRun {
 	id: string;
 	kind: "impact_analysis";
 	status: string;
+	modelIdentifier?: string;
 	inputSnapshotHash: string;
 	output: {
 		signals: ImpactSignalItem[];
 		findings: ImpactFindingItem[];
 		taskSuggestions: ImpactTaskSuggestionItem[];
+		taskRecommendations?: Array<{
+			id: string;
+			title: string;
+			description: string;
+			priority: string;
+		}>;
 		unknowns: string[];
 		disclaimer: string;
 	};
@@ -1941,6 +1960,10 @@ export async function generateWastePlan(
 		estimatedParticipants: number;
 		durationHours: number;
 		eventType?: string;
+		wastePerPersonDayKg?: number;
+		organicFraction?: number;
+		recyclableFraction?: number;
+		residualFraction?: number;
 	},
 ): Promise<{ wastePlan: WastePlanRun }> {
 	return apiFetch<{ wastePlan: WastePlanRun }>(

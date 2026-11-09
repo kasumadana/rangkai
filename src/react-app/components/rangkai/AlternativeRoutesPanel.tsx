@@ -1,15 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertCircle,
+	AlertTriangle,
 	Check,
 	CheckCircle2,
+	Compass,
+	Copy,
+	Info,
 	Loader2,
-	MapPin,
 	Plus,
+	RefreshCw,
 	Trash2,
 	XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
 	approveAlternativeRoute,
 	createAlternativeRoute,
@@ -19,8 +23,86 @@ import {
 	revokeAlternativeRoute,
 } from "../../lib/events-api";
 
+/**
+ * Parses user input into a list of [longitude, latitude] coordinates.
+ * Accepts either:
+ * - Line-separated: "115.258, -8.691"
+ * - GeoJSON LineString JSON: {"type":"LineString","coordinates":[[115.258,-8.691],...]}
+ * - Raw JSON array: [[115.258, -8.691], ...]
+ */
+function parseCoordinatesInput(raw: string): {
+	coords: [number, number][];
+	error: string | null;
+} {
+	const trimmed = raw.trim();
+	if (!trimmed) {
+		return { coords: [], error: null };
+	}
+
+	// Try JSON parsing first
+	if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+		try {
+			const parsed = JSON.parse(trimmed);
+			let arrayCoords: unknown[] = [];
+			if (Array.isArray(parsed)) {
+				arrayCoords = parsed;
+			} else if (parsed?.type === "LineString" && Array.isArray(parsed.coordinates)) {
+				arrayCoords = parsed.coordinates;
+			} else if (parsed?.geometry?.type === "LineString" && Array.isArray(parsed.geometry.coordinates)) {
+				arrayCoords = parsed.geometry.coordinates;
+			}
+
+			if (arrayCoords.length >= 2) {
+				const valid: [number, number][] = [];
+				for (const item of arrayCoords) {
+					if (Array.isArray(item) && item.length >= 2) {
+						const lng = Number(item[0]);
+						const lat = Number(item[1]);
+						if (!Number.isNaN(lng) && !Number.isNaN(lat)) {
+							valid.push([lng, lat]);
+						}
+					}
+				}
+				if (valid.length >= 2) {
+					return { coords: valid, error: null };
+				}
+			}
+		} catch {
+			// Fall through to line-by-line parsing
+		}
+	}
+
+	// Line-by-line format: "lng, lat"
+	const lines = trimmed.split("\n").map((l) => l.trim()).filter(Boolean);
+	if (lines.length < 2) {
+		return { coords: [], error: "Masukkan minimal 2 titik koordinat (satu titik per baris: bujur, lintang)." };
+	}
+
+	const coords: [number, number][] = [];
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const parts = line.split(",").map((p) => Number(p.trim()));
+		if (parts.length < 2 || Number.isNaN(parts[0]) || Number.isNaN(parts[1])) {
+			return {
+				coords: [],
+				error: `Format baris ke-${i + 1} tidak valid: "${line}". Gunakan format "bujur, lintang", contoh: "115.258, -8.691".`,
+			};
+		}
+		// Validate Bali bounding box
+		if (parts[0] < 114.4 || parts[0] > 115.8 || parts[1] < -8.9 || parts[1] > -8.0) {
+			return {
+				coords: [],
+				error: `Titik ke-${i + 1} (${parts[0]}, ${parts[1]}) di luar wilayah daratan Bali (bujur 114.4°..115.8°, lintang -8.9°..-8.0°).`,
+			};
+		}
+		coords.push([parts[0], parts[1]]);
+	}
+
+	return { coords, error: null };
+}
+
 // ---------------------------------------------------------------------------
-// Organizer Alternative Routes Manager (Ticket 06)
+// Organizer Alternative Routes Manager (Ticket 06 & STD-02 / SPEC-08 / SPEC-10)
 // ---------------------------------------------------------------------------
 export function OrganizerAlternativeRoutesManager({
 	eventId,
@@ -33,9 +115,9 @@ export function OrganizerAlternativeRoutesManager({
 	const [isAdding, setIsAdding] = useState(false);
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
-	const [coordinatesInput, setCoordinatesInput] = useState(
-		"115.258, -8.691\n115.260, -8.695\n115.262, -8.700",
-	);
+	// SPEC-08: Empty initial coordinates; never start with arbitrary Sanur coordinates
+	const [coordinatesInput, setCoordinatesInput] = useState("");
+	const [isRoadFollowingConfirmed, setIsRoadFollowingConfirmed] = useState(false);
 	const [formError, setFormError] = useState<string | null>(null);
 	const [feedbackMsg, setFeedbackMsg] = useState<{
 		type: "success" | "error";
@@ -46,6 +128,7 @@ export function OrganizerAlternativeRoutesManager({
 		queryKey: ["events", eventId, "alternative-routes"],
 		queryFn: () => fetchAlternativeRoutes(eventId),
 		enabled: Boolean(eventId),
+		retry: 1,
 	});
 
 	const createMutation = useMutation({
@@ -63,6 +146,8 @@ export function OrganizerAlternativeRoutesManager({
 			setIsAdding(false);
 			setName("");
 			setDescription("");
+			setCoordinatesInput("");
+			setIsRoadFollowingConfirmed(false);
 			queryClient.invalidateQueries({
 				queryKey: ["events", eventId, "alternative-routes"],
 			});
@@ -77,7 +162,7 @@ export function OrganizerAlternativeRoutesManager({
 		onSuccess: () => {
 			setFeedbackMsg({
 				type: "success",
-				text: "Rute alternatif telah disetujui dan dapat dilihat warga di peta publik.",
+				text: "Rute alternatif telah disetujui dan dapat dilihat warga di peta publik (terikat masa berlaku upacara).",
 			});
 			queryClient.invalidateQueries({
 				queryKey: ["events", eventId, "alternative-routes"],
@@ -129,35 +214,78 @@ export function OrganizerAlternativeRoutesManager({
 		},
 	});
 
+	const parsedResult = useMemo(
+		() => parseCoordinatesInput(coordinatesInput),
+		[coordinatesInput],
+	);
+
 	function handleSubmit(e: React.FormEvent) {
 		e.preventDefault();
 		setFormError(null);
 
-		const lines = coordinatesInput
-			.split("\n")
-			.map((l) => l.trim())
-			.filter(Boolean);
-		if (lines.length < 2) {
-			setFormError("Masukkan minimal 2 koordinat (garis bujur, garis lintang).");
+		if (!name.trim()) {
+			setFormError("Nama rute alternatif wajib diisi.");
 			return;
 		}
 
-		const parsedCoords: [number, number][] = [];
-		for (const line of lines) {
-			const parts = line.split(",").map((p) => Number(p.trim()));
-			if (parts.length < 2 || Number.isNaN(parts[0]) || Number.isNaN(parts[1])) {
-				setFormError(
-					`Format koordinat tidak valid: "${line}". Gunakan format "longitude, latitude", contoh: "115.258, -8.691".`,
-				);
-				return;
-			}
-			parsedCoords.push([parts[0], parts[1]]);
+		if (parsedResult.error) {
+			setFormError(parsedResult.error);
+			return;
 		}
 
-		createMutation.mutate(parsedCoords);
+		if (parsedResult.coords.length < 2) {
+			setFormError("Masukkan minimal 2 titik koordinat untuk membentuk jalur pengalihan.");
+			return;
+		}
+
+		if (!isRoadFollowingConfirmed) {
+			setFormError(
+				"Konfirmasi penelusuran jalan nyata wajib dicentang untuk memastikan rute bukan garis lurus spekulatif.",
+			);
+			return;
+		}
+
+		createMutation.mutate(parsedResult.coords);
 	}
 
 	const routes = routesQuery.data?.alternativeRoutes ?? [];
+
+	// Preview SVG path calculation for geometric verification (SPEC-08)
+	const previewSvg = useMemo(() => {
+		const coords = parsedResult.coords;
+		if (coords.length < 2) return null;
+
+		let minX = coords[0][0];
+		let maxX = coords[0][0];
+		let minY = coords[0][1];
+		let maxY = coords[0][1];
+
+		for (const [x, y] of coords) {
+			if (x < minX) minX = x;
+			if (x > maxX) maxX = x;
+			if (y < minY) minY = y;
+			if (y > maxY) maxY = y;
+		}
+
+		const spanX = Math.max(maxX - minX, 0.001);
+		const spanY = Math.max(maxY - minY, 0.001);
+		const width = 280;
+		const height = 90;
+		const padding = 14;
+
+		const points = coords.map(([x, y]) => {
+			const px = padding + ((x - minX) / spanX) * (width - 2 * padding);
+			const py = height - padding - ((y - minY) / spanY) * (height - 2 * padding);
+			return `${px.toFixed(1)},${py.toFixed(1)}`;
+		});
+
+		return {
+			pathD: `M ${points.join(" L ")}`,
+			start: points[0],
+			end: points[points.length - 1],
+			count: coords.length,
+		};
+	}, [parsedResult.coords]);
 
 	return (
 		<div className="teduh-workspace-card space-y-4">
@@ -165,24 +293,27 @@ export function OrganizerAlternativeRoutesManager({
 				<div className="space-y-1">
 					<div className="flex items-center gap-2">
 						<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#EBF3EF] text-[#264D3B]">
-							<MapPin className="w-3.5 h-3.5" />
+							<Compass className="w-3.5 h-3.5" />
 						</span>
 						<h2 className="text-sm font-bold text-[#181817]">
 							Jalur Alternatif Terverifikasi Panitia
 						</h2>
 					</div>
 					<p className="text-xs text-[#585854]">
-						Pengalihan arus lalu lintas yang diverifikasi prajuru untuk menghindari ruas jalan yang ditutup.
+						Pengalihan arus lalu lintas yang diverifikasi prajuru untuk memandu warga menghindari ruas jalan yang ditutup.
 					</p>
 				</div>
 
 				{isOrganizer && !isAdding ? (
 					<button
 						type="button"
-						onClick={() => setIsAdding(true)}
-						className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[44px] transition-all cursor-pointer"
+						onClick={() => {
+							setIsAdding(true);
+							setFormError(null);
+						}}
+						className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] min-h-[48px] transition-all cursor-pointer shadow-2xs"
 					>
-						<Plus className="w-3.5 h-3.5" />
+						<Plus className="w-4 h-4" />
 						<span>Tambah Rute Alternatif</span>
 					</button>
 				) : null}
@@ -190,7 +321,7 @@ export function OrganizerAlternativeRoutesManager({
 
 			{feedbackMsg ? (
 				<div
-					className={`p-3 rounded-xl text-xs flex items-center justify-between ${
+					className={`p-3.5 rounded-xl text-xs flex items-center justify-between ${
 						feedbackMsg.type === "success"
 							? "bg-[#EBF3EF] text-[#264D3B] border border-[#C7DBD0]"
 							: "bg-[#FDF2F2] text-[#991B1B] border border-[#F87171]"
@@ -200,98 +331,170 @@ export function OrganizerAlternativeRoutesManager({
 					<button
 						type="button"
 						onClick={() => setFeedbackMsg(null)}
-						className="text-xs underline ml-2 cursor-pointer"
+						className="text-xs font-semibold underline ml-2 cursor-pointer min-h-[32px] px-2"
 					>
 						Tutup
 					</button>
 				</div>
 			) : null}
 
-			{/* Form Tambah Rute Baru */}
+			{/* Form Tambah Rute Baru (SPEC-08 & STD-02: font size >=16px, target >=48px) */}
 			{isAdding ? (
 				<form
 					onSubmit={handleSubmit}
-					className="p-4 rounded-xl border border-[#264D3B] bg-[#FAF9F5] space-y-3"
+					className="p-5 rounded-2xl border-2 border-[#264D3B] bg-[#FAF9F5] space-y-4"
 				>
-					<h3 className="text-xs font-bold text-[#181817]">
-						Rancang Rute Pengalihan Baru
-					</h3>
+					<div className="border-b border-[#E5E3DC] pb-2">
+						<h3 className="text-sm font-bold text-[#181817]">
+							Rancang Rute Pengalihan Sementara (Simulasi)
+						</h3>
+						<p className="text-xs text-[#585854] mt-0.5">
+							Masukkan titik koordinat nyata yang melintasi ruas jalan alternatif layak pakai.
+						</p>
+					</div>
 
 					<div>
 						<label
 							htmlFor="alt-route-name"
-							className="block text-xs font-semibold text-[#181817] mb-1"
+							className="block text-xs font-semibold text-[#181817] mb-1.5"
 						>
-							Nama Jalur Alternatif
+							Nama Jalur Alternatif <span className="text-[#991B1B]">*</span>
 						</label>
 						<input
 							id="alt-route-name"
 							type="text"
 							required
-							placeholder="Contoh: Jalur Pengalihan Jl. Danau Tamblingan ke Jl. Bypass"
+							placeholder="Contoh: Jalur Pengalihan Jl. Danau Poso via Gang Betutu"
 							value={name}
 							onChange={(e) => setName(e.target.value)}
-							className="w-full px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[44px]"
+							className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[48px]"
 						/>
 					</div>
 
 					<div>
 						<label
 							htmlFor="alt-route-desc"
-							className="block text-xs font-semibold text-[#181817] mb-1"
+							className="block text-xs font-semibold text-[#181817] mb-1.5"
 						>
-							Keterangan / Kendaraan yang Diizinkan
+							Keterangan / Kendaraan yang Diizinkan (Opsional)
 						</label>
 						<input
 							id="alt-route-desc"
 							type="text"
-							placeholder="Contoh: Khusus sepeda motor dan mobil pribadi roda empat"
+							placeholder="Contoh: Khusus sepeda motor dan kendaraan roda empat ringan"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
-							className="w-full px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[44px]"
+							className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[48px]"
 						/>
 					</div>
 
 					<div>
 						<label
 							htmlFor="alt-route-coords"
-							className="block text-xs font-semibold text-[#181817] mb-1"
+							className="block text-xs font-semibold text-[#181817] mb-1.5"
 						>
-							Titik Koordinat Bali (satu titik per baris: bujur, lintang)
+							Titik Koordinat Rute (LineString bujur, lintang atau GeoJSON) <span className="text-[#991B1B]">*</span>
 						</label>
 						<textarea
 							id="alt-route-coords"
 							rows={4}
 							value={coordinatesInput}
 							onChange={(e) => setCoordinatesInput(e.target.value)}
-							className="w-full px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white font-mono text-xs text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B]"
+							placeholder={"115.258, -8.691\n115.260, -8.695\n115.262, -8.700"}
+							className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white font-mono text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B]"
 						/>
 						<p className="text-[11px] text-[#8C8B85] mt-1">
-							Koordinat harus berada di rentang Bali (bujur 114.4°..115.8°, lintang -8.9°..-8.0°).
+							Masukkan koordinat berurutan di wilayah Bali (bujur 114.4°..115.8°, lintang -8.9°..-8.0°). Anda juga dapat menempelkan potongan GeoJSON LineString.
 						</p>
 					</div>
 
+					{/* Geometric Preview Box (SPEC-08) */}
+					{previewSvg ? (
+						<div className="p-3.5 rounded-xl border border-[#C7DBD0] bg-[#F6FAF7] space-y-2">
+							<div className="flex items-center justify-between text-xs text-[#264D3B] font-semibold">
+								<span className="flex items-center gap-1.5">
+									<CheckCircle2 className="w-4 h-4 text-[#264D3B]" />
+									<span>Pratinjau Geometris Terbaca ({previewSvg.count} titik koordinat)</span>
+								</span>
+								<span className="text-[11px] text-[#585854]">
+									Titik Awal: {parsedResult.coords[0][0].toFixed(3)}, {parsedResult.coords[0][1].toFixed(3)}
+								</span>
+							</div>
+
+							<div className="w-full h-24 bg-white rounded-lg border border-[#E5E3DC] flex items-center justify-center p-2 relative overflow-hidden">
+								<svg
+									viewBox="0 0 280 90"
+									className="w-full h-full max-h-20"
+									preserveAspectRatio="xMidYMid meet"
+								>
+									<path
+										d={previewSvg.pathD}
+										fill="none"
+										stroke="#2563EB"
+										strokeWidth="3.5"
+										strokeDasharray="4 3"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									/>
+									{/* Start dot (green) */}
+									<circle
+										cx={previewSvg.start.split(",")[0]}
+										cy={previewSvg.start.split(",")[1]}
+										r="4"
+										fill="#16A34A"
+									/>
+									{/* End dot (red) */}
+									<circle
+										cx={previewSvg.end.split(",")[0]}
+										cy={previewSvg.end.split(",")[1]}
+										r="4"
+										fill="#DC2626"
+									/>
+								</svg>
+								<div className="absolute bottom-1 right-2 text-[10px] text-[#8C8B85]">
+									Garis putus-putus biru = Jalur Alternatif
+								</div>
+							</div>
+						</div>
+					) : null}
+
+					{/* Road-following human verification gate (SPEC-08) */}
+					<div className="p-3.5 rounded-xl border border-[#E5E3DC] bg-white">
+						<label className="flex items-start gap-3 cursor-pointer">
+							<input
+								type="checkbox"
+								checked={isRoadFollowingConfirmed}
+								onChange={(e) => setIsRoadFollowingConfirmed(e.target.checked)}
+								className="mt-1 w-4 h-4 text-[#264D3B] rounded border-[#D1CFCA] focus:ring-[#264D3B] shrink-0"
+							/>
+							<span className="text-xs text-[#181817] leading-relaxed">
+								<strong className="font-semibold block">Verifikasi Kesesuaian Jalan Nyata:</strong>
+								Saya mengonfirmasi bahwa koordinat rute di atas mengikuti ruas jalan nyata yang dapat dilalui kendaraan secara aman dan telah diperiksa kelayakannya oleh panitia.
+							</span>
+						</label>
+					</div>
+
 					{formError ? (
-						<div className="p-2.5 rounded-lg bg-[#FDF2F2] border border-[#F87171] text-[#991B1B] text-xs flex items-center gap-2">
-							<AlertCircle className="w-3.5 h-3.5 shrink-0" />
+						<div className="p-3 rounded-xl bg-[#FDF2F2] border border-[#F87171] text-[#991B1B] text-xs flex items-center gap-2">
+							<AlertCircle className="w-4 h-4 shrink-0" />
 							<span>{formError}</span>
 						</div>
 					) : null}
 
-					<div className="flex items-center gap-2 pt-1">
+					<div className="flex flex-wrap items-center gap-3 pt-2">
 						<button
 							type="submit"
-							disabled={createMutation.isPending}
-							className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[44px] cursor-pointer"
+							disabled={createMutation.isPending || !isRoadFollowingConfirmed || parsedResult.coords.length < 2}
+							className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
 						>
 							{createMutation.isPending ? (
 								<>
-									<Loader2 className="w-3.5 h-3.5 animate-spin" />
+									<Loader2 className="w-4 h-4 animate-spin" />
 									<span>Menyimpan Draf...</span>
 								</>
 							) : (
 								<>
-									<Check className="w-3.5 h-3.5" />
+									<Check className="w-4 h-4" />
 									<span>Simpan Draf Rute</span>
 								</>
 							)}
@@ -299,8 +502,11 @@ export function OrganizerAlternativeRoutesManager({
 
 						<button
 							type="button"
-							onClick={() => setIsAdding(false)}
-							className="inline-flex items-center px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#585854] hover:bg-[#F3F1EC] min-h-[44px] cursor-pointer"
+							onClick={() => {
+								setIsAdding(false);
+								setFormError(null);
+							}}
+							className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-sm font-semibold text-[#585854] hover:bg-[#F3F1EC] min-h-[48px] cursor-pointer"
 						>
 							Batal
 						</button>
@@ -308,17 +514,35 @@ export function OrganizerAlternativeRoutesManager({
 				</form>
 			) : null}
 
-			{/* Daftar Rute Alternatif */}
+			{/* Daftar Rute Alternatif (SPEC-10: Error Banner with retry) */}
 			{routesQuery.isLoading ? (
 				<div className="py-8 text-center text-xs text-[#585854] flex items-center justify-center gap-2">
 					<Loader2 className="w-4 h-4 animate-spin text-[#264D3B]" />
 					<span>Memuat jalur alternatif...</span>
 				</div>
+			) : routesQuery.isError ? (
+				<div className="p-4 rounded-xl border border-[#F87171] bg-[#FDF2F2] space-y-2">
+					<div className="flex items-center gap-2 text-[#991B1B] text-xs font-semibold">
+						<AlertTriangle className="w-4 h-4 shrink-0" />
+						<span>
+							Gagal memuat daftar jalur alternatif: {routesQuery.error?.message || "Layanan tidak dapat dihubungi."}
+						</span>
+					</div>
+					<button
+						type="button"
+						onClick={() => routesQuery.refetch()}
+						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[40px] cursor-pointer"
+					>
+						<RefreshCw className="w-3.5 h-3.5" />
+						<span>Coba Muat Ulang</span>
+					</button>
+				</div>
 			) : routes.length === 0 ? (
-				<div className="py-6 text-center rounded-xl border border-dashed border-[#E5E3DC] bg-[#FAF9F5] p-6 space-y-1">
+				<div className="py-8 text-center rounded-xl border border-dashed border-[#E5E3DC] bg-[#FAF9F5] p-6 space-y-2">
+					<Info className="w-6 h-6 text-[#8C8B85] mx-auto" />
 					<p className="text-xs font-semibold text-[#181817]">Belum Ada Jalur Alternatif</p>
-					<p className="text-xs text-[#585854]">
-						Prajuru dapat menambahkan jalur pengalihan resmi yang diverifikasi untuk memandu pengendara.
+					<p className="text-xs text-[#585854] max-w-sm mx-auto">
+						Prajuru dapat menambahkan jalur pengalihan sementara untuk memandu warga saat penutupan jalan berlangsung.
 					</p>
 				</div>
 			) : (
@@ -331,13 +555,13 @@ export function OrganizerAlternativeRoutesManager({
 						return (
 							<div
 								key={route.id}
-								className="p-3.5 rounded-xl border border-[#E5E3DC] bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+								className="p-4 rounded-xl border border-[#E5E3DC] bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
 							>
 								<div className="space-y-1">
-									<div className="flex items-center gap-2">
-										<h4 className="text-xs font-bold text-[#181817]">{route.name}</h4>
+									<div className="flex items-center gap-2 flex-wrap">
+										<h4 className="text-sm font-bold text-[#181817]">{route.name}</h4>
 										<span
-											className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+											className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
 												isApproved
 													? "bg-[#EBF3EF] text-[#264D3B]"
 													: isRevoked
@@ -345,7 +569,11 @@ export function OrganizerAlternativeRoutesManager({
 														: "bg-[#FEF9E7] text-[#92400E]"
 											}`}
 										>
-											{isApproved ? "Disetujui Publik" : isRevoked ? "Dicabut" : "Draf Panitia"}
+											{isApproved
+												? "Disetujui Publik (Simulasi)"
+												: isRevoked
+													? "Dicabut"
+													: "Draf Panitia"}
 										</span>
 									</div>
 									{route.description ? (
@@ -357,6 +585,9 @@ export function OrganizerAlternativeRoutesManager({
 											: route.createdAt
 												? `Dibuat pada ${new Date(route.createdAt).toLocaleDateString("id-ID")}`
 												: "-"}
+										{route.expiresAt
+											? ` • Berlaku hingga ${new Date(route.expiresAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })} WITA`
+											: ""}
 									</p>
 								</div>
 
@@ -368,9 +599,13 @@ export function OrganizerAlternativeRoutesManager({
 													type="button"
 													onClick={() => approveMutation.mutate(route.id)}
 													disabled={approveMutation.isPending}
-													className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[40px] cursor-pointer"
+													className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[48px] cursor-pointer shadow-2xs"
 												>
-													<CheckCircle2 className="w-3.5 h-3.5" />
+													{approveMutation.isPending ? (
+														<Loader2 className="w-4 h-4 animate-spin" />
+													) : (
+														<CheckCircle2 className="w-4 h-4" />
+													)}
 													<span>Setujui</span>
 												</button>
 
@@ -378,9 +613,9 @@ export function OrganizerAlternativeRoutesManager({
 													type="button"
 													onClick={() => deleteMutation.mutate(route.id)}
 													disabled={deleteMutation.isPending}
-													className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E5E3DC] bg-white text-[#991B1B] text-xs font-semibold hover:bg-[#FDF2F2] min-h-[40px] cursor-pointer"
+													className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-[#991B1B] text-xs font-semibold hover:bg-[#FDF2F2] min-h-[48px] cursor-pointer"
 												>
-													<Trash2 className="w-3.5 h-3.5" />
+													<Trash2 className="w-4 h-4" />
 													<span>Hapus</span>
 												</button>
 											</>
@@ -389,9 +624,13 @@ export function OrganizerAlternativeRoutesManager({
 												type="button"
 												onClick={() => revokeMutation.mutate(route.id)}
 												disabled={revokeMutation.isPending}
-												className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-[#E5E3DC] bg-white text-[#991B1B] text-xs font-semibold hover:bg-[#FDF2F2] min-h-[40px] cursor-pointer"
+												className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#F87171] bg-white text-[#991B1B] text-xs font-semibold hover:bg-[#FDF2F2] min-h-[48px] cursor-pointer"
 											>
-												<XCircle className="w-3.5 h-3.5" />
+												{revokeMutation.isPending ? (
+													<Loader2 className="w-4 h-4 animate-spin" />
+												) : (
+													<XCircle className="w-4 h-4" />
+												)}
 												<span>Cabut dari Publik</span>
 											</button>
 										) : null}
@@ -407,9 +646,12 @@ export function OrganizerAlternativeRoutesManager({
 }
 
 // ---------------------------------------------------------------------------
-// Public Alternative Routes Display (Ticket 06 & 07)
+// Public Alternative Routes Display (Ticket 06 & SPEC-08, SPEC-10)
 // ---------------------------------------------------------------------------
 export function PublicAlternativeRoutesList({ slug }: { slug: string }) {
+	const [copiedId, setCopiedId] = useState<string | null>(null);
+	const [copyError, setCopyError] = useState<string | null>(null);
+
 	const routesQuery = useQuery({
 		queryKey: ["public", "events", slug, "alternative-routes"],
 		queryFn: () => fetchPublicAlternativeRoutes(slug),
@@ -417,43 +659,99 @@ export function PublicAlternativeRoutesList({ slug }: { slug: string }) {
 		staleTime: 30_000,
 	});
 
+	async function handleCopyRoute(route: { name: string; description?: string; coordinates: [number, number][] }) {
+		setCopyError(null);
+		const coordText = route.coordinates.map(([lng, lat]) => `${lng}, ${lat}`).join("\n");
+		const fullText = `${route.name}\n${route.description ? `${route.description}\n` : ""}Titik:\n${coordText}`;
+		try {
+			await navigator.clipboard.writeText(fullText);
+			setCopiedId(route.name);
+			setTimeout(() => setCopiedId(null), 2000);
+		} catch {
+			setCopyError("Gagal menyalin rute ke papan klip. Salin teks secara manual.");
+		}
+	}
+
 	const routes = routesQuery.data?.alternativeRoutes ?? [];
 	if (routes.length === 0) return null;
 
 	return (
-		<div className="rounded-2xl border border-[#C7DBD0] bg-[#F6FAF7] p-5 space-y-3">
-			<div className="flex items-center gap-2">
-				<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#264D3B] text-white">
-					<MapPin className="w-3.5 h-3.5" />
+		<div className="rounded-2xl border border-[#C7DBD0] bg-[#F6FAF7] p-5 space-y-4">
+			<div className="flex items-start gap-3">
+				<span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#264D3B] text-white shrink-0 mt-0.5">
+					<Compass className="w-4 h-4" />
 				</span>
-				<div>
+				<div className="space-y-1">
 					<h3 className="text-sm font-bold text-[#181817]">
-						Jalur Alternatif Terverifikasi Panitia
+						Jalur Alternatif Sementara (Panduan Panitia)
 					</h3>
 					<p className="text-xs text-[#585854]">
-						Gunakan jalur ini untuk menghindari jalan yang ditutup selama kegiatan upacara.
+						Panduan jalur pengalihan sementara yang dirancang panitia desa adat untuk membantu menghindari ruas jalan kegiatan upacara.
 					</p>
 				</div>
 			</div>
 
-			<div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+			{/* Disclaimer Box (Honest Domain State: SPEC-08) */}
+			<div className="p-3 rounded-xl border border-[#E5E3DC] bg-white text-xs text-[#585854] leading-relaxed flex items-start gap-2">
+				<Info className="w-4 h-4 text-[#8C8B85] shrink-0 mt-0.5" />
+				<span>
+					<strong>Catatan Operasional:</strong> Rute ini merupakan simulasi koordinasi adat dan bukan izin resmi penutupan lalu lintas. Selalu patuhi rambu resmi dan arahan petugas Kepolisian, Dishub, atau Pecalang di lokasi upacara.
+				</span>
+			</div>
+
+			{copyError ? (
+				<div className="p-2.5 rounded-lg bg-[#FDF2F2] border border-[#F87171] text-[#991B1B] text-xs">
+					{copyError}
+				</div>
+			) : null}
+
+			<div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
 				{routes.map((route) => (
 					<div
 						key={route.id}
-						className="p-3.5 rounded-xl border border-[#E5E3DC] bg-white space-y-1 shadow-2xs"
+						className="p-4 rounded-xl border border-[#E5E3DC] bg-white space-y-2 shadow-2xs"
 					>
-						<div className="flex items-center justify-between gap-2">
-							<h4 className="text-xs font-bold text-[#181817]">{route.name}</h4>
-							<span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EBF3EF] text-[#264D3B]">
-								Rute Resmi
+						<div className="flex items-start justify-between gap-2">
+							<h4 className="text-xs font-bold text-[#181817] leading-snug">{route.name}</h4>
+							<span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EBF3EF] text-[#264D3B] shrink-0">
+								Simulasi Alternatif
 							</span>
 						</div>
 						{route.description ? (
 							<p className="text-xs text-[#585854]">{route.description}</p>
 						) : null}
-						<p className="text-[10px] text-[#8C8B85]">
-							Disetujui prajuru desa adat • Hindari antrean
-						</p>
+
+						{/* Text fallback for coordinates checkpoints (SPEC-08) */}
+						{route.geometry && Array.isArray(route.geometry.coordinates) ? (
+							<div className="pt-1 border-t border-[#F0EFEA] text-[11px] text-[#8C8B85] flex items-center justify-between">
+								<span>
+									{route.geometry.coordinates.length} titik koordinat pengalihan
+								</span>
+								<button
+									type="button"
+									onClick={() =>
+										handleCopyRoute({
+											name: route.name,
+											description: route.description ?? undefined,
+											coordinates: route.geometry.coordinates as [number, number][],
+										})
+									}
+									className="inline-flex items-center gap-1 text-[#264D3B] hover:underline font-semibold cursor-pointer"
+								>
+									{copiedId === route.name ? (
+										<>
+											<Check className="w-3 h-3" />
+											<span>Tersalin!</span>
+										</>
+									) : (
+										<>
+											<Copy className="w-3 h-3" />
+											<span>Salin Titik</span>
+										</>
+									)}
+								</button>
+							</div>
+						) : null}
 					</div>
 				))}
 			</div>

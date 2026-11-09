@@ -1,18 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+	AlertCircle,
 	AlertTriangle,
 	Check,
 	CheckCircle2,
 	ClipboardCheck,
 	Copy,
+	Edit3,
 	FileText,
 	Info,
 	Loader2,
 	RefreshCw,
 	Sparkles,
-	Trash2,
+	XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
 	fetchLatestImpactAnalysis,
 	fetchLatestPublicNoticeDraft,
@@ -25,7 +27,7 @@ import {
 } from "../../lib/events-api";
 
 // ---------------------------------------------------------------------------
-// 1. Grounded Impact Planner Panel (Ticket 05)
+// 1. Grounded Impact Planner Panel (Ticket 05 & SPEC-03 / SPEC-04 / SPEC-10)
 // ---------------------------------------------------------------------------
 export function ImpactPlannerPanel({
 	eventId,
@@ -35,34 +37,61 @@ export function ImpactPlannerPanel({
 	isOrganizer: boolean;
 }) {
 	const queryClient = useQueryClient();
-	const [feedbackMsg, setFeedbackMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+	const [feedbackMsg, setFeedbackMsg] = useState<{
+		type: "success" | "error";
+		text: string;
+	} | null>(null);
 
 	const impactQuery = useQuery({
 		queryKey: ["advisory", "impact-analysis", eventId],
 		queryFn: () => fetchLatestImpactAnalysis(eventId),
 		enabled: Boolean(eventId),
+		retry: 1,
 	});
 
 	const generateMutation = useMutation({
 		mutationFn: () => runImpactAnalysis(eventId),
 		onSuccess: () => {
-			setFeedbackMsg({ type: "success", text: "Analisis dampak berhasil diperbarui berdasarkan data jalan dan waktu upacara." });
-			queryClient.invalidateQueries({ queryKey: ["advisory", "impact-analysis", eventId] });
+			setFeedbackMsg({
+				type: "success",
+				text: "Analisis dampak berhasil diperbarui berdasarkan data jalan dan waktu upacara.",
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["advisory", "impact-analysis", eventId],
+			});
 		},
 		onError: (err: Error) => {
-			setFeedbackMsg({ type: "error", text: err.message || "Gagal menjalankan analisis dampak." });
+			setFeedbackMsg({
+				type: "error",
+				text: err.message || "Gagal menjalankan analisis dampak.",
+			});
 		},
 	});
 
 	const decisionMutation = useMutation({
-		mutationFn: ({ runId, decision, reason }: { runId: string; decision: "approved" | "dismissed"; reason?: string }) =>
-			submitImpactDecision(eventId, runId, { decision, reason }),
+		mutationFn: ({
+			runId,
+			decision,
+			reason,
+		}: {
+			runId: string;
+			decision: "approved" | "dismissed";
+			reason?: string;
+		}) => submitImpactDecision(eventId, runId, { decision, reason }),
 		onSuccess: () => {
-			setFeedbackMsg({ type: "success", text: "Keputusan prajuru telah dicatat di catatan operasional." });
-			queryClient.invalidateQueries({ queryKey: ["advisory", "impact-analysis", eventId] });
+			setFeedbackMsg({
+				type: "success",
+				text: "Keputusan prajuru telah dicatat di catatan operasional.",
+			});
+			queryClient.invalidateQueries({
+				queryKey: ["advisory", "impact-analysis", eventId],
+			});
 		},
 		onError: (err: Error) => {
-			setFeedbackMsg({ type: "error", text: err.message || "Gagal mencatat keputusan." });
+			setFeedbackMsg({
+				type: "error",
+				text: err.message || "Gagal mencatat keputusan.",
+			});
 		},
 	});
 
@@ -79,7 +108,7 @@ export function ImpactPlannerPanel({
 							<Sparkles className="w-3.5 h-3.5" />
 						</span>
 						<h2 className="text-sm font-bold text-[#181817]">
-							Perencana Dampak Lalu Lintas (Grounded AI)
+							Perencana Dampak Lalu Lintas (Grounded Advisory)
 						</h2>
 					</div>
 					<p className="text-xs text-[#585854]">
@@ -92,16 +121,16 @@ export function ImpactPlannerPanel({
 						type="button"
 						onClick={() => generateMutation.mutate()}
 						disabled={generateMutation.isPending}
-						className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[44px] transition-all"
+						className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] transition-all cursor-pointer shadow-2xs"
 					>
 						{generateMutation.isPending ? (
 							<>
-								<Loader2 className="w-3.5 h-3.5 animate-spin" />
+								<Loader2 className="w-4 h-4 animate-spin" />
 								<span>Menganalisis...</span>
 							</>
 						) : (
 							<>
-								<RefreshCw className="w-3.5 h-3.5" />
+								<RefreshCw className="w-4 h-4" />
 								<span>Jalankan Analisis Dampak</span>
 							</>
 						)}
@@ -111,7 +140,7 @@ export function ImpactPlannerPanel({
 
 			{feedbackMsg ? (
 				<div
-					className={`p-3 rounded-xl text-xs flex items-center justify-between ${
+					className={`p-3.5 rounded-xl text-xs flex items-center justify-between ${
 						feedbackMsg.type === "success"
 							? "bg-[#EBF3EF] text-[#264D3B] border border-[#C7DBD0]"
 							: "bg-[#FDF2F2] text-[#991B1B] border border-[#F87171]"
@@ -121,156 +150,193 @@ export function ImpactPlannerPanel({
 					<button
 						type="button"
 						onClick={() => setFeedbackMsg(null)}
-						className="text-xs underline ml-2 cursor-pointer"
+						className="text-xs font-semibold underline ml-2 cursor-pointer min-h-[32px] px-2"
 					>
 						Tutup
 					</button>
 				</div>
 			) : null}
 
-			{isStale ? (
-				<div className="p-3 rounded-xl bg-[#FEF9E7] border border-[#FDE68A] text-[#92400E] text-xs flex items-start gap-2">
-					<AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-					<div>
-						<p className="font-semibold">Perhatian: Data Kegiatan Telah Berubah</p>
-						<p className="text-[11px] mt-0.5">
-							Ruas jalan atau jadwal kegiatan telah diperbarui sejak analisis ini dibuat. Jalankan analisis ulang agar saran pos tetap mutakhir.
-						</p>
-					</div>
-				</div>
-			) : null}
-
+			{/* SPEC-10: Differentiate Loading, Error with Retry, Empty, and Success */}
 			{impactQuery.isLoading ? (
 				<div className="py-8 text-center text-xs text-[#585854] flex items-center justify-center gap-2">
 					<Loader2 className="w-4 h-4 animate-spin text-[#264D3B]" />
-					<span>Memuat riwayat analisis dampak...</span>
+					<span>Memuat data analisis dampak...</span>
+				</div>
+			) : impactQuery.isError ? (
+				<div className="p-4 rounded-xl border border-[#F87171] bg-[#FDF2F2] space-y-2">
+					<div className="flex items-center gap-2 text-[#991B1B] text-xs font-semibold">
+						<AlertTriangle className="w-4 h-4 shrink-0" />
+						<span>
+							Gagal memuat analisis dampak: {impactQuery.error?.message || "Layanan tidak dapat dihubungi (503)."}
+						</span>
+					</div>
+					<button
+						type="button"
+						onClick={() => impactQuery.refetch()}
+						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[40px] cursor-pointer"
+					>
+						<RefreshCw className="w-3.5 h-3.5" />
+						<span>Coba Muat Ulang</span>
+					</button>
 				</div>
 			) : !advisory ? (
 				<div className="py-8 text-center rounded-xl border border-dashed border-[#E5E3DC] bg-[#FAF9F5] p-6 space-y-2">
 					<Info className="w-6 h-6 text-[#8C8B85] mx-auto" />
 					<p className="text-xs font-semibold text-[#181817]">Belum Ada Analisis Dampak</p>
 					<p className="text-xs text-[#585854] max-w-md mx-auto">
-						Tekan tombol &quot;Jalankan Analisis Dampak&quot; di atas untuk memeriksa potensi titik macet dan usulan tugas pecalang.
+						Tekan tombol &quot;Jalankan Analisis Dampak&quot; untuk menghasilkan pertimbangan lalu lintas, rekomendasi titik pos pecalang, dan pemeriksaan potensi tumpang-tindih rute.
 					</p>
 				</div>
 			) : (
 				<div className="space-y-4">
-					{/* Status dan Keputusan Terakhir */}
-					<div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[#F7F6F2] border border-[#E5E3DC]">
-						<div className="text-xs text-[#585854]">
-							Dianalisis pada:{" "}
-							<span className="font-medium text-[#181817]">
-								{new Date(advisory.createdAt).toLocaleString("id-ID", { timeZone: "Asia/Makassar" })} WITA
+					{/* Provenance and Freshness Bar (SPEC-03 & SPEC-04) */}
+					<div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[#FAF9F5] border border-[#E5E3DC] text-xs">
+						<div className="flex items-center gap-2">
+							<span className="font-semibold text-[#181817]">Metode:</span>
+							<span className="px-2 py-0.5 rounded bg-white border border-[#E5E3DC] text-[11px] font-mono text-[#585854]">
+								{advisory.modelIdentifier}
 							</span>
 						</div>
-						{latestDecision ? (
-							<span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${
-								latestDecision.decision === "approved"
-									? "bg-[#EBF3EF] text-[#264D3B]"
-									: "bg-[#F3F1EC] text-[#585854]"
-							}`}>
-								<CheckCircle2 className="w-3 h-3" />
-								{latestDecision.decision === "approved" ? "Diterima Prajuru" : "Diabaikan"}
-							</span>
-						) : null}
+
+						{isStale ? (
+							<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-[11px] font-semibold">
+								<AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+								<span>Kondisi jalan telah berubah sejak analisis dibuat. Silakan analisis ulang.</span>
+							</div>
+						) : (
+							<div className="flex items-center gap-1.5 text-[11px] text-[#264D3B] font-medium">
+								<CheckCircle2 className="w-3.5 h-3.5" />
+								<span>Sesuai data ruas jalan & waktu terkini</span>
+							</div>
+						)}
 					</div>
 
-					{/* Temuan & Resiko */}
+					{/* Temuan Utama */}
 					<div className="space-y-2">
-						<h3 className="text-xs font-bold uppercase tracking-wider text-[#585854]">
-							Temuan &amp; Potensi Titik Macet ({advisory.output.findings.length})
+						<h3 className="text-xs font-bold text-[#181817] uppercase tracking-wider">
+							Temuan Dampak Lalu Lintas
 						</h3>
 						<div className="space-y-2">
 							{advisory.output.findings.map((finding) => (
 								<div
 									key={finding.id}
-									className="p-3 rounded-xl border border-[#E5E3DC] bg-white space-y-1"
+									className="p-3.5 rounded-xl border border-[#E5E3DC] bg-white space-y-1.5"
 								>
 									<div className="flex items-center justify-between gap-2">
 										<h4 className="text-xs font-bold text-[#181817]">{finding.title}</h4>
-										<span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-											finding.severity === "high" || finding.severity === "critical"
-												? "bg-[#FDF2F2] text-[#991B1B]"
-												: finding.severity === "medium"
-													? "bg-[#FEF9E7] text-[#92400E]"
-													: "bg-[#F3F1EC] text-[#585854]"
-										}`}>
+										<span
+											className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+												finding.severity === "high"
+													? "bg-[#FDF2F2] text-[#991B1B]"
+													: finding.severity === "medium"
+														? "bg-[#FEF9E7] text-[#92400E]"
+														: "bg-[#EBF3EF] text-[#264D3B]"
+											}`}
+										>
 											{finding.severity}
 										</span>
 									</div>
-									<p className="text-xs text-[#585854]">{finding.description}</p>
-									{finding.factRefs.length > 0 ? (
-										<div className="flex flex-wrap gap-1 mt-1">
-											{finding.factRefs.map((ref, idx) => (
-												<span key={idx} className="text-[10px] px-1.5 py-0.5 rounded bg-[#F3F1EC] text-[#585854]">
-													Rujuk: {ref}
-												</span>
-											))}
-										</div>
+									<p className="text-xs text-[#585854] leading-relaxed">
+										{finding.description}
+									</p>
+									{finding.mitigationSuggestion ? (
+										<p className="text-[11px] text-[#264D3B] font-medium bg-[#F6FAF7] p-2 rounded-lg border border-[#C7DBD0]">
+											Saran Mitigasi: {finding.mitigationSuggestion}
+										</p>
 									) : null}
 								</div>
 							))}
 						</div>
 					</div>
 
-					{/* Saran Tindakan Lapangan */}
+					{/* Rekomendasi Titik Pos Petugas */}
 					<div className="space-y-2">
-						<h3 className="text-xs font-bold uppercase tracking-wider text-[#585854]">
-							Usulan Tindakan Petugas ({advisory.output.taskSuggestions.length})
+						<h3 className="text-xs font-bold text-[#181817] uppercase tracking-wider">
+							Rekomendasi Pos Petugas Pecalang
 						</h3>
-						<div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-							{advisory.output.taskSuggestions.map((sugg) => (
+						<div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+							{(
+								advisory.output.taskRecommendations ??
+								advisory.output.taskSuggestions?.map((s) => ({
+									id: s.id,
+									title: s.suggestedAction,
+									description: `Kategori: ${s.category}`,
+									priority: "normal",
+								})) ??
+								[]
+							).map((rec) => (
 								<div
-									key={sugg.id}
-									className="p-3 rounded-xl border border-[#E5E3DC] bg-[#FAF9F5] space-y-1"
+									key={rec.id}
+									className="p-3 rounded-xl border border-[#E5E3DC] bg-white space-y-1"
 								>
-									<span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#EBF3EF] text-[#264D3B]">
-										{sugg.category}
+									<h4 className="text-xs font-bold text-[#181817]">{rec.title}</h4>
+									<p className="text-xs text-[#585854]">{rec.description}</p>
+									<span className="inline-block mt-1 text-[10px] font-semibold text-[#8C8B85]">
+										Prioritas: {rec.priority}
 									</span>
-									<p className="text-xs font-medium text-[#181817] mt-1">{sugg.suggestedAction}</p>
 								</div>
 							))}
 						</div>
 					</div>
 
-					{/* Disclaimer domain */}
-					<p className="text-[11px] text-[#8C8B85] italic border-t border-[#E5E3DC] pt-3">
-						{advisory.output.disclaimer}
-					</p>
+					{/* Status Keputusan / Tindakan Review (SPEC-10: Accurate approved vs dismissed) */}
+					{isOrganizer ? (
+						<div className="pt-2 border-t border-[#E5E3DC]">
+							{!latestDecision ? (
+								<div className="flex flex-wrap items-center gap-2">
+									<button
+										type="button"
+										onClick={() =>
+											decisionMutation.mutate({
+												runId: advisory.id,
+												decision: "approved",
+												reason: "Pertimbangan dampak telah ditinjau oleh prajuru.",
+											})
+										}
+										disabled={decisionMutation.isPending || isStale}
+										className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
+									>
+										<Check className="w-4 h-4" />
+										<span>Setujui Pertimbangan Dampak</span>
+									</button>
 
-					{/* Aksi Prajuru */}
-					{isOrganizer && !latestDecision ? (
-						<div className="flex flex-wrap items-center gap-2 pt-2">
-							<button
-								type="button"
-								onClick={() =>
-									decisionMutation.mutate({
-										runId: advisory.id,
-										decision: "approved",
-										reason: "Disetujui sebagai panduan pos jaga pecalang.",
-									})
-								}
-								disabled={decisionMutation.isPending}
-								className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[44px]"
-							>
-								<Check className="w-3.5 h-3.5" />
-								<span>Terima sebagai Catatan Operasional</span>
-							</button>
-
-							<button
-								type="button"
-								onClick={() =>
-									decisionMutation.mutate({
-										runId: advisory.id,
-										decision: "dismissed",
-										reason: "Diabaikan karena rute telah dipahami oleh pecalang.",
-									})
-								}
-								disabled={decisionMutation.isPending}
-								className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-[#585854] text-xs font-semibold hover:bg-[#F3F1EC] min-h-[44px]"
-							>
-								<span>Abaikan Analisis Ini</span>
-							</button>
+									<button
+										type="button"
+										onClick={() =>
+											decisionMutation.mutate({
+												runId: advisory.id,
+												decision: "dismissed",
+												reason: "Draf dampak diabaikan oleh prajuru.",
+											})
+										}
+										disabled={decisionMutation.isPending}
+										className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-xs font-semibold text-[#585854] hover:bg-[#F3F1EC] min-h-[48px] cursor-pointer"
+									>
+										<span>Abaikan Analisis Ini</span>
+									</button>
+								</div>
+							) : (
+								<div
+									className={`p-3.5 rounded-xl text-xs flex items-center gap-2 ${
+										latestDecision.decision === "approved"
+											? "bg-[#EBF3EF] border border-[#C7DBD0] text-[#264D3B]"
+											: "bg-[#FEF9E7] border border-[#FDE68A] text-[#92400E]"
+									}`}
+								>
+									{latestDecision.decision === "approved" ? (
+										<CheckCircle2 className="w-4 h-4 shrink-0" />
+									) : (
+										<XCircle className="w-4 h-4 shrink-0" />
+									)}
+									<span>
+										{latestDecision.decision === "approved"
+											? `Pertimbangan telah disetujui prajuru pada ${new Date(latestDecision.createdAt).toLocaleDateString("id-ID")}.`
+											: `Analisis ini diabaikan oleh prajuru pada ${new Date(latestDecision.createdAt).toLocaleDateString("id-ID")}.`}
+										{latestDecision.reason ? ` (${latestDecision.reason})` : ""}
+									</span>
+								</div>
+							)}
 						</div>
 					) : null}
 				</div>
@@ -280,7 +346,7 @@ export function ImpactPlannerPanel({
 }
 
 // ---------------------------------------------------------------------------
-// 2. Reviewed Public Notice Drafts Panel (Ticket 08)
+// 2. Public Notice Draft Panel (Ticket 08 & SPEC-05 / SPEC-06 / SPEC-10)
 // ---------------------------------------------------------------------------
 export function PublicNoticeDraftPanel({
 	eventId,
@@ -291,45 +357,162 @@ export function PublicNoticeDraftPanel({
 }) {
 	const queryClient = useQueryClient();
 	const [activeTab, setActiveTab] = useState<"whatsapp" | "summary" | "officer">("whatsapp");
+	const [isEditing, setIsEditing] = useState(false);
+	const [editSummary, setEditSummary] = useState("");
+	const [editWhatsapp, setEditWhatsapp] = useState("");
+	const [editReason, setEditReason] = useState("");
 	const [copied, setCopied] = useState(false);
-	const [feedbackMsg, setFeedbackMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
+	const [feedbackMsg, setFeedbackMsg] = useState<{
+		type: "success" | "error";
+		text: string;
+	} | null>(null);
 
 	const noticeQuery = useQuery({
-		queryKey: ["advisory", "notice-draft", eventId],
+		queryKey: ["advisory", "public-notice-draft", eventId],
 		queryFn: () => fetchLatestPublicNoticeDraft(eventId),
 		enabled: Boolean(eventId),
+		retry: 1,
 	});
 
 	const generateMutation = useMutation({
 		mutationFn: () => generatePublicNoticeDraft(eventId),
 		onSuccess: () => {
-			setFeedbackMsg({ type: "success", text: "Draf siaran warga berhasil dibuat dari data kegiatan yang telah ditinjau." });
-			queryClient.invalidateQueries({ queryKey: ["advisory", "notice-draft", eventId] });
+			setFeedbackMsg({
+				type: "success",
+				text: "Draf siaran warga berhasil disusun dari data kegiatan dan jalan yang disetujui.",
+			});
+			setIsEditing(false);
+			queryClient.invalidateQueries({
+				queryKey: ["advisory", "public-notice-draft", eventId],
+			});
 		},
 		onError: (err: Error) => {
-			setFeedbackMsg({ type: "error", text: err.message || "Gagal membuat draf siaran warga." });
+			setFeedbackMsg({
+				type: "error",
+				text: err.message || "Gagal menyusun draf siaran warga.",
+			});
 		},
 	});
 
 	const decisionMutation = useMutation({
-		mutationFn: ({ runId, decision, reason }: { runId: string; decision: "approved" | "dismissed"; reason?: string }) =>
-			submitPublicNoticeDecision(eventId, runId, { decision, reason }),
+		mutationFn: ({
+			runId,
+			decision,
+			reason,
+			correctedPublicSummary,
+			correctedWhatsappNotice,
+		}: {
+			runId: string;
+			decision: "approved" | "rejected" | "dismissed";
+			reason?: string;
+			correctedPublicSummary?: string;
+			correctedWhatsappNotice?: string;
+		}) =>
+			submitPublicNoticeDecision(eventId, runId, {
+				decision,
+				reason,
+				correctedPublicSummary,
+				correctedWhatsappNotice,
+			}),
 		onSuccess: () => {
-			setFeedbackMsg({ type: "success", text: "Draf siaran telah disetujui prajuru untuk disebarkan ke warga." });
-			queryClient.invalidateQueries({ queryKey: ["advisory", "notice-draft", eventId] });
+			setFeedbackMsg({
+				type: "success",
+				text: "Keputusan prajuru dan koreksi teks berhasil dicatat.",
+			});
+			setIsEditing(false);
+			queryClient.invalidateQueries({
+				queryKey: ["advisory", "public-notice-draft", eventId],
+			});
 		},
 		onError: (err: Error) => {
-			setFeedbackMsg({ type: "error", text: err.message || "Gagal menyimpan persetujuan." });
+			setFeedbackMsg({
+				type: "error",
+				text: err.message || "Gagal mencatat keputusan draf siaran.",
+			});
 		},
 	});
 
 	const draft = noticeQuery.data?.noticeDraft;
+	const isStale = noticeQuery.data?.isStale;
 	const latestDecision = noticeQuery.data?.latestDecision;
 
-	function handleCopy(text: string) {
-		navigator.clipboard.writeText(text);
-		setCopied(true);
-		setTimeout(() => setCopied(false), 2000);
+	// Determine active text to display (SPEC-06: use accepted correctedOutputJson if approved)
+	const displayedNotice = useMemo(() => {
+		if (!draft) return null;
+		const corrected = latestDecision?.correctedOutputJson as
+			| { correctedPublicSummary?: string; correctedWhatsappNotice?: string }
+			| undefined;
+
+		const isApproved = latestDecision?.decision === "approved";
+		const hasCorrected = Boolean(isApproved && (corrected?.correctedPublicSummary || corrected?.correctedWhatsappNotice));
+
+		return {
+			whatsappNotice:
+				isApproved && corrected?.correctedWhatsappNotice
+					? corrected.correctedWhatsappNotice
+					: draft.output.whatsappNotice,
+			publicSummary:
+				isApproved && corrected?.correctedPublicSummary
+					? corrected.correctedPublicSummary
+					: draft.output.publicSummary,
+			officerBrief: draft.output.officerBrief,
+			isCorrectedVersion: hasCorrected,
+		};
+	}, [draft, latestDecision]);
+
+	function handleStartEditing() {
+		setEditSummary(displayedNotice?.publicSummary || draft?.output.publicSummary || "");
+		setEditWhatsapp(displayedNotice?.whatsappNotice || draft?.output.whatsappNotice || "");
+		setIsEditing(true);
+	}
+
+	// Word & character counts for live validation (SPEC-06)
+	const summaryWordCount = useMemo(
+		() => editSummary.split(/\s+/).filter(Boolean).length,
+		[editSummary],
+	);
+	const whatsappCharCount = editWhatsapp.length;
+	const isSummaryOverLimit = summaryWordCount > 120;
+	const isWhatsappOverLimit = whatsappCharCount > 600;
+
+	// Clipboard handling with proper async try/catch (SPEC-10)
+	async function handleCopy(text: string) {
+		try {
+			await navigator.clipboard.writeText(text);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 2000);
+		} catch {
+			setFeedbackMsg({
+				type: "error",
+				text: "Gagal menyalin teks ke papan klip. Izin peramban diblokir atau tidak tersedia.",
+			});
+		}
+	}
+
+	function handleSaveCorrection() {
+		if (!draft) return;
+		if (isSummaryOverLimit) {
+			setFeedbackMsg({
+				type: "error",
+				text: `Ringkasan publik maksimal 120 kata (terhitung ${summaryWordCount} kata).`,
+			});
+			return;
+		}
+		if (isWhatsappOverLimit) {
+			setFeedbackMsg({
+				type: "error",
+				text: `Pesan WhatsApp maksimal 600 karakter (terhitung ${whatsappCharCount} karakter).`,
+			});
+			return;
+		}
+
+		decisionMutation.mutate({
+			runId: draft.id,
+			decision: "approved",
+			reason: editReason.trim() || "Disetujui dengan koreksi teks panitia.",
+			correctedPublicSummary: editSummary.trim(),
+			correctedWhatsappNotice: editWhatsapp.trim(),
+		});
 	}
 
 	return (
@@ -341,11 +524,11 @@ export function PublicNoticeDraftPanel({
 							<FileText className="w-3.5 h-3.5" />
 						</span>
 						<h2 className="text-sm font-bold text-[#181817]">
-							Draf Siaran Warga &amp; WhatsApp (Advisory AI)
+							Draf Siaran Warga &amp; WhatsApp (Grounded Advisory)
 						</h2>
 					</div>
 					<p className="text-xs text-[#585854]">
-						Menghasilkan draf pengumuman ringkas dan format siaran WhatsApp banjar dari fakta kegiatan yang telah disetujui.
+						Menghasilkan pengumuman ringkas (≤120 kata) dan format siaran WhatsApp banjar (≤600 karakter) yang terikat pada data kegiatan yang disetujui.
 					</p>
 				</div>
 
@@ -354,16 +537,16 @@ export function PublicNoticeDraftPanel({
 						type="button"
 						onClick={() => generateMutation.mutate()}
 						disabled={generateMutation.isPending}
-						className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[44px] transition-all"
+						className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] transition-all cursor-pointer shadow-2xs"
 					>
 						{generateMutation.isPending ? (
 							<>
-								<Loader2 className="w-3.5 h-3.5 animate-spin" />
+								<Loader2 className="w-4 h-4 animate-spin" />
 								<span>Menyusun Teks...</span>
 							</>
 						) : (
 							<>
-								<Sparkles className="w-3.5 h-3.5" />
+								<Sparkles className="w-4 h-4" />
 								<span>Buat Draf Siaran Warga</span>
 							</>
 						)}
@@ -373,7 +556,7 @@ export function PublicNoticeDraftPanel({
 
 			{feedbackMsg ? (
 				<div
-					className={`p-3 rounded-xl text-xs flex items-center justify-between ${
+					className={`p-3.5 rounded-xl text-xs flex items-center justify-between ${
 						feedbackMsg.type === "success"
 							? "bg-[#EBF3EF] text-[#264D3B] border border-[#C7DBD0]"
 							: "bg-[#FDF2F2] text-[#991B1B] border border-[#F87171]"
@@ -383,19 +566,37 @@ export function PublicNoticeDraftPanel({
 					<button
 						type="button"
 						onClick={() => setFeedbackMsg(null)}
-						className="text-xs underline ml-2 cursor-pointer"
+						className="text-xs font-semibold underline ml-2 cursor-pointer min-h-[32px] px-2"
 					>
 						Tutup
 					</button>
 				</div>
 			) : null}
 
+			{/* SPEC-10: Explicit Loading, Error, Empty, and Success states */}
 			{noticeQuery.isLoading ? (
 				<div className="py-8 text-center text-xs text-[#585854] flex items-center justify-center gap-2">
 					<Loader2 className="w-4 h-4 animate-spin text-[#264D3B]" />
 					<span>Memuat draf siaran warga...</span>
 				</div>
-			) : !draft ? (
+			) : noticeQuery.isError ? (
+				<div className="p-4 rounded-xl border border-[#F87171] bg-[#FDF2F2] space-y-2">
+					<div className="flex items-center gap-2 text-[#991B1B] text-xs font-semibold">
+						<AlertTriangle className="w-4 h-4 shrink-0" />
+						<span>
+							Gagal memuat draf siaran: {noticeQuery.error?.message || "Layanan tidak dapat dihubungi (503)."}
+						</span>
+					</div>
+					<button
+						type="button"
+						onClick={() => noticeQuery.refetch()}
+						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[40px] cursor-pointer"
+					>
+						<RefreshCw className="w-3.5 h-3.5" />
+						<span>Coba Muat Ulang</span>
+					</button>
+				</div>
+			) : !draft || !displayedNotice ? (
 				<div className="py-8 text-center rounded-xl border border-dashed border-[#E5E3DC] bg-[#FAF9F5] p-6 space-y-2">
 					<Info className="w-6 h-6 text-[#8C8B85] mx-auto" />
 					<p className="text-xs font-semibold text-[#181817]">Belum Ada Draf Siaran</p>
@@ -405,111 +606,265 @@ export function PublicNoticeDraftPanel({
 				</div>
 			) : (
 				<div className="space-y-4">
-					{/* Sub-tabs format teks */}
-					<div className="flex items-center gap-2 border-b border-[#E5E3DC] pb-2">
-						<button
-							type="button"
-							onClick={() => setActiveTab("whatsapp")}
-							className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-								activeTab === "whatsapp"
-									? "bg-[#264D3B] text-white"
-									: "bg-white text-[#585854] hover:text-[#181817]"
-							}`}
-						>
-							Format WhatsApp Banjar
-						</button>
-						<button
-							type="button"
-							onClick={() => setActiveTab("summary")}
-							className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-								activeTab === "summary"
-									? "bg-[#264D3B] text-white"
-									: "bg-white text-[#585854] hover:text-[#181817]"
-							}`}
-						>
-							Ringkasan Publik (≤100 kata)
-						</button>
-						<button
-							type="button"
-							onClick={() => setActiveTab("officer")}
-							className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-								activeTab === "officer"
-									? "bg-[#264D3B] text-white"
-									: "bg-white text-[#585854] hover:text-[#181817]"
-							}`}
-						>
-							Catatan Petugas Lapangan
-						</button>
-					</div>
+					{/* Staleness and Correction Indicator */}
+					<div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[#FAF9F5] border border-[#E5E3DC] text-xs">
+						<div className="flex items-center gap-2 flex-wrap">
+							{displayedNotice.isCorrectedVersion ? (
+								<span className="px-2.5 py-0.5 rounded-full bg-[#EBF3EF] border border-[#C7DBD0] text-[#264D3B] font-semibold text-[11px]">
+									Versi Terkoreksi (Disetujui Prajuru)
+								</span>
+							) : (
+								<span className="px-2.5 py-0.5 rounded-full bg-white border border-[#E5E3DC] text-[#585854] text-[11px]">
+									Draf Rekomendasi Sistem
+								</span>
+							)}
+						</div>
 
-					{/* Konten Teks Terpilih */}
-					<div className="relative rounded-xl border border-[#E5E3DC] bg-[#FAF9F5] p-4">
-						<pre className="text-xs font-sans text-[#181817] whitespace-pre-wrap leading-relaxed select-text">
-							{activeTab === "whatsapp"
-								? draft.output.whatsappNotice
-								: activeTab === "summary"
-									? draft.output.publicSummary
-									: draft.output.officerBrief}
-						</pre>
-
-						<div className="mt-3 flex items-center justify-between border-t border-[#E5E3DC] pt-3">
+						{isStale ? (
+							<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-[11px] font-semibold">
+								<AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+								<span>Jadwal atau ruas jalan telah diubah sejak draf ini dibuat. Buat draf ulang sebelum menyetujui.</span>
+							</div>
+						) : (
 							<span className="text-[11px] text-[#8C8B85]">
-								{draft.output.wordCount} kata • {draft.output.charCount} karakter
+								Dibuat pada {new Date(draft.createdAt).toLocaleDateString("id-ID")}
 							</span>
-
-							<button
-								type="button"
-								onClick={() =>
-									handleCopy(
-										activeTab === "whatsapp"
-											? draft.output.whatsappNotice
-											: activeTab === "summary"
-												? draft.output.publicSummary
-												: draft.output.officerBrief,
-									)
-								}
-								className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] min-h-[40px] cursor-pointer"
-							>
-								{copied ? (
-									<>
-										<Check className="w-3.5 h-3.5 text-[#264D3B]" />
-										<span className="text-[#264D3B]">Tersalin!</span>
-									</>
-								) : (
-									<>
-										<Copy className="w-3.5 h-3.5 text-[#585854]" />
-										<span>Salin Teks</span>
-									</>
-								)}
-							</button>
-						</div>
+						)}
 					</div>
 
-					{/* Persetujuan Prajuru */}
-					{isOrganizer && !latestDecision ? (
-						<div className="flex flex-wrap items-center gap-2 pt-2">
-							<button
-								type="button"
-								onClick={() =>
-									decisionMutation.mutate({
-										runId: draft.id,
-										decision: "approved",
-										reason: "Teks siaran disetujui untuk diumumkan ke warga desa.",
-									})
-								}
-								disabled={decisionMutation.isPending}
-								className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[44px]"
-							>
-								<Check className="w-3.5 h-3.5" />
-								<span>Setujui Teks Siaran</span>
-							</button>
+					{/* Correction Form Mode (SPEC-06) */}
+					{isEditing ? (
+						<div className="p-5 rounded-2xl border-2 border-[#264D3B] bg-[#FAF9F5] space-y-4">
+							<div className="border-b border-[#E5E3DC] pb-2">
+								<h3 className="text-sm font-bold text-[#181817]">
+									Koreksi Teks Siaran Warga
+								</h3>
+								<p className="text-xs text-[#585854] mt-0.5">
+									Sesuaikan redaksi pengumuman. Label simulasi dan fakta jalan tetap divalidasi oleh sistem.
+								</p>
+							</div>
+
+							<div>
+								<div className="flex items-center justify-between mb-1">
+									<label htmlFor="edit-summary" className="text-xs font-semibold text-[#181817]">
+										Ringkasan Publik (Maksimal 120 kata)
+									</label>
+									<span
+										className={`text-[11px] font-mono ${
+											isSummaryOverLimit ? "text-[#991B1B] font-bold" : "text-[#585854]"
+										}`}
+									>
+										{summaryWordCount} / 120 kata
+									</span>
+								</div>
+								<textarea
+									id="edit-summary"
+									rows={3}
+									value={editSummary}
+									onChange={(e) => setEditSummary(e.target.value)}
+									className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B]"
+								/>
+							</div>
+
+							<div>
+								<div className="flex items-center justify-between mb-1">
+									<label htmlFor="edit-whatsapp" className="text-xs font-semibold text-[#181817]">
+										Pesan WhatsApp Banjar (Maksimal 600 karakter)
+									</label>
+									<span
+										className={`text-[11px] font-mono ${
+											isWhatsappOverLimit ? "text-[#991B1B] font-bold" : "text-[#585854]"
+										}`}
+									>
+										{whatsappCharCount} / 600 karakter
+									</span>
+								</div>
+								<textarea
+									id="edit-whatsapp"
+									rows={6}
+									value={editWhatsapp}
+									onChange={(e) => setEditWhatsapp(e.target.value)}
+									className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm font-mono text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B]"
+								/>
+							</div>
+
+							<div>
+								<label htmlFor="edit-reason" className="block text-xs font-semibold text-[#181817] mb-1">
+									Catatan Alasan Koreksi (Opsional)
+								</label>
+								<input
+									id="edit-reason"
+									type="text"
+									placeholder="Contoh: Menyesuaikan sebutan banjar adat dan titik kumpul warga"
+									value={editReason}
+									onChange={(e) => setEditReason(e.target.value)}
+									className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[48px]"
+								/>
+							</div>
+
+							<div className="flex flex-wrap items-center gap-3 pt-2">
+								<button
+									type="button"
+									disabled={decisionMutation.isPending || isSummaryOverLimit || isWhatsappOverLimit || isStale}
+									onClick={handleSaveCorrection}
+									className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
+								>
+									{decisionMutation.isPending ? (
+										<Loader2 className="w-4 h-4 animate-spin" />
+									) : (
+										<Check className="w-4 h-4" />
+									)}
+									<span>Setujui dengan Koreksi Ini</span>
+								</button>
+
+								<button
+									type="button"
+									onClick={() => setIsEditing(false)}
+									className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-sm font-semibold text-[#585854] hover:bg-[#F3F1EC] min-h-[48px] cursor-pointer"
+								>
+									Batal Koreksi
+								</button>
+							</div>
 						</div>
-					) : latestDecision ? (
-						<div className="p-3 rounded-xl bg-[#EBF3EF] border border-[#C7DBD0] text-[#264D3B] text-xs flex items-center gap-2">
-							<CheckCircle2 className="w-4 h-4 shrink-0" />
-							<span>Teks siaran telah disetujui prajuru pada {new Date(latestDecision.createdAt).toLocaleDateString("id-ID")}.</span>
-						</div>
-					) : null}
+					) : (
+						<>
+							{/* Sub-tabs format teks */}
+							<div className="flex items-center gap-2 border-b border-[#E5E3DC] pb-2">
+								<button
+									type="button"
+									onClick={() => setActiveTab("whatsapp")}
+									className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all min-h-[40px] cursor-pointer ${
+										activeTab === "whatsapp"
+											? "bg-[#264D3B] text-white shadow-2xs"
+											: "bg-white text-[#585854] hover:text-[#181817]"
+									}`}
+								>
+									Format WhatsApp Banjar (≤600 kar)
+								</button>
+								<button
+									type="button"
+									onClick={() => setActiveTab("summary")}
+									className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all min-h-[40px] cursor-pointer ${
+										activeTab === "summary"
+											? "bg-[#264D3B] text-white shadow-2xs"
+											: "bg-white text-[#585854] hover:text-[#181817]"
+									}`}
+								>
+									Ringkasan Publik (≤120 kata)
+								</button>
+								<button
+									type="button"
+									onClick={() => setActiveTab("officer")}
+									className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all min-h-[40px] cursor-pointer ${
+										activeTab === "officer"
+											? "bg-[#264D3B] text-white shadow-2xs"
+											: "bg-white text-[#585854] hover:text-[#181817]"
+									}`}
+								>
+									Catatan Petugas Lapangan
+								</button>
+							</div>
+
+							{/* Konten Teks Terpilih */}
+							<div className="relative rounded-2xl border border-[#E5E3DC] bg-[#FAF9F5] p-5 shadow-2xs">
+								<pre className="text-sm font-sans text-[#181817] whitespace-pre-wrap leading-relaxed select-text">
+									{activeTab === "whatsapp"
+										? displayedNotice.whatsappNotice
+										: activeTab === "summary"
+											? displayedNotice.publicSummary
+											: displayedNotice.officerBrief}
+								</pre>
+
+								<div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#E5E3DC] pt-3">
+									<span className="text-[11px] text-[#8C8B85]">
+										{activeTab === "whatsapp"
+											? `${displayedNotice.whatsappNotice.length} karakter`
+											: `${displayedNotice.publicSummary.split(/\s+/).filter(Boolean).length} kata`}
+									</span>
+
+									<div className="flex items-center gap-2">
+										{isOrganizer && (!latestDecision || latestDecision.decision !== "approved") ? (
+											<button
+												type="button"
+												onClick={handleStartEditing}
+												className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#D1CFCA] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] min-h-[44px] cursor-pointer"
+											>
+												<Edit3 className="w-3.5 h-3.5 text-[#585854]" />
+												<span>Koreksi Redaksi</span>
+											</button>
+										) : null}
+
+										<button
+											type="button"
+											onClick={() =>
+												handleCopy(
+													activeTab === "whatsapp"
+														? displayedNotice.whatsappNotice
+														: activeTab === "summary"
+															? displayedNotice.publicSummary
+															: displayedNotice.officerBrief,
+												)
+											}
+											className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#D1CFCA] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] min-h-[44px] cursor-pointer shadow-2xs"
+										>
+											{copied ? (
+												<>
+													<Check className="w-4 h-4 text-[#264D3B]" />
+													<span className="text-[#264D3B]">Tersalin!</span>
+												</>
+											) : (
+												<>
+													<Copy className="w-4 h-4 text-[#585854]" />
+													<span>Salin Teks</span>
+												</>
+											)}
+										</button>
+									</div>
+								</div>
+							</div>
+
+							{/* Persetujuan Prajuru */}
+							{isOrganizer && !latestDecision ? (
+								<div className="flex flex-wrap items-center gap-2 pt-2">
+									<button
+										type="button"
+										onClick={() =>
+											decisionMutation.mutate({
+												runId: draft.id,
+												decision: "approved",
+												reason: "Teks siaran disetujui untuk diumumkan ke warga desa.",
+											})
+										}
+										disabled={decisionMutation.isPending || isStale}
+										className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
+									>
+										<Check className="w-4 h-4" />
+										<span>Setujui Teks Siaran (Sesuai Draf)</span>
+									</button>
+								</div>
+							) : latestDecision ? (
+								<div
+									className={`p-3.5 rounded-xl text-xs flex items-center gap-2 ${
+										latestDecision.decision === "approved"
+											? "bg-[#EBF3EF] border border-[#C7DBD0] text-[#264D3B]"
+											: "bg-[#FEF9E7] border border-[#FDE68A] text-[#92400E]"
+									}`}
+								>
+									{latestDecision.decision === "approved" ? (
+										<CheckCircle2 className="w-4 h-4 shrink-0" />
+									) : (
+										<XCircle className="w-4 h-4 shrink-0" />
+									)}
+									<span>
+										{latestDecision.decision === "approved"
+											? `Teks siaran telah disetujui prajuru pada ${new Date(latestDecision.createdAt).toLocaleDateString("id-ID")}.`
+											: `Draf siaran diabaikan pada ${new Date(latestDecision.createdAt).toLocaleDateString("id-ID")}.`}
+										{latestDecision.reason ? ` (${latestDecision.reason})` : ""}
+									</span>
+								</div>
+							) : null}
+						</>
+					)}
 				</div>
 			)}
 		</div>
@@ -517,7 +872,7 @@ export function PublicNoticeDraftPanel({
 }
 
 // ---------------------------------------------------------------------------
-// 3. Waste Logistics & Scenario Planning Tool (Ticket 09)
+// 3. Waste Logistics & Scenario Planning Tool (Ticket 09 & SPEC-09 / STD-02)
 // ---------------------------------------------------------------------------
 export function WastePlanningPanel({
 	eventId,
@@ -528,6 +883,11 @@ export function WastePlanningPanel({
 }) {
 	const [participants, setParticipants] = useState(500);
 	const [durationHours, setDurationHours] = useState(6);
+	const [useExplicitCoefficients, setUseExplicitCoefficients] = useState(false);
+	const [wasteRate, setWasteRate] = useState(0.35);
+	const [organicPct, setOrganicPct] = useState(65);
+	const [recyclablePct, setRecyclablePct] = useState(20);
+	const [residualPct, setResidualPct] = useState(15);
 	const [wastePlan, setWastePlan] = useState<WastePlanRun | null>(null);
 	const [isLoading, setIsLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -537,13 +897,32 @@ export function WastePlanningPanel({
 		setIsLoading(true);
 		setError(null);
 		try {
-			const res = await generateWastePlan(eventId, {
+			const payload: {
+				estimatedParticipants: number;
+				durationHours: number;
+				wastePerPersonDayKg?: number;
+				organicFraction?: number;
+				recyclableFraction?: number;
+				residualFraction?: number;
+			} = {
 				estimatedParticipants: Number(participants),
 				durationHours: Number(durationHours),
-			});
+			};
+
+			if (useExplicitCoefficients) {
+				payload.wastePerPersonDayKg = Number(wasteRate);
+				payload.organicFraction = Number(organicPct) / 100;
+				payload.recyclableFraction = Number(recyclablePct) / 100;
+				payload.residualFraction = Number(residualPct) / 100;
+			} else {
+				// Omitting rate or passing 0 triggers the honest operational checklist mode (SPEC-09)
+				payload.wastePerPersonDayKg = 0;
+			}
+
+			const res = await generateWastePlan(eventId, payload);
 			setWastePlan(res.wastePlan);
 		} catch (err: unknown) {
-			setError(err instanceof Error ? err.message : "Gagal menghitung perkiraan sampah.");
+			setError(err instanceof Error ? err.message : "Gagal menghitung panduan sampah.");
 		} finally {
 			setIsLoading(false);
 		}
@@ -551,144 +930,234 @@ export function WastePlanningPanel({
 
 	return (
 		<div className="teduh-workspace-card space-y-4">
-			<div className="space-y-1 border-b border-[#E5E3DC] pb-4">
+			<div className="border-b border-[#E5E3DC] pb-4">
 				<div className="flex items-center gap-2">
 					<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#EBF3EF] text-[#264D3B]">
-						<Trash2 className="w-3.5 h-3.5" />
+						<ClipboardCheck className="w-3.5 h-3.5" />
 					</span>
 					<h2 className="text-sm font-bold text-[#181817]">
-						Perencanaan Logistik &amp; Skenario Sampah Upacara
+						Rencana Logistik &amp; Kebersihan Pasca-Upacara
 					</h2>
 				</div>
-				<p className="text-xs text-[#585854]">
-					Menghitung kebutuhan karung sampah, titik pengumpulan terpilah, dan estimasi beban timbulan sampah pasca-upacara adat.
+				<p className="text-xs text-[#585854] mt-1">
+					Menyusun panduan penanganan sarana upakara (canang, dresta, residu) dan daftar periksa operasional posko kebersihan banjar.
 				</p>
 			</div>
 
-			{/* Form Parameter */}
-			<form onSubmit={handleCalculate} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-				<div>
-					<label htmlFor="waste-participants" className="block text-xs font-semibold text-[#181817] mb-1">
-						Perkiraan Krama/Pamedek (orang)
-					</label>
-					<input
-						id="waste-participants"
-						type="number"
-						min="10"
-						max="50000"
-						value={participants}
-						onChange={(e) => setParticipants(Number(e.target.value))}
-						className="w-full px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[44px]"
-					/>
-				</div>
-
-				<div>
-					<label htmlFor="waste-duration" className="block text-xs font-semibold text-[#181817] mb-1">
-						Durasi Rangkaian (jam)
-					</label>
-					<input
-						id="waste-duration"
-						type="number"
-						min="1"
-						max="48"
-						value={durationHours}
-						onChange={(e) => setDurationHours(Number(e.target.value))}
-						className="w-full px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[44px]"
-					/>
-				</div>
-
-				<div>
-					<button
-						type="submit"
-						disabled={isLoading || !isOrganizer}
-						className="w-full inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[44px] transition-all cursor-pointer"
-					>
-						{isLoading ? (
-							<>
-								<Loader2 className="w-3.5 h-3.5 animate-spin" />
-								<span>Menghitung...</span>
-							</>
-						) : (
-							<>
-								<Sparkles className="w-3.5 h-3.5" />
-								<span>Hitung Kebutuhan Logistik</span>
-							</>
-						)}
-					</button>
-				</div>
-			</form>
-
-			{error ? (
-				<div className="p-3 rounded-xl bg-[#FDF2F2] border border-[#F87171] text-[#991B1B] text-xs">
-					{error}
-				</div>
-			) : null}
-
-			{wastePlan ? (
-				<div className="space-y-4 pt-2">
-					{/* Hasil Estimasi Skenario */}
-					<div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-						<div className="p-3 rounded-xl bg-[#FAF9F5] border border-[#E5E3DC] text-center">
-							<span className="text-[10px] font-bold uppercase text-[#585854]">Total Timbulan</span>
-							<p className="text-base font-bold text-[#181817] mt-0.5">
-								{wastePlan.output.scenarioLogistics.estimatedTotalKg} kg
-							</p>
-							<span className="text-[10px] text-[#8C8B85]">Skenario Matematis</span>
+			{isOrganizer ? (
+				<form onSubmit={handleCalculate} className="p-4 rounded-xl border border-[#E5E3DC] bg-[#FAF9F5] space-y-4">
+					<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+						<div>
+							<label htmlFor="waste-participants" className="block text-xs font-semibold text-[#181817] mb-1.5">
+								Perkiraan Pamedek / Warga (Orang)
+							</label>
+							<input
+								id="waste-participants"
+								type="number"
+								min={1}
+								max={100000}
+								value={participants}
+								onChange={(e) => setParticipants(Number(e.target.value))}
+								className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[48px]"
+							/>
 						</div>
 
-						<div className="p-3 rounded-xl bg-[#FAF9F5] border border-[#E5E3DC] text-center">
-							<span className="text-[10px] font-bold uppercase text-[#264D3B]">Organik (Canang/Bunga)</span>
-							<p className="text-base font-bold text-[#264D3B] mt-0.5">
-								{wastePlan.output.scenarioLogistics.estimatedOrganicKg} kg
-							</p>
-							<span className="text-[10px] text-[#8C8B85]">~75% Kompos Desa</span>
-						</div>
-
-						<div className="p-3 rounded-xl bg-[#FAF9F5] border border-[#E5E3DC] text-center">
-							<span className="text-[10px] font-bold uppercase text-[#1E40AF]">Daur Ulang</span>
-							<p className="text-base font-bold text-[#1E40AF] mt-0.5">
-								{wastePlan.output.scenarioLogistics.estimatedRecyclableKg} kg
-							</p>
-							<span className="text-[10px] text-[#8C8B85]">Botol / Plastik</span>
-						</div>
-
-						<div className="p-3 rounded-xl bg-[#FAF9F5] border border-[#E5E3DC] text-center">
-							<span className="text-[10px] font-bold uppercase text-[#92400E]">Kebutuhan Karung</span>
-							<p className="text-base font-bold text-[#92400E] mt-0.5">
-								{wastePlan.output.scenarioLogistics.estimatedSackCount} karung
-							</p>
-							<span className="text-[10px] text-[#8C8B85]">Ukuran 25 kg</span>
+						<div>
+							<label htmlFor="waste-duration" className="block text-xs font-semibold text-[#181817] mb-1.5">
+								Durasi Pelaksanaan Upacara (Jam)
+							</label>
+							<input
+								id="waste-duration"
+								type="number"
+								min={1}
+								max={48}
+								value={durationHours}
+								onChange={(e) => setDurationHours(Number(e.target.value))}
+								className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[48px]"
+							/>
 						</div>
 					</div>
 
-					{/* Checklist Persiapan Kebersihan */}
+					{/* Explicit user coefficients toggle (SPEC-09: No fabricated hidden defaults) */}
+					<div className="pt-2 border-t border-[#E5E3DC] space-y-3">
+						<label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[#181817]">
+							<input
+								type="checkbox"
+								checked={useExplicitCoefficients}
+								onChange={(e) => setUseExplicitCoefficients(e.target.checked)}
+								className="w-4 h-4 text-[#264D3B] rounded border-[#D1CFCA] focus:ring-[#264D3B]"
+							/>
+							<span>Gunakan Koefisien Timbulan Sampah Berdasarkan Data Pengguna</span>
+						</label>
+
+						{useExplicitCoefficients ? (
+							<div className="p-3.5 rounded-xl border border-[#C7DBD0] bg-white space-y-3 text-xs">
+								<div>
+									<label htmlFor="waste-rate" className="block font-semibold text-[#181817] mb-1">
+										Koefisien Timbulan (kg / orang / hari)
+									</label>
+									<input
+										id="waste-rate"
+										type="number"
+										step="0.05"
+										min="0.05"
+										max="2.0"
+										value={wasteRate}
+										onChange={(e) => setWasteRate(Number(e.target.value))}
+										className="w-full px-3 py-2 rounded-lg border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] min-h-[44px]"
+									/>
+								</div>
+
+								<div className="grid grid-cols-3 gap-2">
+									<div>
+										<label htmlFor="waste-org" className="block font-semibold text-[#181817] mb-1">
+											Organik (%)
+										</label>
+										<input
+											id="waste-org"
+											type="number"
+											min={0}
+											max={100}
+											value={organicPct}
+											onChange={(e) => setOrganicPct(Number(e.target.value))}
+											className="w-full px-3 py-2 rounded-lg border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] min-h-[44px]"
+										/>
+									</div>
+									<div>
+										<label htmlFor="waste-rec" className="block font-semibold text-[#181817] mb-1">
+											Daur Ulang (%)
+										</label>
+										<input
+											id="waste-rec"
+											type="number"
+											min={0}
+											max={100}
+											value={recyclablePct}
+											onChange={(e) => setRecyclablePct(Number(e.target.value))}
+											className="w-full px-3 py-2 rounded-lg border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] min-h-[44px]"
+										/>
+									</div>
+									<div>
+										<label htmlFor="waste-res" className="block font-semibold text-[#181817] mb-1">
+											Residu (%)
+										</label>
+										<input
+											id="waste-res"
+											type="number"
+											min={0}
+											max={100}
+											value={residualPct}
+											onChange={(e) => setResidualPct(Number(e.target.value))}
+											className="w-full px-3 py-2 rounded-lg border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] min-h-[44px]"
+										/>
+									</div>
+								</div>
+								<p className="text-[11px] text-[#8C8B85]">
+									Total proporsi harus 100% (saat ini: {organicPct + recyclablePct + residualPct}%).
+								</p>
+							</div>
+						) : (
+							<p className="text-[11px] text-[#585854]">
+								Mode default: Daftar periksa operasional banjar tanpa angka estimasi tonase spekulatif.
+							</p>
+						)}
+					</div>
+
+					{error ? (
+						<div className="p-3 rounded-xl bg-[#FDF2F2] border border-[#F87171] text-[#991B1B] text-xs flex items-center gap-2">
+							<AlertCircle className="w-4 h-4 shrink-0" />
+							<span>{error}</span>
+						</div>
+					) : null}
+
+					<button
+						type="submit"
+						disabled={isLoading}
+						className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
+					>
+						{isLoading ? (
+							<>
+								<Loader2 className="w-4 h-4 animate-spin" />
+								<span>Menyusun Panduan...</span>
+							</>
+						) : (
+							<>
+								<ClipboardCheck className="w-4 h-4" />
+								<span>
+									{useExplicitCoefficients ? "Hitung Estimasi & Susun Panduan" : "Tampilkan Daftar Periksa Operasional"}
+								</span>
+							</>
+						)}
+					</button>
+				</form>
+			) : null}
+
+			{/* Hasil Panduan & Logistik */}
+			{wastePlan ? (
+				<div className="space-y-4 pt-2">
+					{wastePlan.output.scenarioLogistics ? (
+						<div className="p-4 rounded-xl border border-[#C7DBD0] bg-[#F6FAF7] space-y-3">
+							<div className="flex items-center justify-between text-xs font-semibold text-[#264D3B]">
+								<span>Estimasi Skenario Logistik Sampah</span>
+								<span className="text-[11px] font-normal text-[#585854]">
+									Berdasarkan koefisien pengguna ({wastePlan.output.assumptions?.rateKgPerParticipantPerDay} kg/orang/hari)
+								</span>
+							</div>
+
+							<div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
+								<div className="p-2.5 rounded-lg bg-white border border-[#E5E3DC]">
+									<span className="text-[10px] text-[#585854] block">Organik</span>
+									<span className="text-sm font-bold text-[#166534]">
+										{wastePlan.output.scenarioLogistics.estimatedOrganicKg} kg
+									</span>
+								</div>
+								<div className="p-2.5 rounded-lg bg-white border border-[#E5E3DC]">
+									<span className="text-[10px] text-[#585854] block">Daur Ulang</span>
+									<span className="text-sm font-bold text-[#0284C7]">
+										{wastePlan.output.scenarioLogistics.estimatedRecyclableKg} kg
+									</span>
+								</div>
+								<div className="p-2.5 rounded-lg bg-white border border-[#E5E3DC]">
+									<span className="text-[10px] text-[#585854] block">Residu</span>
+									<span className="text-sm font-bold text-[#991B1B]">
+										{wastePlan.output.scenarioLogistics.estimatedResidualKg} kg
+									</span>
+								</div>
+								<div className="p-2.5 rounded-lg bg-white border border-[#E5E3DC]">
+									<span className="text-[10px] text-[#585854] block">Kebutuhan Karung</span>
+									<span className="text-sm font-bold text-[#181817]">
+										~{wastePlan.output.scenarioLogistics.estimatedSackCount} karung
+									</span>
+								</div>
+							</div>
+						</div>
+					) : (
+						<div className="p-3.5 rounded-xl border border-[#E5E3DC] bg-[#FAF9F5] text-xs text-[#585854] leading-relaxed">
+							<strong>Mode Daftar Periksa:</strong> Sistem menyajikan daftar periksa operasional tanpa angka estimasi tonase karena belum tersedianya data timbulan berdasar hasil pengukuran lapangan.
+						</div>
+					)}
+
+					{/* Checklist Operasional */}
 					<div className="space-y-2">
-						<h3 className="text-xs font-bold uppercase tracking-wider text-[#585854]">
-							Checklist Operasional Kebersihan Panitia
+						<h3 className="text-xs font-bold text-[#181817] uppercase tracking-wider">
+							Daftar Periksa Pengelolaan Kebersihan
 						</h3>
 						<div className="space-y-1.5">
 							{wastePlan.output.checklist.map((item, idx) => (
 								<div
 									key={idx}
-									className="flex items-start gap-2 p-2.5 rounded-xl border border-[#E5E3DC] bg-white text-xs text-[#181817]"
+									className="p-3 rounded-xl border border-[#E5E3DC] bg-white flex items-start gap-2.5 text-xs text-[#181817]"
 								>
-									<ClipboardCheck className="w-4 h-4 text-[#264D3B] shrink-0 mt-0.5" />
+									<CheckCircle2 className="w-4 h-4 text-[#264D3B] shrink-0 mt-0.5" />
 									<span>{item}</span>
 								</div>
 							))}
 						</div>
 					</div>
 
-					{/* Catatan Ketidakpastian & Transparansi Model (Ticket 09 & AGENTS.md §13) */}
-					<div className="p-3 rounded-xl bg-[#F7F6F2] border border-[#E5E3DC] space-y-1">
-						<div className="flex items-center gap-1.5 text-xs font-semibold text-[#585854]">
-							<Info className="w-3.5 h-3.5" />
-							<span>Transparansi Prediksi ML &amp; Standar Operasional</span>
-						</div>
-						<p className="text-[11px] text-[#8C8B85] leading-relaxed">
-							{wastePlan.output.disclaimer}
-						</p>
-					</div>
+					<p className="text-[11px] text-[#8C8B85] italic pt-1">
+						{wastePlan.output.disclaimer}
+					</p>
 				</div>
 			) : null}
 		</div>
