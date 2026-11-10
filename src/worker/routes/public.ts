@@ -15,6 +15,7 @@ import {
 	publicRoadImpactsQuerySchema,
 } from "../validators/public";
 import { evaluateEffectiveRoadStatus } from "./roads";
+import { computeRouteSourceSnapshotHash } from "./alternative-routes";
 import { BALI_GEOGRAPHIC_BOUNDS } from "../validators/roads";
 
 const publicRouter = new Hono<{
@@ -768,6 +769,31 @@ publicRouter.get("/events/:slug/alternative-routes", async (c) => {
 		return sendError(c, "NOT_FOUND", "Published event not found.", 404);
 	}
 
+	// Material road impacts freshness & snapshot comparison (SPEC-07)
+	const impactsQuery = sql`
+		SELECT id, planned_from AS "plannedFrom", planned_to AS "plannedTo", impact_type AS "impactType"
+		FROM road_impacts
+		WHERE event_id = ${event.id}
+		ORDER BY planned_from ASC;
+	`;
+	const impactsRes = await db.execute(impactsQuery);
+	const impacts = impactsRes.rows as Array<{
+		id: string;
+		plannedFrom: string | Date;
+		plannedTo: string | Date;
+		impactType: string;
+	}>;
+
+	if (impacts.length === 0) {
+		return c.json({
+			eventSlug: event.slug,
+			isSimulation: event.isSimulation !== false,
+			alternativeRoutes: [],
+		});
+	}
+
+	const currentSourceSnapshotHash = computeRouteSourceSnapshotHash(impacts);
+
 	const query = sql`
 		SELECT
 			id,
@@ -778,6 +804,8 @@ publicRouter.get("/events/:slug/alternative-routes", async (c) => {
 		FROM event_alternative_routes
 		WHERE event_id = ${event.id}
 			AND status = 'approved'
+			AND source_snapshot_hash IS NOT NULL
+			AND source_snapshot_hash = ${currentSourceSnapshotHash}
 			AND (expires_at IS NULL OR expires_at > NOW())
 			AND EXISTS (
 				SELECT 1 FROM road_impacts ri

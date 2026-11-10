@@ -101,17 +101,17 @@ export function ImpactPlannerPanel({
 
 	return (
 		<div className="teduh-workspace-card space-y-4">
-			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E5E3DC] pb-4">
+			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-4">
 				<div className="space-y-1">
 					<div className="flex items-center gap-2">
-						<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#EBF3EF] text-[#264D3B]">
+						<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-50 text-emerald-800">
 							<Sparkles className="w-3.5 h-3.5" />
 						</span>
-						<h2 className="text-sm font-bold text-[#181817]">
+						<h2 className="text-sm font-bold text-stone-900">
 							Perencana Dampak Lalu Lintas (Grounded Advisory)
 						</h2>
 					</div>
-					<p className="text-xs text-[#585854]">
+					<p className="text-xs text-stone-600">
 						Menganalisis potensi penumpukan kendaraan, konflik persimpangan, dan rekomendasi pos pecalang berdasarkan ruas jalan yang dipilih.
 					</p>
 				</div>
@@ -121,7 +121,7 @@ export function ImpactPlannerPanel({
 						type="button"
 						onClick={() => generateMutation.mutate()}
 						disabled={generateMutation.isPending}
-						className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] transition-all cursor-pointer shadow-2xs"
+						className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-800 text-white text-sm font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[48px] transition-all cursor-pointer shadow-2xs"
 					>
 						{generateMutation.isPending ? (
 							<>
@@ -142,15 +142,15 @@ export function ImpactPlannerPanel({
 				<div
 					className={`p-3.5 rounded-xl text-xs flex items-center justify-between ${
 						feedbackMsg.type === "success"
-							? "bg-[#EBF3EF] text-[#264D3B] border border-[#C7DBD0]"
-							: "bg-[#FDF2F2] text-[#991B1B] border border-[#F87171]"
+							? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+							: "bg-red-50 text-red-700 border border-red-300"
 					}`}
 				>
 					<span>{feedbackMsg.text}</span>
 					<button
 						type="button"
 						onClick={() => setFeedbackMsg(null)}
-						className="text-xs font-semibold underline ml-2 cursor-pointer min-h-[32px] px-2"
+						className="text-xs font-semibold underline ml-2 cursor-pointer min-h-[48px] px-2"
 					>
 						Tutup
 					</button>
@@ -159,13 +159,13 @@ export function ImpactPlannerPanel({
 
 			{/* SPEC-10: Differentiate Loading, Error with Retry, Empty, and Success */}
 			{impactQuery.isLoading ? (
-				<div className="py-8 text-center text-xs text-[#585854] flex items-center justify-center gap-2">
-					<Loader2 className="w-4 h-4 animate-spin text-[#264D3B]" />
+				<div className="py-8 text-center text-xs text-stone-600 flex items-center justify-center gap-2">
+					<Loader2 className="w-4 h-4 animate-spin text-emerald-800" />
 					<span>Memuat data analisis dampak...</span>
 				</div>
 			) : impactQuery.isError ? (
-				<div className="p-4 rounded-xl border border-[#F87171] bg-[#FDF2F2] space-y-2">
-					<div className="flex items-center gap-2 text-[#991B1B] text-xs font-semibold">
+				<div className="p-4 rounded-xl border border-red-300 bg-red-50 space-y-2">
+					<div className="flex items-center gap-2 text-red-700 text-xs font-semibold">
 						<AlertTriangle className="w-4 h-4 shrink-0" />
 						<span>
 							Gagal memuat analisis dampak: {impactQuery.error?.message || "Layanan tidak dapat dihubungi (503)."}
@@ -174,38 +174,38 @@ export function ImpactPlannerPanel({
 					<button
 						type="button"
 						onClick={() => impactQuery.refetch()}
-						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[40px] cursor-pointer"
+						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 min-h-[48px] cursor-pointer"
 					>
 						<RefreshCw className="w-3.5 h-3.5" />
 						<span>Coba Muat Ulang</span>
 					</button>
 				</div>
 			) : !advisory ? (
-				<div className="py-8 text-center rounded-xl border border-dashed border-[#E5E3DC] bg-[#FAF9F5] p-6 space-y-2">
-					<Info className="w-6 h-6 text-[#8C8B85] mx-auto" />
-					<p className="text-xs font-semibold text-[#181817]">Belum Ada Analisis Dampak</p>
-					<p className="text-xs text-[#585854] max-w-md mx-auto">
+				<div className="py-8 text-center rounded-xl border border-dashed border-stone-200 bg-stone-50 p-6 space-y-2">
+					<Info className="w-6 h-6 text-stone-500 mx-auto" />
+					<p className="text-xs font-semibold text-stone-900">Belum Ada Analisis Dampak</p>
+					<p className="text-xs text-stone-600 max-w-md mx-auto">
 						Tekan tombol &quot;Jalankan Analisis Dampak&quot; untuk menghasilkan pertimbangan lalu lintas, rekomendasi titik pos pecalang, dan pemeriksaan potensi tumpang-tindih rute.
 					</p>
 				</div>
 			) : (
 				<div className="space-y-4">
 					{/* Provenance and Freshness Bar (SPEC-03 & SPEC-04) */}
-					<div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[#FAF9F5] border border-[#E5E3DC] text-xs">
+					<div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-stone-50 border border-stone-200 text-xs">
 						<div className="flex items-center gap-2">
-							<span className="font-semibold text-[#181817]">Metode:</span>
-							<span className="px-2 py-0.5 rounded bg-white border border-[#E5E3DC] text-[11px] font-mono text-[#585854]">
+							<span className="font-semibold text-stone-900">Metode:</span>
+							<span className="px-2 py-0.5 rounded bg-white border border-stone-200 text-[11px] font-mono text-stone-600">
 								{advisory.modelIdentifier}
 							</span>
 						</div>
 
 						{isStale ? (
-							<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-[11px] font-semibold">
+							<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-semibold">
 								<AlertTriangle className="w-3.5 h-3.5 shrink-0" />
 								<span>Kondisi jalan telah berubah sejak analisis dibuat. Silakan analisis ulang.</span>
 							</div>
 						) : (
-							<div className="flex items-center gap-1.5 text-[11px] text-[#264D3B] font-medium">
+							<div className="flex items-center gap-1.5 text-[11px] text-emerald-800 font-medium">
 								<CheckCircle2 className="w-3.5 h-3.5" />
 								<span>Sesuai data ruas jalan & waktu terkini</span>
 							</div>
@@ -214,34 +214,34 @@ export function ImpactPlannerPanel({
 
 					{/* Temuan Utama */}
 					<div className="space-y-2">
-						<h3 className="text-xs font-bold text-[#181817] uppercase tracking-wider">
+						<h3 className="text-xs font-bold text-stone-900 uppercase tracking-wider">
 							Temuan Dampak Lalu Lintas
 						</h3>
 						<div className="space-y-2">
 							{advisory.output.findings.map((finding) => (
 								<div
 									key={finding.id}
-									className="p-3.5 rounded-xl border border-[#E5E3DC] bg-white space-y-1.5"
+									className="p-3.5 rounded-xl border border-stone-200 bg-white space-y-1.5"
 								>
 									<div className="flex items-center justify-between gap-2">
-										<h4 className="text-xs font-bold text-[#181817]">{finding.title}</h4>
+										<h4 className="text-xs font-bold text-stone-900">{finding.title}</h4>
 										<span
 											className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
 												finding.severity === "high"
-													? "bg-[#FDF2F2] text-[#991B1B]"
+													? "bg-red-50 text-red-700"
 													: finding.severity === "medium"
-														? "bg-[#FEF9E7] text-[#92400E]"
-														: "bg-[#EBF3EF] text-[#264D3B]"
+														? "bg-amber-50 text-amber-800"
+														: "bg-emerald-50 text-emerald-800"
 											}`}
 										>
 											{finding.severity}
 										</span>
 									</div>
-									<p className="text-xs text-[#585854] leading-relaxed">
+									<p className="text-xs text-stone-600 leading-relaxed">
 										{finding.description}
 									</p>
 									{finding.mitigationSuggestion ? (
-										<p className="text-[11px] text-[#264D3B] font-medium bg-[#F6FAF7] p-2 rounded-lg border border-[#C7DBD0]">
+										<p className="text-[11px] text-emerald-800 font-medium bg-emerald-50/50 p-2 rounded-lg border border-emerald-200">
 											Saran Mitigasi: {finding.mitigationSuggestion}
 										</p>
 									) : null}
@@ -252,7 +252,7 @@ export function ImpactPlannerPanel({
 
 					{/* Rekomendasi Titik Pos Petugas */}
 					<div className="space-y-2">
-						<h3 className="text-xs font-bold text-[#181817] uppercase tracking-wider">
+						<h3 className="text-xs font-bold text-stone-900 uppercase tracking-wider">
 							Rekomendasi Pos Petugas Pecalang
 						</h3>
 						<div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -268,11 +268,11 @@ export function ImpactPlannerPanel({
 							).map((rec) => (
 								<div
 									key={rec.id}
-									className="p-3 rounded-xl border border-[#E5E3DC] bg-white space-y-1"
+									className="p-3 rounded-xl border border-stone-200 bg-white space-y-1"
 								>
-									<h4 className="text-xs font-bold text-[#181817]">{rec.title}</h4>
-									<p className="text-xs text-[#585854]">{rec.description}</p>
-									<span className="inline-block mt-1 text-[10px] font-semibold text-[#8C8B85]">
+									<h4 className="text-xs font-bold text-stone-900">{rec.title}</h4>
+									<p className="text-xs text-stone-600">{rec.description}</p>
+									<span className="inline-block mt-1 text-[10px] font-semibold text-stone-500">
 										Prioritas: {rec.priority}
 									</span>
 								</div>
@@ -282,7 +282,7 @@ export function ImpactPlannerPanel({
 
 					{/* Status Keputusan / Tindakan Review (SPEC-10: Accurate approved vs dismissed) */}
 					{isOrganizer ? (
-						<div className="pt-2 border-t border-[#E5E3DC]">
+						<div className="pt-2 border-t border-stone-200">
 							{!latestDecision ? (
 								<div className="flex flex-wrap items-center gap-2">
 									<button
@@ -295,7 +295,7 @@ export function ImpactPlannerPanel({
 											})
 										}
 										disabled={decisionMutation.isPending || isStale}
-										className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
+										className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
 									>
 										<Check className="w-4 h-4" />
 										<span>Setujui Pertimbangan Dampak</span>
@@ -311,7 +311,7 @@ export function ImpactPlannerPanel({
 											})
 										}
 										disabled={decisionMutation.isPending}
-										className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-xs font-semibold text-[#585854] hover:bg-[#F3F1EC] min-h-[48px] cursor-pointer"
+										className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white text-xs font-semibold text-stone-600 hover:bg-stone-100 min-h-[48px] cursor-pointer"
 									>
 										<span>Abaikan Analisis Ini</span>
 									</button>
@@ -320,8 +320,8 @@ export function ImpactPlannerPanel({
 								<div
 									className={`p-3.5 rounded-xl text-xs flex items-center gap-2 ${
 										latestDecision.decision === "approved"
-											? "bg-[#EBF3EF] border border-[#C7DBD0] text-[#264D3B]"
-											: "bg-[#FEF9E7] border border-[#FDE68A] text-[#92400E]"
+											? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+											: "bg-amber-50 border border-amber-200 text-amber-800"
 									}`}
 								>
 									{latestDecision.decision === "approved" ? (
@@ -517,17 +517,17 @@ export function PublicNoticeDraftPanel({
 
 	return (
 		<div className="teduh-workspace-card space-y-4">
-			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E5E3DC] pb-4">
+			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-4">
 				<div className="space-y-1">
 					<div className="flex items-center gap-2">
-						<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#EBF3EF] text-[#264D3B]">
+						<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-50 text-emerald-800">
 							<FileText className="w-3.5 h-3.5" />
 						</span>
-						<h2 className="text-sm font-bold text-[#181817]">
+						<h2 className="text-sm font-bold text-stone-900">
 							Draf Siaran Warga &amp; WhatsApp (Grounded Advisory)
 						</h2>
 					</div>
-					<p className="text-xs text-[#585854]">
+					<p className="text-xs text-stone-600">
 						Menghasilkan pengumuman ringkas (≤120 kata) dan format siaran WhatsApp banjar (≤600 karakter) yang terikat pada data kegiatan yang disetujui.
 					</p>
 				</div>
@@ -537,7 +537,7 @@ export function PublicNoticeDraftPanel({
 						type="button"
 						onClick={() => generateMutation.mutate()}
 						disabled={generateMutation.isPending}
-						className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] transition-all cursor-pointer shadow-2xs"
+						className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-800 text-white text-sm font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[48px] transition-all cursor-pointer shadow-2xs"
 					>
 						{generateMutation.isPending ? (
 							<>
@@ -558,15 +558,15 @@ export function PublicNoticeDraftPanel({
 				<div
 					className={`p-3.5 rounded-xl text-xs flex items-center justify-between ${
 						feedbackMsg.type === "success"
-							? "bg-[#EBF3EF] text-[#264D3B] border border-[#C7DBD0]"
-							: "bg-[#FDF2F2] text-[#991B1B] border border-[#F87171]"
+							? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+							: "bg-red-50 text-red-700 border border-red-300"
 					}`}
 				>
 					<span>{feedbackMsg.text}</span>
 					<button
 						type="button"
 						onClick={() => setFeedbackMsg(null)}
-						className="text-xs font-semibold underline ml-2 cursor-pointer min-h-[32px] px-2"
+						className="text-xs font-semibold underline ml-2 cursor-pointer min-h-[48px] px-2"
 					>
 						Tutup
 					</button>
@@ -575,13 +575,13 @@ export function PublicNoticeDraftPanel({
 
 			{/* SPEC-10: Explicit Loading, Error, Empty, and Success states */}
 			{noticeQuery.isLoading ? (
-				<div className="py-8 text-center text-xs text-[#585854] flex items-center justify-center gap-2">
-					<Loader2 className="w-4 h-4 animate-spin text-[#264D3B]" />
+				<div className="py-8 text-center text-xs text-stone-600 flex items-center justify-center gap-2">
+					<Loader2 className="w-4 h-4 animate-spin text-emerald-800" />
 					<span>Memuat draf siaran warga...</span>
 				</div>
 			) : noticeQuery.isError ? (
-				<div className="p-4 rounded-xl border border-[#F87171] bg-[#FDF2F2] space-y-2">
-					<div className="flex items-center gap-2 text-[#991B1B] text-xs font-semibold">
+				<div className="p-4 rounded-xl border border-red-300 bg-red-50 space-y-2">
+					<div className="flex items-center gap-2 text-red-700 text-xs font-semibold">
 						<AlertTriangle className="w-4 h-4 shrink-0" />
 						<span>
 							Gagal memuat draf siaran: {noticeQuery.error?.message || "Layanan tidak dapat dihubungi (503)."}
@@ -590,43 +590,43 @@ export function PublicNoticeDraftPanel({
 					<button
 						type="button"
 						onClick={() => noticeQuery.refetch()}
-						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[40px] cursor-pointer"
+						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 min-h-[48px] cursor-pointer"
 					>
 						<RefreshCw className="w-3.5 h-3.5" />
 						<span>Coba Muat Ulang</span>
 					</button>
 				</div>
 			) : !draft || !displayedNotice ? (
-				<div className="py-8 text-center rounded-xl border border-dashed border-[#E5E3DC] bg-[#FAF9F5] p-6 space-y-2">
-					<Info className="w-6 h-6 text-[#8C8B85] mx-auto" />
-					<p className="text-xs font-semibold text-[#181817]">Belum Ada Draf Siaran</p>
-					<p className="text-xs text-[#585854] max-w-md mx-auto">
+				<div className="py-8 text-center rounded-xl border border-dashed border-stone-200 bg-stone-50 p-6 space-y-2">
+					<Info className="w-6 h-6 text-stone-500 mx-auto" />
+					<p className="text-xs font-semibold text-stone-900">Belum Ada Draf Siaran</p>
+					<p className="text-xs text-stone-600 max-w-md mx-auto">
 						Tekan tombol &quot;Buat Draf Siaran Warga&quot; untuk menyusun teks pengumuman yang siap disalin ke grup WhatsApp banjar.
 					</p>
 				</div>
 			) : (
 				<div className="space-y-4">
 					{/* Staleness and Correction Indicator */}
-					<div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-[#FAF9F5] border border-[#E5E3DC] text-xs">
+					<div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-stone-50 border border-stone-200 text-xs">
 						<div className="flex items-center gap-2 flex-wrap">
 							{displayedNotice.isCorrectedVersion ? (
-								<span className="px-2.5 py-0.5 rounded-full bg-[#EBF3EF] border border-[#C7DBD0] text-[#264D3B] font-semibold text-[11px]">
+								<span className="px-2.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 font-semibold text-[11px]">
 									Versi Terkoreksi (Disetujui Prajuru)
 								</span>
 							) : (
-								<span className="px-2.5 py-0.5 rounded-full bg-white border border-[#E5E3DC] text-[#585854] text-[11px]">
+								<span className="px-2.5 py-0.5 rounded-full bg-white border border-stone-200 text-stone-600 text-[11px]">
 									Draf Rekomendasi Sistem
 								</span>
 							)}
 						</div>
 
 						{isStale ? (
-							<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FEF3C7] border border-[#FDE68A] text-[#92400E] text-[11px] font-semibold">
+							<div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 border border-amber-200 text-amber-800 text-[11px] font-semibold">
 								<AlertTriangle className="w-3.5 h-3.5 shrink-0" />
 								<span>Jadwal atau ruas jalan telah diubah sejak draf ini dibuat. Buat draf ulang sebelum menyetujui.</span>
 							</div>
 						) : (
-							<span className="text-[11px] text-[#8C8B85]">
+							<span className="text-[11px] text-stone-500">
 								Dibuat pada {new Date(draft.createdAt).toLocaleDateString("id-ID")}
 							</span>
 						)}
@@ -634,24 +634,24 @@ export function PublicNoticeDraftPanel({
 
 					{/* Correction Form Mode (SPEC-06) */}
 					{isEditing ? (
-						<div className="p-5 rounded-2xl border-2 border-[#264D3B] bg-[#FAF9F5] space-y-4">
-							<div className="border-b border-[#E5E3DC] pb-2">
-								<h3 className="text-sm font-bold text-[#181817]">
+						<div className="p-5 rounded-2xl border-2 border-emerald-800 bg-stone-50 space-y-4">
+							<div className="border-b border-stone-200 pb-2">
+								<h3 className="text-sm font-bold text-stone-900">
 									Koreksi Teks Siaran Warga
 								</h3>
-								<p className="text-xs text-[#585854] mt-0.5">
+								<p className="text-xs text-stone-600 mt-0.5">
 									Sesuaikan redaksi pengumuman. Label simulasi dan fakta jalan tetap divalidasi oleh sistem.
 								</p>
 							</div>
 
 							<div>
 								<div className="flex items-center justify-between mb-1">
-									<label htmlFor="edit-summary" className="text-xs font-semibold text-[#181817]">
+									<label htmlFor="edit-summary" className="text-xs font-semibold text-stone-900">
 										Ringkasan Publik (Maksimal 120 kata)
 									</label>
 									<span
 										className={`text-[11px] font-mono ${
-											isSummaryOverLimit ? "text-[#991B1B] font-bold" : "text-[#585854]"
+											isSummaryOverLimit ? "text-red-700 font-bold" : "text-stone-600"
 										}`}
 									>
 										{summaryWordCount} / 120 kata
@@ -662,18 +662,18 @@ export function PublicNoticeDraftPanel({
 									rows={3}
 									value={editSummary}
 									onChange={(e) => setEditSummary(e.target.value)}
-									className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B]"
+									className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white text-base sm:text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-800"
 								/>
 							</div>
 
 							<div>
 								<div className="flex items-center justify-between mb-1">
-									<label htmlFor="edit-whatsapp" className="text-xs font-semibold text-[#181817]">
+									<label htmlFor="edit-whatsapp" className="text-xs font-semibold text-stone-900">
 										Pesan WhatsApp Banjar (Maksimal 600 karakter)
 									</label>
 									<span
 										className={`text-[11px] font-mono ${
-											isWhatsappOverLimit ? "text-[#991B1B] font-bold" : "text-[#585854]"
+											isWhatsappOverLimit ? "text-red-700 font-bold" : "text-stone-600"
 										}`}
 									>
 										{whatsappCharCount} / 600 karakter
@@ -684,12 +684,12 @@ export function PublicNoticeDraftPanel({
 									rows={6}
 									value={editWhatsapp}
 									onChange={(e) => setEditWhatsapp(e.target.value)}
-									className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm font-mono text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B]"
+									className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white text-base sm:text-sm font-mono text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-800"
 								/>
 							</div>
 
 							<div>
-								<label htmlFor="edit-reason" className="block text-xs font-semibold text-[#181817] mb-1">
+								<label htmlFor="edit-reason" className="block text-xs font-semibold text-stone-900 mb-1">
 									Catatan Alasan Koreksi (Opsional)
 								</label>
 								<input
@@ -698,7 +698,7 @@ export function PublicNoticeDraftPanel({
 									placeholder="Contoh: Menyesuaikan sebutan banjar adat dan titik kumpul warga"
 									value={editReason}
 									onChange={(e) => setEditReason(e.target.value)}
-									className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[48px]"
+									className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white text-base sm:text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-800 min-h-[48px]"
 								/>
 							</div>
 
@@ -707,7 +707,7 @@ export function PublicNoticeDraftPanel({
 									type="button"
 									disabled={decisionMutation.isPending || isSummaryOverLimit || isWhatsappOverLimit || isStale}
 									onClick={handleSaveCorrection}
-									className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
+									className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-800 text-white text-sm font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
 								>
 									{decisionMutation.isPending ? (
 										<Loader2 className="w-4 h-4 animate-spin" />
@@ -720,7 +720,7 @@ export function PublicNoticeDraftPanel({
 								<button
 									type="button"
 									onClick={() => setIsEditing(false)}
-									className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-sm font-semibold text-[#585854] hover:bg-[#F3F1EC] min-h-[48px] cursor-pointer"
+									className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-stone-300 bg-white text-sm font-semibold text-stone-600 hover:bg-stone-100 min-h-[48px] cursor-pointer"
 								>
 									Batal Koreksi
 								</button>
@@ -729,14 +729,14 @@ export function PublicNoticeDraftPanel({
 					) : (
 						<>
 							{/* Sub-tabs format teks */}
-							<div className="flex items-center gap-2 border-b border-[#E5E3DC] pb-2">
+							<div className="flex items-center gap-2 border-b border-stone-200 pb-2">
 								<button
 									type="button"
 									onClick={() => setActiveTab("whatsapp")}
-									className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all min-h-[40px] cursor-pointer ${
+									className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all min-h-[48px] cursor-pointer ${
 										activeTab === "whatsapp"
-											? "bg-[#264D3B] text-white shadow-2xs"
-											: "bg-white text-[#585854] hover:text-[#181817]"
+											? "bg-emerald-800 text-white shadow-2xs"
+											: "bg-white text-stone-600 hover:text-stone-900"
 									}`}
 								>
 									Format WhatsApp Banjar (≤600 kar)
@@ -744,10 +744,10 @@ export function PublicNoticeDraftPanel({
 								<button
 									type="button"
 									onClick={() => setActiveTab("summary")}
-									className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all min-h-[40px] cursor-pointer ${
+									className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all min-h-[48px] cursor-pointer ${
 										activeTab === "summary"
-											? "bg-[#264D3B] text-white shadow-2xs"
-											: "bg-white text-[#585854] hover:text-[#181817]"
+											? "bg-emerald-800 text-white shadow-2xs"
+											: "bg-white text-stone-600 hover:text-stone-900"
 									}`}
 								>
 									Ringkasan Publik (≤120 kata)
@@ -755,10 +755,10 @@ export function PublicNoticeDraftPanel({
 								<button
 									type="button"
 									onClick={() => setActiveTab("officer")}
-									className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all min-h-[40px] cursor-pointer ${
+									className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all min-h-[48px] cursor-pointer ${
 										activeTab === "officer"
-											? "bg-[#264D3B] text-white shadow-2xs"
-											: "bg-white text-[#585854] hover:text-[#181817]"
+											? "bg-emerald-800 text-white shadow-2xs"
+											: "bg-white text-stone-600 hover:text-stone-900"
 									}`}
 								>
 									Catatan Petugas Lapangan
@@ -766,8 +766,8 @@ export function PublicNoticeDraftPanel({
 							</div>
 
 							{/* Konten Teks Terpilih */}
-							<div className="relative rounded-2xl border border-[#E5E3DC] bg-[#FAF9F5] p-5 shadow-2xs">
-								<pre className="text-sm font-sans text-[#181817] whitespace-pre-wrap leading-relaxed select-text">
+							<div className="relative rounded-2xl border border-stone-200 bg-stone-50 p-5 shadow-2xs">
+								<pre className="text-sm font-sans text-stone-900 whitespace-pre-wrap leading-relaxed select-text">
 									{activeTab === "whatsapp"
 										? displayedNotice.whatsappNotice
 										: activeTab === "summary"
@@ -775,8 +775,8 @@ export function PublicNoticeDraftPanel({
 											: displayedNotice.officerBrief}
 								</pre>
 
-								<div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#E5E3DC] pt-3">
-									<span className="text-[11px] text-[#8C8B85]">
+								<div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-stone-200 pt-3">
+									<span className="text-[11px] text-stone-500">
 										{activeTab === "whatsapp"
 											? `${displayedNotice.whatsappNotice.length} karakter`
 											: `${displayedNotice.publicSummary.split(/\s+/).filter(Boolean).length} kata`}
@@ -787,9 +787,9 @@ export function PublicNoticeDraftPanel({
 											<button
 												type="button"
 												onClick={handleStartEditing}
-												className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#D1CFCA] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] min-h-[44px] cursor-pointer"
+												className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-stone-300 bg-white text-xs font-semibold text-stone-900 hover:bg-stone-100 min-h-[48px] cursor-pointer"
 											>
-												<Edit3 className="w-3.5 h-3.5 text-[#585854]" />
+												<Edit3 className="w-3.5 h-3.5 text-stone-600" />
 												<span>Koreksi Redaksi</span>
 											</button>
 										) : null}
@@ -805,16 +805,16 @@ export function PublicNoticeDraftPanel({
 															: displayedNotice.officerBrief,
 												)
 											}
-											className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#D1CFCA] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] min-h-[44px] cursor-pointer shadow-2xs"
+											className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-stone-300 bg-white text-xs font-semibold text-stone-900 hover:bg-stone-100 min-h-[48px] cursor-pointer shadow-2xs"
 										>
 											{copied ? (
 												<>
-													<Check className="w-4 h-4 text-[#264D3B]" />
-													<span className="text-[#264D3B]">Tersalin!</span>
+													<Check className="w-4 h-4 text-emerald-800" />
+													<span className="text-emerald-800">Tersalin!</span>
 												</>
 											) : (
 												<>
-													<Copy className="w-4 h-4 text-[#585854]" />
+													<Copy className="w-4 h-4 text-stone-600" />
 													<span>Salin Teks</span>
 												</>
 											)}
@@ -836,7 +836,7 @@ export function PublicNoticeDraftPanel({
 											})
 										}
 										disabled={decisionMutation.isPending || isStale}
-										className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
+										className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
 									>
 										<Check className="w-4 h-4" />
 										<span>Setujui Teks Siaran (Sesuai Draf)</span>
@@ -846,8 +846,8 @@ export function PublicNoticeDraftPanel({
 								<div
 									className={`p-3.5 rounded-xl text-xs flex items-center gap-2 ${
 										latestDecision.decision === "approved"
-											? "bg-[#EBF3EF] border border-[#C7DBD0] text-[#264D3B]"
-											: "bg-[#FEF9E7] border border-[#FDE68A] text-[#92400E]"
+											? "bg-emerald-50 border border-emerald-200 text-emerald-800"
+											: "bg-amber-50 border border-amber-200 text-amber-800"
 									}`}
 								>
 									{latestDecision.decision === "approved" ? (
@@ -930,25 +930,25 @@ export function WastePlanningPanel({
 
 	return (
 		<div className="teduh-workspace-card space-y-4">
-			<div className="border-b border-[#E5E3DC] pb-4">
+			<div className="border-b border-stone-200 pb-4">
 				<div className="flex items-center gap-2">
-					<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#EBF3EF] text-[#264D3B]">
+					<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-50 text-emerald-800">
 						<ClipboardCheck className="w-3.5 h-3.5" />
 					</span>
-					<h2 className="text-sm font-bold text-[#181817]">
+					<h2 className="text-sm font-bold text-stone-900">
 						Rencana Logistik &amp; Kebersihan Pasca-Upacara
 					</h2>
 				</div>
-				<p className="text-xs text-[#585854] mt-1">
+				<p className="text-xs text-stone-600 mt-1">
 					Menyusun panduan penanganan sarana upakara (canang, dresta, residu) dan daftar periksa operasional posko kebersihan banjar.
 				</p>
 			</div>
 
 			{isOrganizer ? (
-				<form onSubmit={handleCalculate} className="p-4 rounded-xl border border-[#E5E3DC] bg-[#FAF9F5] space-y-4">
+				<form onSubmit={handleCalculate} className="p-4 rounded-xl border border-stone-200 bg-stone-50 space-y-4">
 					<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 						<div>
-							<label htmlFor="waste-participants" className="block text-xs font-semibold text-[#181817] mb-1.5">
+							<label htmlFor="waste-participants" className="block text-xs font-semibold text-stone-900 mb-1.5">
 								Perkiraan Pamedek / Warga (Orang)
 							</label>
 							<input
@@ -958,12 +958,12 @@ export function WastePlanningPanel({
 								max={100000}
 								value={participants}
 								onChange={(e) => setParticipants(Number(e.target.value))}
-								className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[48px]"
+								className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white text-base sm:text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-800 min-h-[48px]"
 							/>
 						</div>
 
 						<div>
-							<label htmlFor="waste-duration" className="block text-xs font-semibold text-[#181817] mb-1.5">
+							<label htmlFor="waste-duration" className="block text-xs font-semibold text-stone-900 mb-1.5">
 								Durasi Pelaksanaan Upacara (Jam)
 							</label>
 							<input
@@ -973,27 +973,27 @@ export function WastePlanningPanel({
 								max={48}
 								value={durationHours}
 								onChange={(e) => setDurationHours(Number(e.target.value))}
-								className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[48px]"
+								className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white text-base sm:text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-800 min-h-[48px]"
 							/>
 						</div>
 					</div>
 
 					{/* Explicit user coefficients toggle (SPEC-09: No fabricated hidden defaults) */}
-					<div className="pt-2 border-t border-[#E5E3DC] space-y-3">
-						<label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-[#181817]">
+					<div className="pt-2 border-t border-stone-200 space-y-3">
+						<label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-stone-900">
 							<input
 								type="checkbox"
 								checked={useExplicitCoefficients}
 								onChange={(e) => setUseExplicitCoefficients(e.target.checked)}
-								className="w-4 h-4 text-[#264D3B] rounded border-[#D1CFCA] focus:ring-[#264D3B]"
+								className="w-4 h-4 text-emerald-800 rounded border-stone-300 focus:ring-emerald-800"
 							/>
 							<span>Gunakan Koefisien Timbulan Sampah Berdasarkan Data Pengguna</span>
 						</label>
 
 						{useExplicitCoefficients ? (
-							<div className="p-3.5 rounded-xl border border-[#C7DBD0] bg-white space-y-3 text-xs">
+							<div className="p-3.5 rounded-xl border border-emerald-200 bg-white space-y-3 text-xs">
 								<div>
-									<label htmlFor="waste-rate" className="block font-semibold text-[#181817] mb-1">
+									<label htmlFor="waste-rate" className="block font-semibold text-stone-900 mb-1">
 										Koefisien Timbulan (kg / orang / hari)
 									</label>
 									<input
@@ -1004,13 +1004,13 @@ export function WastePlanningPanel({
 										max="2.0"
 										value={wasteRate}
 										onChange={(e) => setWasteRate(Number(e.target.value))}
-										className="w-full px-3 py-2 rounded-lg border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] min-h-[44px]"
+										className="w-full px-3 py-2 rounded-lg border border-stone-300 bg-white text-base sm:text-sm text-stone-900 min-h-[48px]"
 									/>
 								</div>
 
 								<div className="grid grid-cols-3 gap-2">
 									<div>
-										<label htmlFor="waste-org" className="block font-semibold text-[#181817] mb-1">
+										<label htmlFor="waste-org" className="block font-semibold text-stone-900 mb-1">
 											Organik (%)
 										</label>
 										<input
@@ -1020,11 +1020,11 @@ export function WastePlanningPanel({
 											max={100}
 											value={organicPct}
 											onChange={(e) => setOrganicPct(Number(e.target.value))}
-											className="w-full px-3 py-2 rounded-lg border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] min-h-[44px]"
+											className="w-full px-3 py-2 rounded-lg border border-stone-300 bg-white text-base sm:text-sm text-stone-900 min-h-[48px]"
 										/>
 									</div>
 									<div>
-										<label htmlFor="waste-rec" className="block font-semibold text-[#181817] mb-1">
+										<label htmlFor="waste-rec" className="block font-semibold text-stone-900 mb-1">
 											Daur Ulang (%)
 										</label>
 										<input
@@ -1034,11 +1034,11 @@ export function WastePlanningPanel({
 											max={100}
 											value={recyclablePct}
 											onChange={(e) => setRecyclablePct(Number(e.target.value))}
-											className="w-full px-3 py-2 rounded-lg border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] min-h-[44px]"
+											className="w-full px-3 py-2 rounded-lg border border-stone-300 bg-white text-base sm:text-sm text-stone-900 min-h-[48px]"
 										/>
 									</div>
 									<div>
-										<label htmlFor="waste-res" className="block font-semibold text-[#181817] mb-1">
+										<label htmlFor="waste-res" className="block font-semibold text-stone-900 mb-1">
 											Residu (%)
 										</label>
 										<input
@@ -1048,23 +1048,23 @@ export function WastePlanningPanel({
 											max={100}
 											value={residualPct}
 											onChange={(e) => setResidualPct(Number(e.target.value))}
-											className="w-full px-3 py-2 rounded-lg border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] min-h-[44px]"
+											className="w-full px-3 py-2 rounded-lg border border-stone-300 bg-white text-base sm:text-sm text-stone-900 min-h-[48px]"
 										/>
 									</div>
 								</div>
-								<p className="text-[11px] text-[#8C8B85]">
+								<p className="text-[11px] text-stone-500">
 									Total proporsi harus 100% (saat ini: {organicPct + recyclablePct + residualPct}%).
 								</p>
 							</div>
 						) : (
-							<p className="text-[11px] text-[#585854]">
+							<p className="text-[11px] text-stone-600">
 								Mode default: Daftar periksa operasional banjar tanpa angka estimasi tonase spekulatif.
 							</p>
 						)}
 					</div>
 
 					{error ? (
-						<div className="p-3 rounded-xl bg-[#FDF2F2] border border-[#F87171] text-[#991B1B] text-xs flex items-center gap-2">
+						<div className="p-3 rounded-xl bg-red-50 border border-red-300 text-red-700 text-xs flex items-center gap-2">
 							<AlertCircle className="w-4 h-4 shrink-0" />
 							<span>{error}</span>
 						</div>
@@ -1073,7 +1073,7 @@ export function WastePlanningPanel({
 					<button
 						type="submit"
 						disabled={isLoading}
-						className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
+						className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-800 text-white text-sm font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
 					>
 						{isLoading ? (
 							<>
@@ -1096,66 +1096,66 @@ export function WastePlanningPanel({
 			{wastePlan ? (
 				<div className="space-y-4 pt-2">
 					{wastePlan.output.scenarioLogistics ? (
-						<div className="p-4 rounded-xl border border-[#C7DBD0] bg-[#F6FAF7] space-y-3">
-							<div className="flex items-center justify-between text-xs font-semibold text-[#264D3B]">
+						<div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/50 space-y-3">
+							<div className="flex items-center justify-between text-xs font-semibold text-emerald-800">
 								<span>Estimasi Skenario Logistik Sampah</span>
-								<span className="text-[11px] font-normal text-[#585854]">
+								<span className="text-[11px] font-normal text-stone-600">
 									Berdasarkan koefisien pengguna ({wastePlan.output.assumptions?.rateKgPerParticipantPerDay} kg/orang/hari)
 								</span>
 							</div>
 
 							<div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center">
-								<div className="p-2.5 rounded-lg bg-white border border-[#E5E3DC]">
-									<span className="text-[10px] text-[#585854] block">Organik</span>
-									<span className="text-sm font-bold text-[#166534]">
+								<div className="p-2.5 rounded-lg bg-white border border-stone-200">
+									<span className="text-[10px] text-stone-600 block">Organik</span>
+									<span className="text-sm font-bold text-green-800">
 										{wastePlan.output.scenarioLogistics.estimatedOrganicKg} kg
 									</span>
 								</div>
-								<div className="p-2.5 rounded-lg bg-white border border-[#E5E3DC]">
-									<span className="text-[10px] text-[#585854] block">Daur Ulang</span>
-									<span className="text-sm font-bold text-[#0284C7]">
+								<div className="p-2.5 rounded-lg bg-white border border-stone-200">
+									<span className="text-[10px] text-stone-600 block">Daur Ulang</span>
+									<span className="text-sm font-bold text-sky-600">
 										{wastePlan.output.scenarioLogistics.estimatedRecyclableKg} kg
 									</span>
 								</div>
-								<div className="p-2.5 rounded-lg bg-white border border-[#E5E3DC]">
-									<span className="text-[10px] text-[#585854] block">Residu</span>
-									<span className="text-sm font-bold text-[#991B1B]">
+								<div className="p-2.5 rounded-lg bg-white border border-stone-200">
+									<span className="text-[10px] text-stone-600 block">Residu</span>
+									<span className="text-sm font-bold text-red-700">
 										{wastePlan.output.scenarioLogistics.estimatedResidualKg} kg
 									</span>
 								</div>
-								<div className="p-2.5 rounded-lg bg-white border border-[#E5E3DC]">
-									<span className="text-[10px] text-[#585854] block">Kebutuhan Karung</span>
-									<span className="text-sm font-bold text-[#181817]">
+								<div className="p-2.5 rounded-lg bg-white border border-stone-200">
+									<span className="text-[10px] text-stone-600 block">Kebutuhan Karung</span>
+									<span className="text-sm font-bold text-stone-900">
 										~{wastePlan.output.scenarioLogistics.estimatedSackCount} karung
 									</span>
 								</div>
 							</div>
 						</div>
 					) : (
-						<div className="p-3.5 rounded-xl border border-[#E5E3DC] bg-[#FAF9F5] text-xs text-[#585854] leading-relaxed">
+						<div className="p-3.5 rounded-xl border border-stone-200 bg-stone-50 text-xs text-stone-600 leading-relaxed">
 							<strong>Mode Daftar Periksa:</strong> Sistem menyajikan daftar periksa operasional tanpa angka estimasi tonase karena belum tersedianya data timbulan berdasar hasil pengukuran lapangan.
 						</div>
 					)}
 
 					{/* Checklist Operasional */}
 					<div className="space-y-2">
-						<h3 className="text-xs font-bold text-[#181817] uppercase tracking-wider">
+						<h3 className="text-xs font-bold text-stone-900 uppercase tracking-wider">
 							Daftar Periksa Pengelolaan Kebersihan
 						</h3>
 						<div className="space-y-1.5">
 							{wastePlan.output.checklist.map((item, idx) => (
 								<div
 									key={idx}
-									className="p-3 rounded-xl border border-[#E5E3DC] bg-white flex items-start gap-2.5 text-xs text-[#181817]"
+									className="p-3 rounded-xl border border-stone-200 bg-white flex items-start gap-2.5 text-xs text-stone-900"
 								>
-									<CheckCircle2 className="w-4 h-4 text-[#264D3B] shrink-0 mt-0.5" />
+									<CheckCircle2 className="w-4 h-4 text-emerald-800 shrink-0 mt-0.5" />
 									<span>{item}</span>
 								</div>
 							))}
 						</div>
 					</div>
 
-					<p className="text-[11px] text-[#8C8B85] italic pt-1">
+					<p className="text-[11px] text-stone-500 italic pt-1">
 						{wastePlan.output.disclaimer}
 					</p>
 				</div>

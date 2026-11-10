@@ -428,25 +428,102 @@ export async function buildFactualSnapshot(
 // 2. Gemini AI Seam & Deterministic Fallback (SPEC-03)
 // ---------------------------------------------------------------------------
 
-const impactGeminiSchema = z.object({
-	findings: z.array(
-		z.object({
-			id: z.string(),
-			title: z.string(),
-			description: z.string(),
-			severity: z.enum(["low", "medium", "high", "critical"]),
-			factRefs: z.array(z.string()),
-		}),
-	),
-	taskSuggestions: z.array(
-		z.object({
-			id: z.string(),
-			category: z.enum(["traffic", "cleanup", "coordination"]),
-			suggestedAction: z.string(),
-			reasonRefs: z.array(z.string()),
-		}),
-	),
+export const impactGeminiSchema = z.object({
+	findings: z
+		.array(
+			z.object({
+				id: z.string().optional(),
+				title: z.string().min(1),
+				description: z.string().min(1),
+				severity: z.enum(["low", "medium", "high", "critical"]),
+				factRefs: z.array(z.string()).min(1, "factRefs cannot be empty"),
+			}),
+		)
+		.min(1, "findings cannot be empty"),
+	taskSuggestions: z
+		.array(
+			z.object({
+				id: z.string().optional(),
+				category: z.enum(["traffic", "cleanup", "coordination"]),
+				suggestedAction: z.string().min(1),
+				reasonRefs: z.array(z.string()).min(1, "reasonRefs cannot be empty"),
+			}),
+		)
+		.min(1, "taskSuggestions cannot be empty"),
 });
+
+/**
+ * Validates and enforces strict grounding on model outputs (SPEC-03).
+ * If any reference is unknown, empty, dangling, or partially ungrounded,
+ * the response is rejected and must fall through to honest rule fallback.
+ * It NEVER silently filters bad refs or returns ungrounded findings under the model name.
+ */
+export function validateAndGroundImpactFindings(
+	data: unknown,
+	allowedSignalIds: Set<string>,
+	modelName: string,
+	latencyMs = 0,
+): {
+	success: boolean;
+	result?: {
+		findings: ImpactFinding[];
+		taskSuggestions: ImpactTaskSuggestion[];
+		modelName: string;
+		promptVersion: string;
+		schemaVersion: string;
+		latencyMs: number;
+	};
+	reason?: string;
+} {
+	const validation = impactGeminiSchema.safeParse(data);
+	if (!validation.success) {
+		return { success: false, reason: "SCHEMA_VALIDATION_FAILED" };
+	}
+
+	const rawFindings = validation.data.findings;
+	const rawTasks = validation.data.taskSuggestions;
+
+	const hasUngroundedFinding = rawFindings.some(
+		(f) =>
+			!Array.isArray(f.factRefs) ||
+			f.factRefs.length === 0 ||
+			f.factRefs.some((ref) => !allowedSignalIds.has(ref)),
+	);
+
+	const hasUngroundedTask = rawTasks.some(
+		(t) =>
+			!Array.isArray(t.reasonRefs) ||
+			t.reasonRefs.length === 0 ||
+			t.reasonRefs.some((ref) => !allowedSignalIds.has(ref)),
+	);
+
+	if (hasUngroundedFinding || hasUngroundedTask) {
+		return { success: false, reason: "UNGROUNDED_MODEL_OUTPUT" };
+	}
+
+	return {
+		success: true,
+		result: {
+			findings: rawFindings.map((f, i) => ({
+				id: `finding_${f.id || i}`,
+				title: f.title,
+				description: f.description,
+				severity: f.severity,
+				factRefs: [...f.factRefs],
+			})),
+			taskSuggestions: rawTasks.map((t, i) => ({
+				id: `task_${t.id || i}`,
+				category: t.category,
+				suggestedAction: t.suggestedAction,
+				reasonRefs: [...t.reasonRefs],
+			})),
+			modelName,
+			promptVersion: "1.0",
+			schemaVersion: "1.0",
+			latencyMs,
+		},
+	};
+}
 
 async function interpretImpacts(
 	signals: ImpactSignal[],
@@ -510,32 +587,16 @@ ATURAN KEAMANAN:
 				const text = body.candidates?.[0]?.content?.parts?.[0]?.text;
 				if (text) {
 					const parsedJson = JSON.parse(text);
-					const validation = impactGeminiSchema.safeParse(parsedJson);
-					if (validation.success) {
-						// Filter and validate factRefs and reasonRefs strictly against allowedSignalIds
-						const safeFindings = validation.data.findings.map((f, i) => ({
-							id: `finding_${f.id || i}`,
-							title: f.title,
-							description: f.description,
-							severity: f.severity,
-							factRefs: f.factRefs.filter((ref) => allowedSignalIds.has(ref)),
-						}));
-						const safeTasks = validation.data.taskSuggestions.map((t, i) => ({
-							id: `task_${t.id || i}`,
-							category: t.category,
-							suggestedAction: t.suggestedAction,
-							reasonRefs: t.reasonRefs.filter((ref) => allowedSignalIds.has(ref)),
-						}));
-
-						return {
-							findings: safeFindings,
-							taskSuggestions: safeTasks,
-							modelName: configuredModel,
-							promptVersion: "1.0",
-							schemaVersion: "1.0",
-							latencyMs: Date.now() - startTime,
-						};
+					const grounded = validateAndGroundImpactFindings(
+						parsedJson,
+						allowedSignalIds,
+						configuredModel,
+						Date.now() - startTime,
+					);
+					if (grounded.success && grounded.result) {
+						return grounded.result;
 					}
+					// If grounded validation fails, strictly reject model output and fall through to rule fallback
 				}
 			}
 		} catch {
@@ -900,9 +961,61 @@ advisoryRouter.post(
 
 		const decisionId = crypto.randomUUID();
 
-		// Atomic CTE with membership check + decision insert + audit log
+		// Atomic CTE with membership check + factual freshness guard + decision insert + audit log (SPEC-04)
 		const decisionQuery = sql`
-			WITH inserted_decision AS (
+			WITH locked_event AS (
+				SELECT e.id, e.organization_id, e.title, e.starts_at, e.ends_at, e.status
+				FROM events e
+				WHERE e.id = ${eventId}::uuid
+				FOR UPDATE OF e
+			),
+			membership_guard AS (
+				SELECT 1 FROM memberships m
+				INNER JOIN locked_event le ON le.organization_id = m.organization_id
+				WHERE m.user_id = ${currentUser.id}
+					AND m.role = 'organizer'
+			),
+			freshness_guard AS (
+				SELECT 1
+				FROM locked_event le
+				WHERE le.title = ${factual.event.title}
+					AND le.starts_at IS NOT DISTINCT FROM ${factual.event.startsAt ? new Date(factual.event.startsAt).toISOString() : null}::timestamptz
+					AND le.ends_at IS NOT DISTINCT FROM ${factual.event.endsAt ? new Date(factual.event.endsAt).toISOString() : null}::timestamptz
+					AND le.status = ${factual.event.status}
+					AND (
+						SELECT COUNT(*) FROM road_impacts ri WHERE ri.event_id = le.id
+					) = ${factual.attachedRoads.length}
+					${
+						factual.attachedRoads.length === 0
+							? sql``
+							: sql`
+					AND NOT EXISTS (
+						SELECT 1 FROM road_impacts ri
+						WHERE ri.event_id = le.id
+							AND NOT (
+								${sql.join(
+									factual.attachedRoads.map(
+										(r) => sql`(
+											ri.id = ${r.impactId}::uuid
+											AND ri.road_segment_id = ${r.roadSegmentId}::uuid
+											AND ri.planned_from = ${r.plannedFrom}::timestamptz
+											AND ri.planned_to = ${r.plannedTo}::timestamptz
+											AND ri.impact_type = ${r.impactType}
+											${
+												!r.isStale && r.expiresAt
+													? sql`AND (${new Date(r.expiresAt).toISOString()}::timestamptz > NOW())`
+													: sql``
+											}
+										)`,
+									),
+									sql` OR `,
+								)}
+							)
+					)
+					`
+					}
+			),
+			inserted_decision AS (
 				INSERT INTO advisory_decisions (
 					id, advisory_run_id, event_id, actor_id, decision, reason, input_snapshot_hash, created_at
 				)
@@ -915,12 +1028,8 @@ advisoryRouter.post(
 					${parsed.data.reason ?? null},
 					${run.inputSnapshotHash},
 					NOW()
-				WHERE EXISTS (
-					SELECT 1 FROM memberships
-					WHERE user_id = ${currentUser.id}
-						AND organization_id = ${access.event.organizationId}
-						AND role = 'organizer'
-				)
+				WHERE EXISTS (SELECT 1 FROM membership_guard)
+					AND EXISTS (SELECT 1 FROM freshness_guard)
 				RETURNING id, decision, reason, created_at AS "createdAt"
 			),
 			logged_audit AS (
@@ -950,11 +1059,25 @@ advisoryRouter.post(
 		const res = await db.execute(decisionQuery);
 		const created = res.rows[0] as { id: string; decision: string; reason: string | null; createdAt: string | Date } | undefined;
 		if (!created) {
+			const memberCheck = await db.execute(sql`
+				SELECT 1 FROM memberships
+				WHERE user_id = ${currentUser.id}
+					AND organization_id = ${access.event.organizationId}
+					AND role = 'organizer'
+			`);
+			if (memberCheck.rows.length === 0) {
+				return sendError(
+					c,
+					"FORBIDDEN",
+					"Keanggotaan panitia Anda tidak lagi aktif untuk kegiatan ini.",
+					403,
+				);
+			}
 			return sendError(
 				c,
-				"FORBIDDEN",
-				"Keanggotaan panitia Anda tidak lagi aktif untuk kegiatan ini.",
-				403,
+				"STALE_ADVISORY_INPUT",
+				"Kondisi kegiatan atau status ruas jalan telah berubah sejak analisis ini diperiksa. Silakan jalankan analisis ulang sebelum menyetujui.",
+				409,
 			);
 		}
 
@@ -1375,9 +1498,61 @@ advisoryRouter.post(
 					}
 				: null;
 
-		// Atomic CTE with membership guard + decision insert + audit log
+		// Atomic CTE with membership guard + factual freshness guard + decision insert + audit log (SPEC-04)
 		const decisionQuery = sql`
-			WITH inserted_decision AS (
+			WITH locked_event AS (
+				SELECT e.id, e.organization_id, e.title, e.starts_at, e.ends_at, e.status
+				FROM events e
+				WHERE e.id = ${eventId}::uuid
+				FOR UPDATE OF e
+			),
+			membership_guard AS (
+				SELECT 1 FROM memberships m
+				INNER JOIN locked_event le ON le.organization_id = m.organization_id
+				WHERE m.user_id = ${currentUser.id}
+					AND m.role = 'organizer'
+			),
+			freshness_guard AS (
+				SELECT 1
+				FROM locked_event le
+				WHERE le.title = ${factual.event.title}
+					AND le.starts_at IS NOT DISTINCT FROM ${factual.event.startsAt ? new Date(factual.event.startsAt).toISOString() : null}::timestamptz
+					AND le.ends_at IS NOT DISTINCT FROM ${factual.event.endsAt ? new Date(factual.event.endsAt).toISOString() : null}::timestamptz
+					AND le.status = ${factual.event.status}
+					AND (
+						SELECT COUNT(*) FROM road_impacts ri WHERE ri.event_id = le.id
+					) = ${factual.attachedRoads.length}
+					${
+						factual.attachedRoads.length === 0
+							? sql``
+							: sql`
+					AND NOT EXISTS (
+						SELECT 1 FROM road_impacts ri
+						WHERE ri.event_id = le.id
+							AND NOT (
+								${sql.join(
+									factual.attachedRoads.map(
+										(r) => sql`(
+											ri.id = ${r.impactId}::uuid
+											AND ri.road_segment_id = ${r.roadSegmentId}::uuid
+											AND ri.planned_from = ${r.plannedFrom}::timestamptz
+											AND ri.planned_to = ${r.plannedTo}::timestamptz
+											AND ri.impact_type = ${r.impactType}
+											${
+												!r.isStale && r.expiresAt
+													? sql`AND (${new Date(r.expiresAt).toISOString()}::timestamptz > NOW())`
+													: sql``
+											}
+										)`,
+									),
+									sql` OR `,
+								)}
+							)
+					)
+					`
+					}
+			),
+			inserted_decision AS (
 				INSERT INTO advisory_decisions (
 					id, advisory_run_id, event_id, actor_id, decision, reason, input_snapshot_hash, corrected_output_json, created_at
 				)
@@ -1391,12 +1566,8 @@ advisoryRouter.post(
 					${run.inputSnapshotHash},
 					${correctedJson ? JSON.stringify(correctedJson) : null}::jsonb,
 					NOW()
-				WHERE EXISTS (
-					SELECT 1 FROM memberships
-					WHERE user_id = ${currentUser.id}
-						AND organization_id = ${access.event.organizationId}
-						AND role = 'organizer'
-				)
+				WHERE EXISTS (SELECT 1 FROM membership_guard)
+					AND EXISTS (SELECT 1 FROM freshness_guard)
 				RETURNING id, decision, reason, created_at AS "createdAt"
 			),
 			logged_audit AS (
@@ -1426,11 +1597,25 @@ advisoryRouter.post(
 		const res = await db.execute(decisionQuery);
 		const created = res.rows[0] as { id: string; decision: string; reason: string | null; createdAt: string | Date } | undefined;
 		if (!created) {
+			const memberCheck = await db.execute(sql`
+				SELECT 1 FROM memberships
+				WHERE user_id = ${currentUser.id}
+					AND organization_id = ${access.event.organizationId}
+					AND role = 'organizer'
+			`);
+			if (memberCheck.rows.length === 0) {
+				return sendError(
+					c,
+					"FORBIDDEN",
+					"Keanggotaan panitia Anda tidak lagi aktif untuk kegiatan ini.",
+					403,
+				);
+			}
 			return sendError(
 				c,
-				"FORBIDDEN",
-				"Keanggotaan panitia Anda tidak lagi aktif untuk kegiatan ini.",
-				403,
+				"STALE_ADVISORY_INPUT",
+				"Kondisi kegiatan atau status ruas jalan telah berubah sejak draf siaran ini dibuat. Silakan buat draf ulang sebelum menyetujui.",
+				409,
 			);
 		}
 

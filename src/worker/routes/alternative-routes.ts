@@ -17,6 +17,29 @@ export const alternativeRoutesRouter = new Hono<{
 	Variables: AppVariables;
 }>();
 
+export function computeRouteSourceSnapshotHash(
+	impacts: Array<{
+		id: string;
+		plannedFrom: string | Date;
+		plannedTo: string | Date;
+		impactType: string;
+	}>,
+): string {
+	return crypto
+		.createHash("sha256")
+		.update(
+			JSON.stringify(
+				impacts.map((i) => ({
+					id: i.id,
+					plannedFrom: new Date(i.plannedFrom).toISOString(),
+					plannedTo: new Date(i.plannedTo).toISOString(),
+					impactType: i.impactType,
+				})),
+			),
+		)
+		.digest("hex");
+}
+
 const createAlternativeRouteSchema = z
 	.object({
 		name: z
@@ -388,15 +411,7 @@ alternativeRoutesRouter.post(
 			);
 		}
 
-		const sourceSnapshotHash = crypto
-			.createHash("sha256")
-			.update(JSON.stringify(impacts.map((i) => ({
-				id: i.id,
-				plannedFrom: new Date(i.plannedFrom).toISOString(),
-				plannedTo: new Date(i.plannedTo).toISOString(),
-				impactType: i.impactType,
-			}))))
-			.digest("hex");
+		const sourceSnapshotHash = computeRouteSourceSnapshotHash(impacts);
 
 		// Check existing route state
 		const existingQuery = sql`

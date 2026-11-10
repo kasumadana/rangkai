@@ -289,17 +289,17 @@ export function OrganizerAlternativeRoutesManager({
 
 	return (
 		<div className="teduh-workspace-card space-y-4">
-			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#E5E3DC] pb-4">
+			<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-stone-200 pb-4">
 				<div className="space-y-1">
 					<div className="flex items-center gap-2">
-						<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-[#EBF3EF] text-[#264D3B]">
+						<span className="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-emerald-50 text-emerald-800">
 							<Compass className="w-3.5 h-3.5" />
 						</span>
-						<h2 className="text-sm font-bold text-[#181817]">
+						<h2 className="text-sm font-bold text-stone-900">
 							Jalur Alternatif Terverifikasi Panitia
 						</h2>
 					</div>
-					<p className="text-xs text-[#585854]">
+					<p className="text-xs text-stone-600">
 						Pengalihan arus lalu lintas yang diverifikasi prajuru untuk memandu warga menghindari ruas jalan yang ditutup.
 					</p>
 				</div>
@@ -311,7 +311,7 @@ export function OrganizerAlternativeRoutesManager({
 							setIsAdding(true);
 							setFormError(null);
 						}}
-						className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] min-h-[48px] transition-all cursor-pointer shadow-2xs"
+						className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-800 text-white text-sm font-semibold hover:bg-emerald-900 min-h-[48px] transition-all cursor-pointer shadow-2xs"
 					>
 						<Plus className="w-4 h-4" />
 						<span>Tambah Rute Alternatif</span>
@@ -323,15 +323,15 @@ export function OrganizerAlternativeRoutesManager({
 				<div
 					className={`p-3.5 rounded-xl text-xs flex items-center justify-between ${
 						feedbackMsg.type === "success"
-							? "bg-[#EBF3EF] text-[#264D3B] border border-[#C7DBD0]"
-							: "bg-[#FDF2F2] text-[#991B1B] border border-[#F87171]"
+							? "bg-emerald-50 text-emerald-800 border border-emerald-200"
+							: "bg-red-50 text-red-700 border border-red-300"
 					}`}
 				>
 					<span>{feedbackMsg.text}</span>
 					<button
 						type="button"
 						onClick={() => setFeedbackMsg(null)}
-						className="text-xs font-semibold underline ml-2 cursor-pointer min-h-[32px] px-2"
+						className="text-xs font-semibold underline ml-2 cursor-pointer min-h-[48px] px-2"
 					>
 						Tutup
 					</button>
@@ -342,13 +342,13 @@ export function OrganizerAlternativeRoutesManager({
 			{isAdding ? (
 				<form
 					onSubmit={handleSubmit}
-					className="p-5 rounded-2xl border-2 border-[#264D3B] bg-[#FAF9F5] space-y-4"
+					className="p-5 rounded-2xl border-2 border-emerald-800 bg-stone-50 space-y-4"
 				>
-					<div className="border-b border-[#E5E3DC] pb-2">
-						<h3 className="text-sm font-bold text-[#181817]">
+					<div className="border-b border-stone-200 pb-2">
+						<h3 className="text-sm font-bold text-stone-900">
 							Rancang Rute Pengalihan Sementara (Simulasi)
 						</h3>
-						<p className="text-xs text-[#585854] mt-0.5">
+						<p className="text-xs text-stone-600 mt-0.5">
 							Masukkan titik koordinat nyata yang melintasi ruas jalan alternatif layak pakai.
 						</p>
 					</div>
@@ -356,9 +356,9 @@ export function OrganizerAlternativeRoutesManager({
 					<div>
 						<label
 							htmlFor="alt-route-name"
-							className="block text-xs font-semibold text-[#181817] mb-1.5"
+							className="block text-xs font-semibold text-stone-900 mb-1.5"
 						>
-							Nama Jalur Alternatif <span className="text-[#991B1B]">*</span>
+							Nama Jalur Alternatif <span className="text-red-700">*</span>
 						</label>
 						<input
 							id="alt-route-name"
@@ -367,14 +367,14 @@ export function OrganizerAlternativeRoutesManager({
 							placeholder="Contoh: Jalur Pengalihan Jl. Danau Poso via Gang Betutu"
 							value={name}
 							onChange={(e) => setName(e.target.value)}
-							className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[48px]"
+							className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white text-base sm:text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-800 min-h-[48px]"
 						/>
 					</div>
 
 					<div>
 						<label
 							htmlFor="alt-route-desc"
-							className="block text-xs font-semibold text-[#181817] mb-1.5"
+							className="block text-xs font-semibold text-stone-900 mb-1.5"
 						>
 							Keterangan / Kendaraan yang Diizinkan (Opsional)
 						</label>
@@ -384,16 +384,16 @@ export function OrganizerAlternativeRoutesManager({
 							placeholder="Contoh: Khusus sepeda motor dan kendaraan roda empat ringan"
 							value={description}
 							onChange={(e) => setDescription(e.target.value)}
-							className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B] min-h-[48px]"
+							className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white text-base sm:text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-800 min-h-[48px]"
 						/>
 					</div>
 
 					<div>
 						<label
 							htmlFor="alt-route-coords"
-							className="block text-xs font-semibold text-[#181817] mb-1.5"
+							className="block text-xs font-semibold text-stone-900 mb-1.5"
 						>
-							Titik Koordinat Rute (LineString bujur, lintang atau GeoJSON) <span className="text-[#991B1B]">*</span>
+							Titik Koordinat Rute (LineString bujur, lintang atau GeoJSON) <span className="text-red-700">*</span>
 						</label>
 						<textarea
 							id="alt-route-coords"
@@ -401,27 +401,27 @@ export function OrganizerAlternativeRoutesManager({
 							value={coordinatesInput}
 							onChange={(e) => setCoordinatesInput(e.target.value)}
 							placeholder={"115.258, -8.691\n115.260, -8.695\n115.262, -8.700"}
-							className="w-full px-3.5 py-2.5 rounded-xl border border-[#D1CFCA] bg-white font-mono text-base sm:text-sm text-[#181817] focus:outline-none focus:ring-2 focus:ring-[#264D3B]"
+							className="w-full px-3.5 py-2.5 rounded-xl border border-stone-300 bg-white font-mono text-base sm:text-sm text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-800"
 						/>
-						<p className="text-[11px] text-[#8C8B85] mt-1">
+						<p className="text-[11px] text-stone-500 mt-1">
 							Masukkan koordinat berurutan di wilayah Bali (bujur 114.4°..115.8°, lintang -8.9°..-8.0°). Anda juga dapat menempelkan potongan GeoJSON LineString.
 						</p>
 					</div>
 
 					{/* Geometric Preview Box (SPEC-08) */}
 					{previewSvg ? (
-						<div className="p-3.5 rounded-xl border border-[#C7DBD0] bg-[#F6FAF7] space-y-2">
-							<div className="flex items-center justify-between text-xs text-[#264D3B] font-semibold">
+						<div className="p-3.5 rounded-xl border border-emerald-200 bg-emerald-50/50 space-y-2">
+							<div className="flex items-center justify-between text-xs text-emerald-800 font-semibold">
 								<span className="flex items-center gap-1.5">
-									<CheckCircle2 className="w-4 h-4 text-[#264D3B]" />
+									<CheckCircle2 className="w-4 h-4 text-emerald-800" />
 									<span>Pratinjau Geometris Terbaca ({previewSvg.count} titik koordinat)</span>
 								</span>
-								<span className="text-[11px] text-[#585854]">
+								<span className="text-[11px] text-stone-600">
 									Titik Awal: {parsedResult.coords[0][0].toFixed(3)}, {parsedResult.coords[0][1].toFixed(3)}
 								</span>
 							</div>
 
-							<div className="w-full h-24 bg-white rounded-lg border border-[#E5E3DC] flex items-center justify-center p-2 relative overflow-hidden">
+							<div className="w-full h-24 bg-white rounded-lg border border-stone-200 flex items-center justify-center p-2 relative overflow-hidden">
 								<svg
 									viewBox="0 0 280 90"
 									className="w-full h-full max-h-20"
@@ -451,7 +451,7 @@ export function OrganizerAlternativeRoutesManager({
 										fill="#DC2626"
 									/>
 								</svg>
-								<div className="absolute bottom-1 right-2 text-[10px] text-[#8C8B85]">
+								<div className="absolute bottom-1 right-2 text-[10px] text-stone-500">
 									Garis putus-putus biru = Jalur Alternatif
 								</div>
 							</div>
@@ -459,15 +459,15 @@ export function OrganizerAlternativeRoutesManager({
 					) : null}
 
 					{/* Road-following human verification gate (SPEC-08) */}
-					<div className="p-3.5 rounded-xl border border-[#E5E3DC] bg-white">
+					<div className="p-3.5 rounded-xl border border-stone-200 bg-white">
 						<label className="flex items-start gap-3 cursor-pointer">
 							<input
 								type="checkbox"
 								checked={isRoadFollowingConfirmed}
 								onChange={(e) => setIsRoadFollowingConfirmed(e.target.checked)}
-								className="mt-1 w-4 h-4 text-[#264D3B] rounded border-[#D1CFCA] focus:ring-[#264D3B] shrink-0"
+								className="mt-1 w-4 h-4 text-emerald-800 rounded border-stone-300 focus:ring-emerald-800 shrink-0"
 							/>
-							<span className="text-xs text-[#181817] leading-relaxed">
+							<span className="text-xs text-stone-900 leading-relaxed">
 								<strong className="font-semibold block">Verifikasi Kesesuaian Jalan Nyata:</strong>
 								Saya mengonfirmasi bahwa koordinat rute di atas mengikuti ruas jalan nyata yang dapat dilalui kendaraan secara aman dan telah diperiksa kelayakannya oleh panitia.
 							</span>
@@ -475,7 +475,7 @@ export function OrganizerAlternativeRoutesManager({
 					</div>
 
 					{formError ? (
-						<div className="p-3 rounded-xl bg-[#FDF2F2] border border-[#F87171] text-[#991B1B] text-xs flex items-center gap-2">
+						<div className="p-3 rounded-xl bg-red-50 border border-red-300 text-red-700 text-xs flex items-center gap-2">
 							<AlertCircle className="w-4 h-4 shrink-0" />
 							<span>{formError}</span>
 						</div>
@@ -485,7 +485,7 @@ export function OrganizerAlternativeRoutesManager({
 						<button
 							type="submit"
 							disabled={createMutation.isPending || !isRoadFollowingConfirmed || parsedResult.coords.length < 2}
-							className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#264D3B] text-white text-sm font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
+							className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-800 text-white text-sm font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
 						>
 							{createMutation.isPending ? (
 								<>
@@ -506,7 +506,7 @@ export function OrganizerAlternativeRoutesManager({
 								setIsAdding(false);
 								setFormError(null);
 							}}
-							className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-[#D1CFCA] bg-white text-sm font-semibold text-[#585854] hover:bg-[#F3F1EC] min-h-[48px] cursor-pointer"
+							className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-stone-300 bg-white text-sm font-semibold text-stone-600 hover:bg-stone-100 min-h-[48px] cursor-pointer"
 						>
 							Batal
 						</button>
@@ -516,13 +516,13 @@ export function OrganizerAlternativeRoutesManager({
 
 			{/* Daftar Rute Alternatif (SPEC-10: Error Banner with retry) */}
 			{routesQuery.isLoading ? (
-				<div className="py-8 text-center text-xs text-[#585854] flex items-center justify-center gap-2">
-					<Loader2 className="w-4 h-4 animate-spin text-[#264D3B]" />
+				<div className="py-8 text-center text-xs text-stone-600 flex items-center justify-center gap-2">
+					<Loader2 className="w-4 h-4 animate-spin text-emerald-800" />
 					<span>Memuat jalur alternatif...</span>
 				</div>
 			) : routesQuery.isError ? (
-				<div className="p-4 rounded-xl border border-[#F87171] bg-[#FDF2F2] space-y-2">
-					<div className="flex items-center gap-2 text-[#991B1B] text-xs font-semibold">
+				<div className="p-4 rounded-xl border border-red-300 bg-red-50 space-y-2">
+					<div className="flex items-center gap-2 text-red-700 text-xs font-semibold">
 						<AlertTriangle className="w-4 h-4 shrink-0" />
 						<span>
 							Gagal memuat daftar jalur alternatif: {routesQuery.error?.message || "Layanan tidak dapat dihubungi."}
@@ -531,17 +531,17 @@ export function OrganizerAlternativeRoutesManager({
 					<button
 						type="button"
 						onClick={() => routesQuery.refetch()}
-						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[40px] cursor-pointer"
+						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 min-h-[48px] cursor-pointer"
 					>
 						<RefreshCw className="w-3.5 h-3.5" />
 						<span>Coba Muat Ulang</span>
 					</button>
 				</div>
 			) : routes.length === 0 ? (
-				<div className="py-8 text-center rounded-xl border border-dashed border-[#E5E3DC] bg-[#FAF9F5] p-6 space-y-2">
-					<Info className="w-6 h-6 text-[#8C8B85] mx-auto" />
-					<p className="text-xs font-semibold text-[#181817]">Belum Ada Jalur Alternatif</p>
-					<p className="text-xs text-[#585854] max-w-sm mx-auto">
+				<div className="py-8 text-center rounded-xl border border-dashed border-stone-200 bg-stone-50 p-6 space-y-2">
+					<Info className="w-6 h-6 text-stone-500 mx-auto" />
+					<p className="text-xs font-semibold text-stone-900">Belum Ada Jalur Alternatif</p>
+					<p className="text-xs text-stone-600 max-w-sm mx-auto">
 						Prajuru dapat menambahkan jalur pengalihan sementara untuk memandu warga saat penutupan jalan berlangsung.
 					</p>
 				</div>
@@ -555,18 +555,18 @@ export function OrganizerAlternativeRoutesManager({
 						return (
 							<div
 								key={route.id}
-								className="p-4 rounded-xl border border-[#E5E3DC] bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+								className="p-4 rounded-xl border border-stone-200 bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
 							>
 								<div className="space-y-1">
 									<div className="flex items-center gap-2 flex-wrap">
-										<h4 className="text-sm font-bold text-[#181817]">{route.name}</h4>
+										<h4 className="text-sm font-bold text-stone-900">{route.name}</h4>
 										<span
 											className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
 												isApproved
-													? "bg-[#EBF3EF] text-[#264D3B]"
+													? "bg-emerald-50 text-emerald-800"
 													: isRevoked
-														? "bg-[#FDF2F2] text-[#991B1B]"
-														: "bg-[#FEF9E7] text-[#92400E]"
+														? "bg-red-50 text-red-700"
+														: "bg-amber-50 text-amber-800"
 											}`}
 										>
 											{isApproved
@@ -577,9 +577,9 @@ export function OrganizerAlternativeRoutesManager({
 										</span>
 									</div>
 									{route.description ? (
-										<p className="text-xs text-[#585854]">{route.description}</p>
+										<p className="text-xs text-stone-600">{route.description}</p>
 									) : null}
-									<p className="text-[11px] text-[#8C8B85]">
+									<p className="text-[11px] text-stone-500">
 										{isApproved && route.approvedAt
 											? `Disetujui pada ${new Date(route.approvedAt).toLocaleDateString("id-ID")}`
 											: route.createdAt
@@ -599,7 +599,7 @@ export function OrganizerAlternativeRoutesManager({
 													type="button"
 													onClick={() => approveMutation.mutate(route.id)}
 													disabled={approveMutation.isPending}
-													className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] min-h-[48px] cursor-pointer shadow-2xs"
+													className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 min-h-[48px] cursor-pointer shadow-2xs"
 												>
 													{approveMutation.isPending ? (
 														<Loader2 className="w-4 h-4 animate-spin" />
@@ -613,7 +613,7 @@ export function OrganizerAlternativeRoutesManager({
 													type="button"
 													onClick={() => deleteMutation.mutate(route.id)}
 													disabled={deleteMutation.isPending}
-													className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-[#E5E3DC] bg-white text-[#991B1B] text-xs font-semibold hover:bg-[#FDF2F2] min-h-[48px] cursor-pointer"
+													className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-stone-200 bg-white text-red-700 text-xs font-semibold hover:bg-red-50 min-h-[48px] cursor-pointer"
 												>
 													<Trash2 className="w-4 h-4" />
 													<span>Hapus</span>
@@ -624,7 +624,7 @@ export function OrganizerAlternativeRoutesManager({
 												type="button"
 												onClick={() => revokeMutation.mutate(route.id)}
 												disabled={revokeMutation.isPending}
-												className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#F87171] bg-white text-[#991B1B] text-xs font-semibold hover:bg-[#FDF2F2] min-h-[48px] cursor-pointer"
+												className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-red-300 bg-white text-red-700 text-xs font-semibold hover:bg-red-50 min-h-[48px] cursor-pointer"
 											>
 												{revokeMutation.isPending ? (
 													<Loader2 className="w-4 h-4 animate-spin" />
@@ -676,31 +676,31 @@ export function PublicAlternativeRoutesList({ slug }: { slug: string }) {
 	if (routes.length === 0) return null;
 
 	return (
-		<div className="rounded-2xl border border-[#C7DBD0] bg-[#F6FAF7] p-5 space-y-4">
+		<div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5 space-y-4">
 			<div className="flex items-start gap-3">
-				<span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#264D3B] text-white shrink-0 mt-0.5">
+				<span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-800 text-white shrink-0 mt-0.5">
 					<Compass className="w-4 h-4" />
 				</span>
 				<div className="space-y-1">
-					<h3 className="text-sm font-bold text-[#181817]">
+					<h3 className="text-sm font-bold text-stone-900">
 						Jalur Alternatif Sementara (Panduan Panitia)
 					</h3>
-					<p className="text-xs text-[#585854]">
+					<p className="text-xs text-stone-600">
 						Panduan jalur pengalihan sementara yang dirancang panitia desa adat untuk membantu menghindari ruas jalan kegiatan upacara.
 					</p>
 				</div>
 			</div>
 
 			{/* Disclaimer Box (Honest Domain State: SPEC-08) */}
-			<div className="p-3 rounded-xl border border-[#E5E3DC] bg-white text-xs text-[#585854] leading-relaxed flex items-start gap-2">
-				<Info className="w-4 h-4 text-[#8C8B85] shrink-0 mt-0.5" />
+			<div className="p-3 rounded-xl border border-stone-200 bg-white text-xs text-stone-600 leading-relaxed flex items-start gap-2">
+				<Info className="w-4 h-4 text-stone-500 shrink-0 mt-0.5" />
 				<span>
 					<strong>Catatan Operasional:</strong> Rute ini merupakan simulasi koordinasi adat dan bukan izin resmi penutupan lalu lintas. Selalu patuhi rambu resmi dan arahan petugas Kepolisian, Dishub, atau Pecalang di lokasi upacara.
 				</span>
 			</div>
 
 			{copyError ? (
-				<div className="p-2.5 rounded-lg bg-[#FDF2F2] border border-[#F87171] text-[#991B1B] text-xs">
+				<div className="p-2.5 rounded-lg bg-red-50 border border-red-300 text-red-700 text-xs">
 					{copyError}
 				</div>
 			) : null}
@@ -709,21 +709,21 @@ export function PublicAlternativeRoutesList({ slug }: { slug: string }) {
 				{routes.map((route) => (
 					<div
 						key={route.id}
-						className="p-4 rounded-xl border border-[#E5E3DC] bg-white space-y-2 shadow-2xs"
+						className="p-4 rounded-xl border border-stone-200 bg-white space-y-2 shadow-2xs"
 					>
 						<div className="flex items-start justify-between gap-2">
-							<h4 className="text-xs font-bold text-[#181817] leading-snug">{route.name}</h4>
-							<span className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#EBF3EF] text-[#264D3B] shrink-0">
+							<h4 className="text-xs font-bold text-stone-900 leading-snug">{route.name}</h4>
+							<span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 shrink-0">
 								Simulasi Alternatif
 							</span>
 						</div>
 						{route.description ? (
-							<p className="text-xs text-[#585854]">{route.description}</p>
+							<p className="text-xs text-stone-600">{route.description}</p>
 						) : null}
 
 						{/* Text fallback for coordinates checkpoints (SPEC-08) */}
 						{route.geometry && Array.isArray(route.geometry.coordinates) ? (
-							<div className="pt-1 border-t border-[#F0EFEA] text-[11px] text-[#8C8B85] flex items-center justify-between">
+							<div className="pt-1 border-t border-stone-100 text-[11px] text-stone-500 flex items-center justify-between">
 								<span>
 									{route.geometry.coordinates.length} titik koordinat pengalihan
 								</span>
@@ -736,7 +736,7 @@ export function PublicAlternativeRoutesList({ slug }: { slug: string }) {
 											coordinates: route.geometry.coordinates as [number, number][],
 										})
 									}
-									className="inline-flex items-center gap-1 text-[#264D3B] hover:underline font-semibold cursor-pointer"
+									className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-stone-200 bg-white text-xs text-emerald-800 hover:bg-stone-50 font-semibold cursor-pointer min-h-[48px] shadow-2xs"
 								>
 									{copiedId === route.name ? (
 										<>

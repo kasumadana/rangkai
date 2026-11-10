@@ -233,6 +233,7 @@ export const roadSegments = pgTable(
 		createdBy: text("created_by").references(() => user.id),
 		verifiedBy: text("verified_by"),
 		verifiedAt: timestamp("verified_at", { withTimezone: true }),
+		quarantinedAt: timestamp("quarantined_at", { withTimezone: true }),
 		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [index("road_segments_geom_gist_idx").using("gist", table.geom)],

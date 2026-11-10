@@ -146,6 +146,7 @@ roadsRouter.get("/road-segments", async (c) => {
 		WHERE verified_by IS NOT NULL
 			AND verified_at IS NOT NULL
 			AND source_type = 'catalog'
+			AND quarantined_at IS NULL
 			AND ST_Intersects(
 				geom,
 				ST_MakeEnvelope(${minLng}, ${minLat}, ${maxLng}, ${maxLat}, 4326)
@@ -305,7 +306,7 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 			FOR UPDATE OF e
 		),
 		target_segment AS (
-			SELECT rs.id, rs.display_name, rs.verified_by, rs.verified_at, rs.source_type
+			SELECT rs.id, rs.display_name, rs.verified_by, rs.verified_at, rs.source_type, rs.quarantined_at
 			FROM road_segments rs
 			WHERE rs.id = ${data.roadSegmentId}
 		),
@@ -322,6 +323,7 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 				ON ts.verified_by IS NOT NULL
 				AND ts.verified_at IS NOT NULL
 				AND ts.source_type = 'catalog'
+				AND ts.quarantined_at IS NULL
 			WHERE te.status IN ('draft', 'review')
 			RETURNING *
 		),
@@ -647,6 +649,7 @@ roadsRouter.get("/events/:eventId/road-candidates", async (c) => {
 		WHERE verified_by IS NOT NULL
 			AND verified_at IS NOT NULL
 			AND source_type = 'catalog'
+			AND quarantined_at IS NULL
 		ORDER BY
 			CASE
 				WHEN ${orgVillage !== ""} AND coverage_area ILIKE ${`%${orgVillage}%`} THEN 0

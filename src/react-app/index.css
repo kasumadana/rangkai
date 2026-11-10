@@ -93,6 +93,128 @@
 		scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
 	}
 
+	/* Mobile input font-size floor >= 16px to prevent iOS auto-zoom and conform to project ergonomic standards (STD-02) */
+	@media (max-width: 640px) {
+		input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+		textarea,
+		select {
+			font-size: 16px !important;
+		}
+	}
+
+	/* Interactive control touch targets >= 44px/48px in workflow and panels (STD-02) */
+	.teduh-action-btn,
+	.teduh-btn-primary,
+	.teduh-btn-secondary,
+	.teduh-btn-danger {
+		min-height: 48px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 10px 18px;
+		border-radius: var(--radius-md, 12px);
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+		text-decoration: none;
+	}
+
+	.teduh-btn-primary {
+		background-color: var(--color-primary);
+		color: #ffffff;
+		border: 1px solid transparent;
+	}
+
+	.teduh-btn-primary:hover:not(:disabled) {
+		background-color: var(--color-primary-hover);
+	}
+
+	.teduh-btn-primary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.teduh-btn-secondary {
+		background-color: #ffffff;
+		border: 1px solid var(--color-border);
+		color: var(--color-text-title);
+	}
+
+	.teduh-btn-secondary:hover:not(:disabled) {
+		background-color: var(--color-surface-subtle);
+	}
+
+	.teduh-btn-danger {
+		background-color: #ffffff;
+		border: 1px solid #FECACA;
+		color: #B91C1C;
+	}
+
+	.teduh-btn-danger:hover:not(:disabled) {
+		background-color: #FEF2F2;
+	}
+
+	.teduh-tab-item {
+		min-height: 48px;
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 16px;
+		border-radius: var(--radius-md, 12px);
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+	}
+
+	.teduh-tab-item.is-active {
+		background-color: var(--color-primary);
+		color: #ffffff;
+	}
+
+	.teduh-tab-item:not(.is-active) {
+		background-color: #ffffff;
+		border: 1px solid var(--color-border);
+		color: var(--color-text-body);
+	}
+
+	.teduh-tab-item:not(.is-active):hover {
+		color: var(--color-text-title);
+		background-color: var(--color-surface-subtle);
+	}
+
+	.teduh-form-input,
+	.teduh-form-textarea,
+	.teduh-form-select {
+		width: 100%;
+		border-radius: var(--radius-md, 12px);
+		border: 1px solid var(--color-border);
+		background-color: var(--color-surface, #ffffff);
+		padding: 10px 14px;
+		font-size: 16px !important;
+		color: var(--color-text-title);
+		transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+	}
+
+	.teduh-form-input,
+	.teduh-form-select {
+		min-height: 48px;
+	}
+
+	.teduh-form-textarea {
+		min-height: 96px;
+	}
+
+	.teduh-form-input:focus,
+	.teduh-form-textarea:focus,
+	.teduh-form-select:focus {
+		outline: none;
+		border-color: var(--color-primary);
+		box-shadow: 0 0 0 2px rgba(38, 77, 59, 0.25);
+	}
+
 	/* Global Minimalist Sleek Scrollbars (Discreet & Non-Intrusive Across All Pages) */
 	* {
 		scrollbar-width: thin;
@@ -4098,7 +4220,7 @@
 		.teduh-pill-action,
 		.teduh-back-link,
 		.map-guide-reopen-btn {
-			min-height: 44px;
+			min-height: 48px;
 			display: inline-flex;
 			align-items: center;
 		}
@@ -4106,8 +4228,8 @@
 		.drawer-close-btn,
 		.map-gps-btn,
 		.map-zoom-btn {
-			min-width: 44px;
-			min-height: 44px;
+			min-width: 48px;
+			min-height: 48px;
 		}
 	}
 }
@@ -4619,25 +4741,31 @@
 .teduh-map-tool-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 5px;
-	padding: 6px 11px;
-	border-radius: 8px;
-	border: 1px solid #D6D3CD;
-	background: #FFFFFF;
-	font-size: 12px;
+	justify-content: center;
+	gap: 6px;
+	padding: 8px 14px;
+	min-height: 48px;
+	border-radius: var(--radius-md, 12px);
+	border: 1px solid var(--color-border);
+	background: var(--color-surface, #FFFFFF);
+	font-size: 13px;
 	font-weight: 600;
-	color: #181B20;
+	color: var(--color-text-title);
 	cursor: pointer;
 	transition: all 0.15s ease;
 }
 
 .teduh-map-tool-btn:hover {
-	background: #F3F2EE;
+	background: var(--color-surface-subtle);
 }
 
 .teduh-map-tool-btn.is-danger {
-	color: #9E2A2B;
-	border-color: rgba(158, 42, 43, 0.3);
+	color: #B91C1C;
+	border-color: rgba(185, 28, 28, 0.3);
+}
+
+.teduh-map-tool-btn.is-danger:hover {
+	background: #FEF2F2;
 }
 
 .teduh-dashboard-map-hint {
