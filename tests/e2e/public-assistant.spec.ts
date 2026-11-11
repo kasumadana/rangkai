@@ -27,7 +27,8 @@ test("synthetic answers, abstention and unavailable state", async ({ page }) => 
     expect(await page.evaluate<boolean>('document.documentElement.scrollWidth <= innerWidth')).toBeTruthy();
   }
   await page.setViewportSize({width: 1440, height: 900});
-  await page.evaluate("document.documentElement.style.zoom = '2'");
+  await page.evaluate("document.documentElement.style.zoom = '2'; window.scrollTo(0, 0)");
+  await expect(page.getByRole("button", {name: "Buka menu navigasi"})).toBeVisible();
   await page.screenshot({path: "test-results/assistant-zoom-200.png"});
   expect(await page.evaluate<boolean>("document.documentElement.scrollWidth <= document.documentElement.clientWidth")).toBeTruthy();
   expect(errors).toEqual([]);

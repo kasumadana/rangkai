@@ -322,6 +322,7 @@
 	}
 
 	.navbar-inner {
+		container-type: inline-size;
 		position: relative;
 		min-height: 64px;
 		display: flex;
@@ -382,6 +383,11 @@
 			left: 50%;
 			transform: translateX(-50%);
 		}
+	}
+
+	@container (max-width: 860px) {
+		.navbar-links, .navbar-actions .btn-nav-officer { display: none !important; }
+		.navbar-hamburger { display: flex !important; }
 	}
 
 	.navbar-link {
