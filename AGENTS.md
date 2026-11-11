@@ -973,4 +973,4 @@ Single-context: root `CONTEXT.md` and `docs/adr/`, created when needed. See `doc
 
 ### Execution workflow
 
-Codex GPT 6.1 Sol High coordinates; Antigravity Gemini 3.8 Flash High implements; independent Antigravity Gemini 4 Argon High audits. Use explicit native Orca model selection. See `docs/agents/workflow.md`.
+Use Terra Low by default, bounded Terra Medium escalation, and rare independent Sol 6.1 High milestone audits. See `docs/agents/workflow.md` for native selection and closure.

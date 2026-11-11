@@ -1,18 +1,12 @@
 # Native Orca engineering workflow
 
-| Role | Agent/model | Responsibility |
-| --- | --- | --- |
-| Coordinator | Codex | Scope, ticket dependencies, native dispatch, decisions, concise status |
-| Executor | Antigravity Gemini 3.8 Flash High | Implementation, fixes, tests, fixtures and documentation |
-| Independent auditor | Antigravity Gemini 3.8 Flash High (current batch exception) / Codex GPT 6.1 Sol High (subsequent batches) | Standards/Spec review and targeted verification; complex analysis, no implementation fixes (Argon discontinued per user policy) |
+Use native model selection and verify the requested and effective model in the launch receipt.
 
-1. Read existing requirements. Use ask-matt to route work; clarify only unresolved scope. Use to-spec only if existing sources lack a coherent specification, then to-tickets for self-contained vertical slices and true blocking edges. Obtain required scope approval once.
-2. Dispatch one Flash High executor writer in a native Orca child worktree with explicit native model selection. Verify receipt model. Keep implementation out of the auditor context. Model changes require a model-selectable launch; terminal reuse cannot switch model. The coordinator handles short tasks directly.
-3. Executor uses implement, Ponytail Full and behavior-focused tdd at agreed API boundaries, current official provider docs, branch-guarded development resources, and per-task typecheck/lint/integration/security checks. Never skip security/error behavior to save tokens.
-4. Implement the ENTIRE user-requested batch before formal review. Execute required combined regression/runtime checks and document exact commands, exits, actual counts, tested final SHA and limits. Finish source/docs/fixtures before reporting once; no later candidate edits during audit.
-5. Launch independent auditor in an isolated snapshot at final SHA. Per user policy override superseding prior instructions, Argon is discontinued; the current correction batch audit uses an independent fresh Antigravity Gemini 3.8 Flash High auditor (not the implementation context), and subsequent task/batch audits use Codex GPT 6.1 Sol High. Keep Standards and Spec findings separate. Reuse sufficient evidence and run targeted checks for gaps; do not repeat broad review or full suites without changed code/failure/gaps justifying it.
-6. Return consolidated actionable findings to Flash High executor. Verify only their closure and changed-path regressions against a new pin. Auditor never implements fixes. Report software/runtime acceptance separately from user-deferred external data acceptance.
-7. Use native ask/reply and notifications. After dispatch end the turn; no polling/watch scripts. Self-contained tickets/reports preserve context; hand off at phase boundaries only when needed. Record exact current task/dispatch IDs and report once.
-8. Keep source/secrets private, preserve other contributors' changes and domain invariants. Merge/push/deploy require applicable user authorization and proven gates; never infer acceptance from silence or successful task lifecycle alone. Do not fake official government or Dishub identifiers: pending release gate is exact authorized pilot org identity/provenance supplied by owner.
+1. Scope work from existing requirements and dispatch bounded slices with explicit ownership and acceptance criteria. Use `gpt-6.1-terra` Low for implementation, integration, documentation, focused fixes and ordinary independent checks.
+2. Escalate only a concrete ambiguous architecture, security or runtime boundary, or two distinct focused attempts reproducing the same unresolved failure, to Terra Medium. Return routine work to Low.
+3. Preserve other work, use relevant provider documentation and guarded development resources, and verify changed behavior and security. Record commands, tested SHA and limitations; reuse sufficient evidence.
+4. Integrate the requested batch before review. Reserve an independent `gpt-6.1-sol` High audit for rare frozen milestones, releases or serious unresolved security issues. Keep standards and specification findings separate.
+5. Consolidate material findings into one Terra Low repair pass, followed by narrow closure checks. Repeat broad review only when new risky changes or failures justify it.
+6. Use native notifications and handoffs without polling. Preserve secrets and domain invariants; merge, push, deployment and production changes require applicable authorization and gates. Report external acceptance separately from software verification.
 
-Supporting skills: orchestration/orca-cli for workers/worktrees, wrangler for Cloudflare operations, code-review for review criteria, diagnosing-bugs for hard failures, git-commit for authorized commits. Triage applies to incoming raw issues, not tickets already produced by to-tickets.
+Model selection: https://developers.openai.com/api/docs/guides/model-selection. Reasoning effort: https://developers.openai.com/api/docs/guides/reasoning. API model catalog: https://developers.openai.com/api/docs/models. API token prices do not establish Orca or Codex subscription usage, quota or savings.
