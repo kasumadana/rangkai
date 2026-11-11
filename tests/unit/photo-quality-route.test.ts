@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
+import { z } from "zod";
 import { cleanupRouter } from "../../src/worker/routes/cleanup";
 import { resetExtractionRateLimits } from "../../src/worker/validators/documents";
 import type { AppVariables, Env } from "../../src/worker/types";
@@ -45,7 +46,8 @@ describe("synthetic photo quality route", () => {
   bucket.get.mockImplementation(async () => ({ size: bytes.length, body: new ReadableStream({ start(controller) { controller.enqueue(bytes); controller.close(); } }), httpMetadata: { contentType: "image/png" } }));
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ beforeReadable: true, afterReadable: true, sameAreaLikely: "uncertain", issues: [], observations: [] }) }] } }] }))));
   const response = await request(); expect(response.status).toBe(200);
-  expect((await response.json()).data).toMatchObject({ taskId, wasteWeightKg: null, automaticallyVerified: false, requiresOrganizerReview: true });
+  const payload = z.object({ data: z.unknown() }).parse(await response.json());
+  expect(payload.data).toMatchObject({ taskId, wasteWeightKg: null, automaticallyVerified: false, requiresOrganizerReview: true });
   expect(rows).toHaveLength(0);
  });
 

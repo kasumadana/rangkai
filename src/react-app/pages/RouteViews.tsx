@@ -660,6 +660,7 @@ export function PublicEventDetailPage({
 					</Link>
 
 					<div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+						<Link to={`/tanya?event=${encodeURIComponent(spatialProfile.slug)}`} className="teduh-pill-action">Tanya tentang kegiatan</Link>
 						<Link
 							to={`/peta?village=${spatialProfile.slug}`}
 							className="teduh-pill-action"

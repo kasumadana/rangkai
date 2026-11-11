@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Button } from "@astryxdesign/core/Button";
 import { TextArea } from "@astryxdesign/core/TextArea";
@@ -12,6 +12,8 @@ const statusLabels: Record<string, string> = { OPEN: "Terbuka", CLOSED: "Ditutup
 
 export function PublicAssistantPage() {
  const [params] = useSearchParams();
+ const [now, setNow] = useState(() => Date.now());
+ useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(timer); }, []);
  const [question, setQuestion] = useState("");
  const [location, setLocation] = useState("");
  const [eventSlug, setEventSlug] = useState(params.get("event") ?? "");
@@ -37,7 +39,7 @@ export function PublicAssistantPage() {
    </VStack></form>
    {mutation.isError && <section role="alert"><h2>Jawaban belum tersedia</h2><p>{mutation.error instanceof ApiClientError && mutation.error.status === 503 ? "Layanan tanya jawab sedang tidak tersedia. Silakan coba lagi atau cari kegiatan." : mutation.error instanceof ApiClientError && mutation.error.status === 429 ? "Terlalu banyak permintaan. Tunggu sebentar lalu coba lagi." : "Pertanyaan belum dapat diproses. Periksa isian dan koneksi, lalu coba lagi."}</p><Button label="Coba lagi" onClick={() => mutation.mutate(mutation.variables!)} /> <Link to="/events">Cari kegiatan</Link></section>}
    {mutation.data && <section aria-live="polite"><h2>{mutation.data.status === "abstained" ? "Belum dapat menjawab" : "Hasil"}</h2><p>{mutation.data.answer}</p>
-    {mutation.data.sources.length > 0 && <><h3>Sumber</h3><ul>{mutation.data.sources.map(source => <li key={source.sourceId} className="py-4 break-words"><Link to={source.publicUrl}>{source.title}</Link><p>{source.isSimulation ? "Simulasi · " : ""}{source.sourceId.startsWith("road:") ? `Status jalan: ${!source.expiresAt || Date.parse(source.expiresAt) <= Date.now() ? "belum terkonfirmasi" : (statusLabels[source.status] ?? "Belum terkonfirmasi")}` : `Status kegiatan: ${statusLabels[source.status] ?? source.status}`}</p>{source.observedAt && <p>Diamati: {new Date(source.observedAt).toLocaleString("id-ID", { timeZone: "Asia/Makassar" })} WITA</p>}{"summary" in source && <p>Tugas diverifikasi: {source.summary.verifiedTasks} dari {source.summary.totalTasks}</p>}</li>)}</ul></>}
+    {mutation.data.sources.length > 0 && <><h3>Sumber</h3><ul>{mutation.data.sources.map(source => <li key={source.sourceId} className="py-4 break-words"><Link to={source.publicUrl}>{source.title}</Link><p>{source.isSimulation ? "Simulasi · " : ""}{source.sourceId.startsWith("road:") ? `Status jalan: ${!source.expiresAt || Date.parse(source.expiresAt) <= now ? "belum terkonfirmasi" : (statusLabels[source.status] ?? "Belum terkonfirmasi")}` : `Status kegiatan: ${statusLabels[source.status] ?? source.status}`}</p>{source.observedAt && <p>Diamati: {new Date(source.observedAt).toLocaleString("id-ID", { timeZone: "Asia/Makassar" })} WITA</p>}{"summary" in source && <p>Tugas diverifikasi: {source.summary.verifiedTasks} dari {source.summary.totalTasks}</p>}</li>)}</ul></>}
     <Link to="/events">Cari kegiatan lainnya</Link></section>}
   </VStack>
  </section></main>;

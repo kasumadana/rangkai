@@ -568,6 +568,7 @@ export function TeduhSpatialMapConsole() {
 						<Link to="/events" className="map-nav-link">
 							Jadwal Upacara
 						</Link>
+						<Link to="/tanya" className="map-nav-link">Tanya kegiatan</Link>
 					</nav>
 
 					<div className="map-topbar-divider" />
@@ -759,6 +760,7 @@ export function TeduhSpatialMapConsole() {
 						>
 							Jadwal Upacara
 						</Link>
+						<Link to="/tanya" className="mobile-nav-link" onClick={() => setIsMobileMenuOpen(false)}>Tanya kegiatan</Link>
 					</div>
 				</div>
 
