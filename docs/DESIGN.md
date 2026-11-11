@@ -5,7 +5,7 @@ colors:
   primary: "#9e2a2b"
   primary-hover: "#832223"
   secondary: "#c25e24"
-  neutral-canvas: "#fbfbfa"
+  neutral-canvas: "#ffffff"
   neutral-surface: "#ffffff"
   text-primary: "#181b20"
   text-secondary: "#545b67"
@@ -100,7 +100,7 @@ Sistem visual berada dalam mode **Operate** untuk pengguna lapangan (Pecalang, D
 
 **Key Characteristics:**
 - **Civic Restraint:** Antarmuka tenang, fungsional, dan bersih; warna aksen hanya hadir pada titik aksi atau penanda status krusial.
-- **Outdoor High Contrast:** Memenuhi standar aksesibilitas WCAG 2.2 AA dengan kontras teks tinggi di atas kanvas hangat yang tidak menyilaukan mata saat dipakai di jalan raya.
+- **Outdoor High Contrast:** Memenuhi standar aksesibilitas WCAG 2.2 AA dengan kontras teks tinggi di atas kanvas putih saat dipakai di jalan raya.
 - **Honest System Signals:** Ketidakpastian data, status kadaluwarsa (*stale*), dan saran AI yang belum diverifikasi memiliki penanda visual yang eksplisit dan tidak ambigu.
 - **Mobile Ergonomics:** Target sentuh besar (minimal 48px), navigasi satu tangan, dan form yang ramah perangkat mobile berspesifikasi menengah ke bawah.
 
@@ -124,7 +124,7 @@ Palet warna menggunakan fondasi Tri Datu yang ditransformasikan menjadi sistem w
 - **Weathered Slate** (`#545B67` / `oklch(48% 0.02 260)`): Teks sekunder untuk timestamp, penanggung jawab banjar, dan metadata teknis.
 - **Subtle Border** (`#E2E4E8` / `oklch(91% 0.005 260)`): Garis batas pemisah kolom review AI, kartu ruas jalan, dan pemisah form.
 - **Surface White** (`#FFFFFF` / `oklch(100% 0 0)`): Latar belakang kartu dokumen, panel modal, dan pop-up peta (*Siwa*).
-- **Chalk Canvas** (`#FBFBFA` / `oklch(98.5% 0.003 80)`): Latar belakang halaman aplikasi; warna putih gading hangat yang mencegah kelelahan mata di bawah sinar matahari.
+- **Workspace Canvas** (`#FFFFFF`): Latar ruang kerja, sidebar, topbar, dan permukaan normal.
 
 ### Semantic Roles
 
@@ -253,7 +253,7 @@ Bentuk geometris dirancang kokoh, bersih, dan berorientasi pada kemudahan sentuh
 ## Do's and Don'ts
 
 ### Do:
-- **Do** gunakan kanvas hangat `#FBFBFA` untuk meminimalkan pantulan silau saat petugas mengakses aplikasi di luar ruangan.
+- **Do** gunakan kanvas putih untuk ruang kerja dan pertahankan kontras teks yang jelas.
 - **Do** pasangkan setiap indikator status warna dengan teks dan simbol ikon yang berbeda untuk menjamin aksesibilitas tuna warna.
 - **Do** tampilkan status "Belum Terkonfirmasi" jika pembaruan dari lapangan melewati ambang waktu kedaluwarsa.
 - **Do** sediakan opsi input formulir manual jika proses ekstraksi AI dokumen pengumuman mengalami kegagalan.
@@ -265,3 +265,7 @@ Bentuk geometris dirancang kokoh, bersih, dan berorientasi pada kemudahan sentuh
 - **Don't** menggunakan ukuran font input di bawah 16px pada tampilan mobile yang memicu zoom otomatis di Safari.
 - **Don't** menyajikan informasi estimasi kecerdasan buatan sebagai data fakta operasional tanpa tinjauan manusia.
 - **Don't** menyembunyikan navigasi atau status penting di balik efek transisi animasi yang panjang (>200ms) pada antarmuka lapangan.
+
+### Skala ruang kerja
+
+Gunakan 1rem untuk teks, label, input, dan metadata; 1.625rem untuk judul halaman. Ukuran 2.625rem dan 4.25rem hanya untuk tampilan besar bila diperlukan. Kelompokkan dengan jarak 0.5rem, 1rem, 1.5rem, dan 2rem.

@@ -99,27 +99,6 @@ export function OrganizerDashboardPage() {
 		});
 	}, [allEvents, searchQuery]);
 
-	const kpiCounts = useMemo(() => {
-		let draftReview = 0;
-		let publishedActive = 0;
-		let completedCancelled = 0;
-		for (const evt of allEvents) {
-			if (evt.status === "draft" || evt.status === "review") {
-				draftReview += 1;
-			} else if (evt.status === "published" || evt.status === "active") {
-				publishedActive += 1;
-			} else {
-				completedCancelled += 1;
-			}
-		}
-		return {
-			total: allEvents.length,
-			draftReview,
-			publishedActive,
-			completedCancelled,
-		};
-	}, [allEvents]);
-
 	const orgNameById = useMemo(() => {
 		const map = new Map<string, string>();
 		for (const org of organizations) {
@@ -137,7 +116,7 @@ export function OrganizerDashboardPage() {
 			<div className="teduh-workspace-header">
 				<div>
 					<h1 className="teduh-workspace-title">
-						Ikhtisar Kegiatan Upacara
+						Kegiatan Upacara
 					</h1>
 					<p className="teduh-workspace-subtitle">
 						Kelola draf pengumuman upacara adat, status jalan terdampak, kebersihan,
@@ -149,7 +128,7 @@ export function OrganizerDashboardPage() {
 					<button
 						type="button"
 						onClick={() => void eventsQuery.refetch()}
-						className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-[#E5E3DC] bg-white text-sm font-semibold text-[#181817] hover:bg-[#F3F1EC] transition-colors"
+						className="inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-[#E5E3DC] bg-white text-base font-semibold text-[#181817] hover:bg-white transition-colors"
 					>
 						<RefreshCw className="w-4 h-4 text-[#585854]" />
 						<span>Segarkan</span>
@@ -157,7 +136,7 @@ export function OrganizerDashboardPage() {
 
 					<Link
 						to="/dashboard/events/new"
-						className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#264D3B] text-sm font-semibold text-white hover:bg-[#1d3c2e] transition-colors no-underline shadow-xs"
+						className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#264D3B] text-base font-semibold text-white hover:bg-[#1d3c2e] transition-colors no-underline shadow-xs"
 					>
 						<PlusCircle className="w-4 h-4" />
 						<span>Buat Kegiatan Baru</span>
@@ -171,14 +150,14 @@ export function OrganizerDashboardPage() {
 			organizations.length === 0 ? (
 				<div className="rounded-2xl border border-[#F3D9A4] bg-[#FDF7EB] p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 					<div className="space-y-1">
-						<div className="text-xs font-semibold text-[#9A5B13]">
+						<div className="text-base font-semibold text-[#9A5B13]">
 							<span>Belum terhubung ke desa adat</span>
 						</div>
-						<p className="text-sm font-medium text-[#181817]">
+						<p className="text-base font-medium text-[#181817]">
 							Akun Anda ({sessionData.user.email}) belum terdaftar sebagai
 							Panitia atau Petugas di Desa Adat mana pun.
 						</p>
-						<p className="text-xs text-[#585854]">
+						<p className="text-base text-[#585854]">
 							Daftarkan Desa Adat / Banjar Anda terlebih dahulu agar dapat
 							membuat draf pengumuman upacara dan mengatur penutupan jalan.
 						</p>
@@ -186,54 +165,20 @@ export function OrganizerDashboardPage() {
 					<div className="flex items-center gap-2 shrink-0">
 						<Link
 							to="/onboarding/organization"
-							className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-xs font-semibold text-white hover:bg-[#1d3c2e] transition-colors no-underline"
+							className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-base font-semibold text-white hover:bg-[#1d3c2e] transition-colors no-underline"
 						>
 							<Building2 className="w-3.5 h-3.5" />
 							<span>Daftarkan Desa Adat</span>
 						</Link>
 						<Link
 							to="/settings"
-							className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] transition-colors no-underline"
+							className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-[#E5E3DC] bg-white text-base font-semibold text-[#181817] hover:bg-white transition-colors no-underline"
 						>
 							<span>Pengaturan Akun</span>
 						</Link>
 					</div>
 				</div>
 			) : null}
-
-			{/* KPI Summary Row: Restrained & Proportional */}
-			<div className="teduh-kpi-grid">
-				<div className="teduh-kpi-card">
-					<span className="teduh-kpi-label">Total Kegiatan</span>
-					<span className="teduh-kpi-value">{kpiCounts.total}</span>
-					<span className="teduh-kpi-meta">
-						Terdaftar pada pangkalan data operasional
-					</span>
-				</div>
-				<div className="teduh-kpi-card">
-					<span className="teduh-kpi-label">Draf &amp; Ditinjau</span>
-					<span className="teduh-kpi-value">{kpiCounts.draftReview}</span>
-					<span className="teduh-kpi-meta">
-						Menunggu verifikasi panitia sebelum terbit
-					</span>
-				</div>
-				<div className="teduh-kpi-card">
-					<span className="teduh-kpi-label">Diumumkan &amp; Aktif</span>
-					<span className="teduh-kpi-value text-[#264D3B]">
-						{kpiCounts.publishedActive}
-					</span>
-					<span className="teduh-kpi-meta">
-						Tampil pada peta publik &amp; pantauan Pecalang
-					</span>
-				</div>
-				<div className="teduh-kpi-card">
-					<span className="teduh-kpi-label">Selesai / Arsip</span>
-					<span className="teduh-kpi-value">{kpiCounts.completedCancelled}</span>
-					<span className="teduh-kpi-meta">
-						Riwayat kegiatan dan dokumentasi pasca-acara
-					</span>
-				</div>
-			</div>
 
 			{/* Filter & Search Bar */}
 			<div className="teduh-workspace-card p-4">
@@ -249,7 +194,7 @@ export function OrganizerDashboardPage() {
 									className={`px-3.5 py-2.5 rounded-xl text-base font-semibold transition-colors ${
 										active
 											? "bg-[#264D3B] text-white"
-											: "bg-[#F3F1EC] text-[#585854] hover:text-[#181817]"
+											: "bg-white text-[#585854] hover:text-[#181817]"
 									}`}
 								>
 									{opt.label}
@@ -270,7 +215,7 @@ export function OrganizerDashboardPage() {
 										saveOrganizationId(val);
 									}
 								}}
-								className="w-full sm:w-auto sm:max-w-xs max-w-full min-w-0 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-lg font-medium text-[#181817] truncate focus:outline-none focus:border-[#264D3B]"
+								className="w-full sm:w-auto sm:max-w-xs max-w-full min-w-0 rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-lg font-medium text-[#181817] truncate focus:outline-none focus:border-[#264D3B]"
 							>
 								<option value="all">Semua Desa Adat Saya</option>
 								{organizations.map((org) => (
@@ -288,7 +233,7 @@ export function OrganizerDashboardPage() {
 								value={searchQuery}
 								onChange={(e) => setSearchQuery(e.target.value)}
 								placeholder="Cari nama upacara, lokasi, surat..."
-								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] pl-9 pr-3.5 py-2.5 text-lg text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
+								className="w-full rounded-xl border border-[#E5E3DC] bg-white pl-9 pr-3.5 py-2.5 text-lg text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
 							/>
 						</div>
 					</div>
@@ -328,13 +273,13 @@ export function OrganizerDashboardPage() {
 											setSearchQuery("");
 											setActiveOrgFilter("all");
 										}}
-										className="px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+										className="px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-base font-semibold text-[#181817] hover:bg-white"
 									>
 										Reset Filter
 									</button>
 									<Link
 										to="/dashboard/events/new"
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-xs font-semibold text-white hover:bg-[#1d3c2e] no-underline"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-base font-semibold text-white hover:bg-[#1d3c2e] no-underline"
 									>
 										<PlusCircle className="w-4 h-4" />
 										<span>Buat Draf Pengumuman</span>
@@ -371,7 +316,7 @@ export function OrganizerDashboardPage() {
 									<div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 min-w-0">
 										<div className="min-w-0 flex-1 space-y-2">
 											<HStack gap={2} align="center" wrap="wrap">
-												<span className="text-xs sm:text-sm font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full shrink-0">
+												<span className="text-base sm:text-base font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full shrink-0">
 													{categoryLabel}
 												</span>
 												<div className="shrink-0">
@@ -383,7 +328,7 @@ export function OrganizerDashboardPage() {
 													</div>
 												) : null}
 												{evt.permitReference ? (
-													<Text type="code" color="secondary" className="text-xs font-mono shrink-0">
+													<Text type="code" color="secondary" className="text-base font-mono shrink-0">
 														No: {evt.permitReference}
 													</Text>
 												) : null}
@@ -398,7 +343,7 @@ export function OrganizerDashboardPage() {
 												{evt.title}
 											</Text>
 
-											<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm sm:text-base text-[#545B67] pt-0.5">
+											<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-base sm:text-base text-[#545B67] pt-0.5">
 												<HStack gap={1.5} align="center" className="min-w-0">
 													<Building2 className="w-4 h-4 text-[#264D3B] shrink-0" />
 													<Text type="body" weight="medium" className="text-[#181817] truncate max-w-[260px] break-words">
@@ -432,7 +377,7 @@ export function OrganizerDashboardPage() {
 											(evt.status === "published" || evt.status === "active") ? (
 												<Link
 													to={`/events/${evt.publicSlug}`}
-													className="inline-flex items-center gap-1 text-sm sm:text-base font-semibold text-[#264D3B] hover:underline no-underline shrink-0"
+													className="inline-flex items-center gap-1 text-base sm:text-base font-semibold text-[#264D3B] hover:underline no-underline shrink-0"
 												>
 													<CheckCircle2 className="w-4 h-4" />
 													<span>Lihat Publik</span>

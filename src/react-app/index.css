@@ -4379,7 +4379,7 @@
    ========================================================================== */
 .teduh-workspace-shell {
 	min-height: 100dvh;
-	background: #FBFBFA;
+	background: var(--color-surface);
 	color: #181B20;
 	display: flex;
 	flex-direction: column;
@@ -4391,9 +4391,7 @@
 	top: 0;
 	z-index: 90;
 	height: 68px;
-	background: rgba(251, 251, 250, 0.94);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
+	background: var(--color-surface);
 	border-bottom: 1px solid #E6E4DF;
 	padding: 0 24px;
 	display: flex;
@@ -4432,9 +4430,9 @@
 	gap: 6px;
 	padding: 4px 11px;
 	border-radius: 999px;
-	font-size: 11.5px;
+	font-size: 1rem;
 	font-weight: 600;
-	background: #ECF3EF;
+	background: var(--color-surface);
 	color: #264D3B;
 	white-space: nowrap;
 }
@@ -4450,9 +4448,9 @@
 	gap: 6px;
 	padding: 4px 11px;
 	border-radius: 999px;
-	font-size: 12px;
+	font-size: 1rem;
 	font-weight: 500;
-	background: #F3F2EE;
+	background: var(--color-surface);
 	color: #545B67;
 	max-width: 240px;
 	overflow: hidden;
@@ -4474,7 +4472,7 @@
 }
 
 .teduh-workspace-sidebar {
-	background: #F6F5F2;
+	background: var(--color-surface);
 	border-right: 1px solid #E6E4DF;
 	padding: 22px 16px;
 	display: flex;
@@ -4494,9 +4492,9 @@
 }
 
 .teduh-sidebar-group-label {
-	font-size: 11px;
-	font-weight: 700;
-	color: #71717A;
+	font-size: 1rem;
+	font-weight: 600;
+	color: #545B67;
 	padding: 0 12px 6px;
 }
 
@@ -4506,7 +4504,8 @@
 	gap: 10px;
 	padding: 10px 12px;
 	border-radius: 12px;
-	font-size: 13.5px;
+	font-size: 1rem;
+	min-height: 44px;
 	font-weight: 500;
 	color: #3F444E;
 	text-decoration: none;
@@ -4557,14 +4556,14 @@
 
 .teduh-workspace-title {
 	margin: 0;
-	font-size: clamp(24px, 3vw, 32px);
+	font-size: 1.625rem;
 	line-height: 1.2;
 	color: #181B20;
 }
 
 .teduh-workspace-subtitle {
 	margin: 6px 0 0;
-	font-size: 14px;
+	font-size: 1rem;
 	line-height: 1.55;
 	color: #545B67;
 	max-width: 680px;
@@ -4846,21 +4845,20 @@
 	border-radius: 2px;
 }
 
-.teduh-workspace-mobile-nav {
-	display: none;
-}
+.workspace-menu-toggle, .workspace-menu-backdrop { display: none; }
 
 @media (max-width: 960px) {
 	.teduh-workspace-body {
 		grid-template-columns: 1fr;
 	}
 
-	.teduh-workspace-sidebar {
-		display: none;
-	}
+	.teduh-workspace-sidebar { display: none; }
+	.teduh-workspace-sidebar.is-open { display: flex; position: fixed; z-index: 100; top: 68px; left: 0; width: min(320px, 90vw); height: calc(100dvh - 68px); }
+	.workspace-menu-toggle { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; border: 0; background: transparent; color: var(--color-primary); cursor: pointer; }
+	.workspace-menu-backdrop { display: block; position: fixed; inset: 68px 0 0; z-index: 99; border: 0; background: rgba(24, 27, 32, .4); }
 
 	.teduh-workspace-main {
-		padding: 20px 16px 96px;
+		padding: 24px 16px 32px;
 	}
 
 	.teduh-workspace-topbar {
@@ -4882,7 +4880,8 @@
 
 	.teduh-workspace-topbar-right .teduh-map-tool-btn {
 		padding: 5px 8px;
-		font-size: 11.5px;
+		font-size: 1rem;
+		min-height: 44px;
 	}
 
 	.teduh-workspace-mobile-nav {
@@ -4917,4 +4916,15 @@
 		color: #264D3B;
 		background: #ECF3EF;
 	}
+}
+
+.teduh-workspace-sidebar .astryx-text, .teduh-workspace-main .astryx-text { font-size: 1rem; }
+.teduh-workspace-brand { flex-shrink: 0; }
+.teduh-workspace-topbar-right .teduh-map-tool-btn { min-height: 44px; }
+.teduh-workspace-shell :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+
+@media (max-width: 480px) {
+	.teduh-workspace-topbar-right .workspace-public-link { display: none; }
+	.teduh-workspace-topbar-right .teduh-map-tool-btn span { display: none; }
+	.teduh-workspace-topbar-right .teduh-map-tool-btn { min-width: 44px; justify-content: center; }
 }
