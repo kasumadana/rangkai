@@ -546,3 +546,9 @@ The evaluation protocol tests the model across 5 degradation categories (4 pairs
   1. Collect 20 ethically labeled photo pairs during village pilot with prajuru consent.
   2. Implement client-side facial/license plate blurring canvas before R2 upload.
   3. Validate confusion matrix (target: precision >= 90% on debris detection) before enabling in production.
+
+### Candidate public assistant and waste scenario
+
+DECISION: Gemini classifies a bounded question and selects public event identifiers only; it does not author displayed facts or links. Server code validates every selected ID against retrieved public-authority-filtered records and obtains road/cleanup facts from existing public endpoints. Unsupported or absent information abstains; stale road observations are unconfirmed. A missing provider is an explicit failure, not a simulated answer. No live model accuracy or provider verification is claimed. Prompt and event titles are untrusted input, and no private documents, R2 keys or contacts are sent.
+
+DECISION: Waste planning uses organizer-supplied coefficient ranges and optional complete shares, with an explicit formula. It is a scenario, not a trained model or measured weight. Historical facility entries carry source and date, and are not treated as verified acceptance or availability. The legacy exact scenario's default category shares and sack capacity are assumptions, not measurements. No image-derived weight or automatic road reopening is performed.
