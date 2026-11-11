@@ -1,5 +1,7 @@
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { z } from "zod";
+import { assessPhotoQuality } from "../services/photo-quality";
 import {
 	cleanupEvidence,
 	cleanupTasks,
@@ -21,6 +23,7 @@ import {
 import {
 	MAX_MULTIPART_ENVELOPE_OVERHEAD_BYTES,
 	checkUploadRateLimit,
+	checkExtractionRateLimit,
 	detectMimeFromMagicBytes,
 	doesExtensionMatchMime,
 	sanitizeDocumentFilename,
@@ -2505,6 +2508,48 @@ cleanupRouter.get("/cleanup-tasks/:taskId/evidence/:evidenceId", async (c) => {
 		status: 200,
 		headers,
 	});
+});
+
+cleanupRouter.post("/cleanup-tasks/:taskId/photo-quality", async (c) => {
+ const taskId = c.req.param("taskId");
+ if (!uuidParamSchema.safeParse(taskId).success) return sendError(c, "VALIDATION_FAILED", "Invalid task ID.", 422);
+ const body = await readBoundedRequestBody(c.req.raw, 1024);
+ if (!body.ok) return sendError(c, "PAYLOAD_TOO_LARGE", "Request too large.", 413);
+ let json: unknown;
+ try { json = JSON.parse(new TextDecoder().decode(body.bytes)); } catch { return sendError(c, "VALIDATION_FAILED", "Invalid JSON.", 422); }
+ const input = z.object({ beforeEvidenceId: z.string().uuid(), afterEvidenceId: z.string().uuid() }).strict().safeParse(json);
+ if (!input.success) return sendError(c, "VALIDATION_FAILED", "Invalid evidence IDs.", 422);
+ const db = c.get("db");
+ const task = (await db.select().from(cleanupTasks).where(eq(cleanupTasks.id, taskId)).limit(1))[0];
+ if (!task) return sendError(c, "NOT_FOUND", "Cleanup task not found.", 404);
+ const user = c.get("user")!;
+ const access = await getEventAndCheckAccess(db, task.eventId, user.id, "cleanup");
+ if (access === "NOT_FOUND") return sendError(c, "NOT_FOUND", "Cleanup task not found.", 404);
+ if (access === "FORBIDDEN" || (!access.isOrganizer && task.assignedUserId !== user.id)) return sendError(c, "FORBIDDEN", "Not authorized for this cleanup task.", 403);
+ if (access.event.status === "cancelled") return sendError(c, "STATE_CONFLICT", "Event is cancelled.", 409);
+ const flag = (c.env as Env & { AI_PHOTO_ASSESSMENT_ENABLED?: string }).AI_PHOTO_ASSESSMENT_ENABLED;
+ if (flag !== "true" || !c.env.GEMINI_API_KEY?.trim() || !c.env.rangkai_documents_dev) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Photo assessment is unavailable.", 503);
+ if (!checkExtractionRateLimit(access.event.organizationId)) return sendError(c, "RATE_LIMITED", "Assessment rate limit exceeded. Please retry later.", 429);
+ const findEvidence = async (id: string) => (await db.select().from(cleanupEvidence).where(and(eq(cleanupEvidence.id, id), eq(cleanupEvidence.taskId, taskId))).limit(1))[0];
+ const before = await findEvidence(input.data.beforeEvidenceId);
+ const after = await findEvidence(input.data.afterEvidenceId);
+ if (!before || !after || before.stage !== "before" || after.stage !== "after") return sendError(c, "NOT_FOUND", "Evidence pair not found for this task.", 404);
+ try {
+  const read = async (key: string) => {
+   const obj = await c.env.rangkai_documents_dev!.get(key);
+   if (!obj || obj.size <= 0 || obj.size > MAX_EVIDENCE_SIZE_BYTES) return null;
+   const bounded = await readBoundedRequestBody(new Request("https://internal.invalid", { method: "POST", body: obj.body, duplex: "half" } as RequestInit), MAX_EVIDENCE_SIZE_BYTES);
+   if (!bounded.ok || bounded.bytes.length !== obj.size) return null;
+   const mime = detectMimeFromMagicBytes(bounded.bytes);
+   if ((mime !== "image/jpeg" && mime !== "image/png") || obj.httpMetadata?.contentType !== mime || !validateBinaryFormatStructure(bounded.bytes, mime)) return null;
+   return { bytes: bounded.bytes, mime };
+  };
+  const first = await read(before.r2Key); const second = await read(after.r2Key);
+  if (!first || !second) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Evidence photos are unavailable or invalid.", 503);
+  const result = await assessPhotoQuality({ taskId, apiKey: c.env.GEMINI_API_KEY.trim(), model: c.env.GEMINI_MODEL, before: first, after: second });
+  if (!result) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Photo assessment failed; please retry later.", 503);
+  return c.json({ data: result });
+ } catch { return sendError(c, "DEPENDENCY_UNAVAILABLE", "Photo assessment is unavailable.", 503); }
 });
 
 export { cleanupRouter };
