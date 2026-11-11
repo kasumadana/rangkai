@@ -392,7 +392,7 @@ operational decision.
 The Grounded Public Assistant provides natural-language question answering for citizens inquiring about published Balinese cultural events, road closure schedules, and cleanup status.
 
 **Core Domain Invariants:**
-1. **Public-Only Projection:** Retrieval MUST query only published, active, or completed events from organizations with operational authority or marked as simulation.
+1. **Public-Only Projection:** Retrieval queries published and active events, and includes completed events when an exact event slug is supplied. Events must belong to organizations with operational authority or be marked as simulation.
 2. **Never Query Private State:** The assistant must NEVER access private R2 documents, unverified road segments, invitation tokens, user credentials, phone numbers, or administrative notes.
 3. **Strict Abstention on Stale / Missing Data:** If road status is older than 30 minutes (TTL expired), the assistant MUST explicitly state that the status is unconfirmed and direct the user to the live map or field officers.
 4. **No Automated Permit or Safety Guarantees:** The assistant must never claim an alternative route is legally guaranteed, police-certified, or completely congestion-free.
