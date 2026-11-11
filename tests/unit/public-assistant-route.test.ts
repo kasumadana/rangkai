@@ -12,7 +12,7 @@ function harness(rows = [event]) {
  return app;
 }
 const env = { PUBLIC_ASSISTANT_ENABLED: "true", GEMINI_API_KEY: "synthetic-key" };
-function modelResponse(value: unknown) { return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(value) }] } }] }), { status: 200, headers: { "content-type": "application/json" } }); }
+function modelResponse(value: unknown) { return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(value) }] } }] }), { status: 200, headers: { "content-type": "application/json" } }); }
 afterEach(() => vi.unstubAllGlobals());
 describe("assistant route synthetic fixtures", () => {
  it("returns only server-authored event facts and immutable simulation flag", async () => {

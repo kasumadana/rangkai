@@ -33,7 +33,9 @@ publicAssistantRouter.post("/questions", async c => {
   return rows.filter(r => r.slug !== null).map(r => ({ sourceId: `event:${r.slug}`, publicUrl: `/events/${encodeURIComponent(r.slug!)}`, title: r.title, status: r.status, isSimulation: r.isSimulation !== false, startsAt: r.startsAt?.toISOString() ?? null, endsAt: r.endsAt?.toISOString() ?? null, observedAt: null, expiresAt: null }));
  };
  const sources = await retrieve();
- const selected = validateSelection(await selectAssistantSources(question, sources, c.env.GEMINI_API_KEY.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME), sources);
+ const providerSelection = await selectAssistantSources(question, sources, c.env.GEMINI_API_KEY.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME);
+ const selected = validateSelection(providerSelection, sources);
+ if (!selected && providerSelection !== null) console.warn("assistant_provider_failure", { reason: "selection_invalid" });
  if (!selected) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten tidak dapat memproses pertanyaan. Gunakan pencarian kegiatan.", 503);
  const current = await retrieve();
  const result = current.filter(source => selected.sourceIds.includes(source.sourceId));
