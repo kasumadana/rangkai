@@ -1,0 +1,37 @@
+import { test, expect } from "@playwright/test";
+const id='11111111-1111-4111-8111-111111111111', org='22222222-2222-4222-8222-222222222222', user='33333333-3333-4333-8333-333333333333';
+const event={id,organizationId:org,createdBy:user,title:'Kegiatan Uji Sintetis dengan Nama Sangat Panjang untuk Memeriksa Pembungkusan',category:'odalan',description:'Data sintetis',venueName:'Lokasi pengujian dengan nama yang panjang',startsAt:'2026-12-01T00:00:00.000Z',endsAt:'2026-12-01T04:00:00.000Z',status:'draft',isSimulation:true,createdAt:'2026-11-01T00:00:00.000Z',updatedAt:'2026-11-01T00:00:00.000Z'};
+
+async function setup(browser,width,role='organizer',canCleanup=true) {const page=await browser.newPage({viewport:{width,height:900}});let errs=[],requests=[];page.on('pageerror',e=>errs.push(e.message));let signed=true;await page.route('**/api/**',async r=>{let p=new URL(r.request().url()).pathname;requests.push(p);let data; if(p.endsWith('/get-session')) data=signed?{user:{id:user,name:'Pengguna Uji',email:'fixture@example.invalid',emailVerified:true,createdAt:event.createdAt,updatedAt:event.updatedAt},session:{id:'44444444-4444-4444-8444-444444444444',userId:user,expiresAt:'2027-12-01T00:00:00.000Z',token:'synthetic'}}:null; else if(p.endsWith('/sign-out')){signed=false;data={success:true}} else if(p==='/api/organizations/my') data={organizations:[{id:org,name:'Organisasi Sintetis dengan Nama Sangat Panjang untuk Uji Tampilan',village:'Desa Uji',district:'Uji',createdAt:event.createdAt,role}]}; else if(p==='/api/events') data={events:[event,{...event,id:'55555555-5555-4555-8555-555555555555',title:'Kegiatan sintetis kedua',status:'review'}],pagination:{page:1,limit:50,total:2,totalPages:1}}; else if(p===`/api/events/${id}`) data={event}; else if(p==='/api/field/tasks') data={assignments:[{eventId:id,eventTitle:event.title,status:'draft',venueName:event.venueName,startsAt:event.startsAt,endsAt:event.endsAt,isSimulation:true,organizationId:org,organizationName:'Organisasi Sintetis',canUpdateTraffic:true,canUpdateCleanup:true,isOrganizerOversight:false}]}; else if(p===`/api/field/events/${id}`) data={event,permissions:{canUpdateTraffic:true,canUpdateCleanup:canCleanup,isOrganizer:false},roadImpacts:[],cleanupTasks:[]}; else if(p==='/api/road-segments') data={segments:[],roadSegments:[]}; else if(p==='/api/invitations') data={invitations:[]}; else if(p.endsWith('/documents')) data={documents:[]}; else if(p.endsWith('/extracted-fields')) data={fields:[]}; else if(p.endsWith('/road-impacts')) data={roadImpacts:[]}; else if(p.endsWith('/road-candidates')) data={candidates:[]}; else if(p.endsWith('/cleanup-tasks')) data={tasks:[]}; else if(p.endsWith('/waste-records')) data={records:[]}; else if(p.endsWith('/assignments')) data={assignments:[]}; else if(p.includes('/public/')) data={events:[]}; else return r.fulfill({status:404,json:{error:{code:'FIXTURE_UNAVAILABLE',message:'Fixture endpoint unavailable',requestId:'synthetic'}}}); return r.fulfill({json:data});}); return {page,errs,requests};}
+
+test("synthetic waste scenario, validation, retry and permissions", async ({ browser }) => {
+ for (const width of [390, 1440]) {
+  const {page}=await setup(browser,width);
+  let fail=true;
+  await page.route('**/waste-plan', async route => {
+   if (fail) return route.fulfill({status:503,json:{error:{code:'UNAVAILABLE',message:'unavailable',requestId:'fixture'}}});
+   const body=route.request().postDataJSON();
+   expect(body.scenario.coefficientKgPerParticipantDay.provenance).toBe('Asumsi sintetis');
+   return route.fulfill({json:{wastePlan:{output:{scenarioRange:{formula:'peserta ? durasi / 24 ? koefisien',low:{totalKg:10,categoriesKg:{organic:5}},high:{totalKg:20,categoriesKg:{organic:10}},assumptions:body.scenario},handlingAdvice:[{category:'organic',action:'Pisahkan organik',source:'https://example.org'}],facilities:{suitableMatches:[],nearbyCandidates:[{name:'Fasilitas sintetis dengan nama panjang untuk pengujian',address:'Alamat uji',distanceKm:2,sourceYear:2023,source:'https://example.org'}]}}}}});
+  });
+  await page.goto(`http://localhost:5173/dashboard/events/${id}/cleanup`);
+  await page.getByText('Susun skenario').click();
+  await page.getByRole('button',{name:'Hitung skenario'}).click();
+  await expect(page.getByRole('alert').filter({hasText:'Isi semua asumsi'})).toBeVisible();
+  for(const [label,value] of Object.entries({'Perkiraan peserta (orang)':'100','Durasi (jam)':'24','Koefisien minimum (kg/orang/hari)':'0.1','Koefisien maksimum (kg/orang/hari)':'0.2','Asal asumsi koefisien':'Asumsi sintetis','Organik (%)':'50','Daur ulang (%)':'30','Residu (%)':'20'})) await page.getByLabel(label,{exact:true}).fill(value);
+  await page.getByText('Cari kandidat terdekat dengan koordinat').click();
+  await page.getByLabel('Lintang lokasi (opsional)').fill('-8.63');
+  await page.getByLabel('Bujur lokasi (opsional)').fill('115.21');
+  await page.getByRole('button',{name:'Hitung skenario'}).click();
+  await expect(page.getByRole('alert').filter({hasText:'tidak tersedia'})).toBeVisible();
+  fail=false; await page.getByRole('button',{name:'Coba lagi'}).click();
+  await expect(page.getByText(/Rentang skenario: 10.20 kg/)).toBeVisible();
+  await expect(page.getByText(/Perlu konfirmasi/)).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(0);
+  await page.screenshot({path:`D:/Development/Lomba/rangkai/.scratch/final-next-20261112/waste-ui/scenario-${width}.png`,fullPage:true});
+  await page.close();
+ }
+ const {page}=await setup(browser,390,'officer'); await page.goto(`http://localhost:5173/field/events/${id}/cleanup`); await expect(page.getByText('Rencana skenario sampah')).toHaveCount(0); await page.close();
+});
+
+

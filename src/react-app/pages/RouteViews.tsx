@@ -41,8 +41,8 @@ import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
 	ImpactPlannerPanel,
 	PublicNoticeDraftPanel,
-	WastePlanningPanel,
 } from "../components/rangkai/AdvisoryPanels";
+import { WasteScenarioPanel } from "../components/rangkai/WasteScenarioPanel";
 import {
 	OrganizerAlternativeRoutesManager,
 	PublicAlternativeRoutesList,
@@ -3055,9 +3055,9 @@ export function WorkflowRouteShellPage({
 					</div>
 
 					{/* Post-Event Waste Logistics & Scenario Planning Tool */}
-					{isRealUuidEvent ? (
+					{isRealUuidEvent && isOrganizer ? (
 						<div className="xl:col-span-12 mt-4">
-							<WastePlanningPanel eventId={eventId!} isOrganizer={isOrganizer} />
+							<WasteScenarioPanel eventId={eventId!} />
 						</div>
 					) : null}
 				</div>
