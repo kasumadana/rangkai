@@ -115,3 +115,16 @@ test("synthetic public search and filters", async ({ browser }) => {
   await page.close();
 });
 
+
+
+test("synthetic account navigation and sign out", async ({ browser }) => {
+  const { page } = await setup(browser, 390);
+  await page.goto("/dashboard");
+  await page.getByRole("link", { name: "Pengaturan akun" }).click();
+  await expect(page).toHaveURL(/\/settings$/);
+  const signOut = page.waitForResponse(response => response.url().includes("/sign-out") && response.status() === 200);
+  await page.getByRole("button", { name: "Keluar akun" }).first().click();
+  await signOut;
+  await expect(page.getByRole("link", { name: "Pengaturan akun" })).toHaveCount(0);
+  await page.close();
+});
