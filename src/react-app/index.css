@@ -1662,7 +1662,8 @@
 		border: none;
 		border-radius: var(--radius-full);
 		padding: 7px 18px;
-		font-size: 13.5px;
+		font-size: 1rem;
+		min-height: 44px;
 		font-weight: 500;
 		color: var(--color-text-body);
 		cursor: pointer;
@@ -4020,11 +4021,8 @@
 		/* Horizontally swipeable filter pills on mobile */
 		.schedule-filter-bar {
 			display: flex;
-			flex-wrap: nowrap;
+			flex-wrap: wrap;
 			justify-content: flex-start;
-			overflow-x: auto;
-			-webkit-overflow-scrolling: touch;
-			scrollbar-width: none;
 			padding-bottom: 4px;
 			padding-left: 4px;
 			padding-right: 4px;
@@ -4065,11 +4063,8 @@
 
 		.teduh-toolbar .schedule-filter-bar {
 			display: flex;
-			flex-wrap: nowrap;
+			flex-wrap: wrap;
 			justify-content: flex-start;
-			overflow-x: auto;
-			-webkit-overflow-scrolling: touch;
-			scrollbar-width: none;
 			padding-bottom: 4px;
 			padding-left: 4px;
 			padding-right: 4px;
@@ -4927,4 +4922,17 @@
 	.teduh-workspace-topbar-right .workspace-public-link { display: none; }
 	.teduh-workspace-topbar-right .teduh-map-tool-btn span { display: none; }
 	.teduh-workspace-topbar-right .teduh-map-tool-btn { min-width: 44px; justify-content: center; }
+}
+
+.teduh-workspace-topbar-right .teduh-map-tool-btn, .teduh-workspace-main button, .teduh-workspace-main input, .teduh-workspace-main select, .teduh-workspace-main .astryx-token, .teduh-workspace-sidebar .astryx-token { font-size: 1rem; }
+
+.teduh-workspace-main .astryx-token, .teduh-workspace-sidebar .astryx-token { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 480px) { .teduh-workspace-topbar { padding-inline: 8px; gap: 0; } .teduh-workspace-topbar-left, .teduh-workspace-topbar-right { gap: 0; } }
+
+.teduh-workspace-main .astryx-token > span { white-space: normal; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; }
+
+.schedule-filter-mobile { display: none; }
+@media (max-width: 768px) {
+	.teduh-toolbar .schedule-filter-desktop { display: none; }
+	.schedule-filter-mobile { display: block; width: 100%; min-height: 44px; padding: 0.5rem 1rem; border: 1px solid var(--color-border); border-radius: 0.5rem; background: var(--color-surface); color: var(--color-slate); font-size: 1rem; }
 }

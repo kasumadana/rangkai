@@ -17,7 +17,6 @@ import { Link } from "react-router";
 import {
 	EmptyStateCard,
 	ErrorStateBanner,
-	EventLifecycleBadge,
 	LoadingStateBlock,
 } from "../components/rangkai";
 import type { EventLifecycleStatus } from "../lib/api-client";
@@ -42,6 +41,11 @@ const STATUS_FILTER_OPTIONS: Array<{ value: StatusFilterValue; label: string }> 
 		{ value: "draft", label: "Draf" },
 		{ value: "completed", label: "Selesai" },
 	];
+
+const STATUS_LABELS: Record<EventLifecycleStatus, string> = {
+	draft: "Draf", review: "Dalam tinjauan", published: "Diumumkan", active: "Aktif",
+	completed: "Selesai", cancelled: "Dibatalkan", archived: "Diarsipkan",
+};
 
 const CATEGORY_LABELS: Record<string, string> = {
 	upacara_adat: "Upacara Adat",
@@ -183,25 +187,9 @@ export function OrganizerDashboardPage() {
 			{/* Filter & Search Bar */}
 			<div className="teduh-workspace-card p-4">
 				<div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 min-w-0">
-					<div className="flex flex-wrap items-center gap-1.5 min-w-0">
-						{STATUS_FILTER_OPTIONS.map((opt) => {
-							const active = statusFilter === opt.value;
-							return (
-								<button
-									key={opt.value}
-									type="button"
-									onClick={() => setStatusFilter(opt.value)}
-									className={`px-3.5 py-2.5 rounded-xl text-base font-semibold transition-colors ${
-										active
-											? "bg-[#264D3B] text-white"
-											: "bg-white text-[#585854] hover:text-[#181817]"
-									}`}
-								>
-									{opt.label}
-								</button>
-							);
-						})}
-					</div>
+					<select aria-label="Filter status kegiatan" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilterValue)} className="w-full sm:w-auto rounded-xl border border-stone-300 bg-white px-4 py-2 text-base">
+						{STATUS_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+					</select>
 
 					<div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 w-full xl:w-auto min-w-0">
 						{organizations.length > 0 ? (
@@ -230,6 +218,7 @@ export function OrganizerDashboardPage() {
 							<Search className="w-4 h-4 text-[#8A8984] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
 							<input
 								type="search"
+								aria-label="Cari kegiatan"
 								value={searchQuery}
 								onChange={(e) => setSearchQuery(e.target.value)}
 								placeholder="Cari nama upacara, lokasi, surat..."
@@ -260,10 +249,9 @@ export function OrganizerDashboardPage() {
 						/>
 					</div>
 				) : filteredEvents.length === 0 ? (
-					<div className="teduh-workspace-card">
-						<EmptyStateCard
-							title={SYSTEM_STATE_MESSAGES.noEvents.title}
-							description={SYSTEM_STATE_MESSAGES.noEvents.description}
+					<EmptyStateCard
+							title="Belum ada kegiatan"
+							description="Tidak ada kegiatan yang cocok dengan filter. Buat draf baru atau ubah filter."
 							actions={
 								<div className="flex flex-wrap items-center gap-2">
 									<button
@@ -287,7 +275,6 @@ export function OrganizerDashboardPage() {
 								</div>
 							}
 						/>
-					</div>
 				) : (
 					<div className="space-y-3.5 min-w-0" data-testid="events-list">
 						{filteredEvents.map((evt) => {
@@ -319,8 +306,8 @@ export function OrganizerDashboardPage() {
 												<span className="text-base sm:text-base font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full shrink-0">
 													{categoryLabel}
 												</span>
-												<div className="shrink-0">
-													<EventLifecycleBadge status={evt.status} />
+												<div className="min-w-0 max-w-full">
+													<Text type="body" weight="medium">{STATUS_LABELS[evt.status]}</Text>
 												</div>
 												{evt.isSimulation !== false ? (
 													<div className="shrink-0">
@@ -346,13 +333,13 @@ export function OrganizerDashboardPage() {
 											<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-base sm:text-base text-[#545B67] pt-0.5">
 												<HStack gap={1.5} align="center" className="min-w-0">
 													<Building2 className="w-4 h-4 text-[#264D3B] shrink-0" />
-													<Text type="body" weight="medium" className="text-[#181817] truncate max-w-[260px] break-words">
+													<Text type="body" weight="medium" className="text-[#181817] break-words">
 														{orgLabel}
 													</Text>
 												</HStack>
 												<HStack gap={1.5} align="center" className="min-w-0">
 													<MapPinned className="w-4 h-4 text-[#545B67] shrink-0" />
-													<Text type="body" color="secondary" className="truncate max-w-[240px] break-words">
+													<Text type="body" color="secondary" className="break-words">
 														{evt.venueName || "Lokasi belum diisi"}
 													</Text>
 												</HStack>
@@ -368,7 +355,7 @@ export function OrganizerDashboardPage() {
 										<div className="flex sm:flex-row lg:flex-col items-start sm:items-center lg:items-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-[#F0EFEA]">
 											<Link
 												to={`/dashboard/events/${evt.id}`}
-												className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] transition-colors no-underline shadow-xs shrink-0"
+												className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] transition-colors no-underline shadow-xs"
 											>
 												<FileText className="w-4 h-4" />
 												<span>Kelola Kegiatan</span>

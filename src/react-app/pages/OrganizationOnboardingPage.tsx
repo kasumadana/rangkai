@@ -124,7 +124,7 @@ export function OrganizationOnboardingPage() {
 					<h1 style={{ margin: 0, fontSize: 22, fontWeight: 400, color: "#181B20" }}>
 						Perlu Masuk Akun Terlebih Dahulu
 					</h1>
-					<p style={{ margin: 0, fontSize: 14, color: "#545B67", lineHeight: 1.6 }}>
+					<p style={{ margin: 0, fontSize: "1rem", color: "#545B67", lineHeight: 1.6 }}>
 						Untuk mendaftarkan organisasi desa adat baru, Anda harus memiliki akun terdaftar.
 					</p>
 					<div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 8 }}>
@@ -157,7 +157,7 @@ export function OrganizationOnboardingPage() {
 					<Link
 						to="/dashboard"
 						className="teduh-back-link"
-						style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}
+						style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "1rem" }}
 					>
 						<ArrowLeft size={15} />
 						<span>Kembali ke Panel</span>
@@ -190,7 +190,7 @@ export function OrganizationOnboardingPage() {
 						>
 							Pendaftaran Organisasi Desa Adat
 						</h1>
-						<p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "#545B67" }}>
+						<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.6, color: "#545B67" }}>
 							Daftarkan lembaga atau desa adat penyelenggara upacara. Sebagai pembuat pertama, Anda otomatis menjadi <strong>Organizer</strong>.
 						</p>
 					</div>
@@ -198,11 +198,11 @@ export function OrganizationOnboardingPage() {
 					{/* Information Callout */}
 					<div
 						style={{
-							background: "#F8FAF8",
+							background: "var(--color-surface)",
 							border: "1px solid rgba(38, 77, 59, 0.12)",
 							borderRadius: 14,
 							padding: "12px 16px",
-							fontSize: 12.5,
+							fontSize: "1rem",
 							lineHeight: 1.55,
 							color: "#545B67",
 						}}
@@ -217,7 +217,7 @@ export function OrganizationOnboardingPage() {
 								border: "1px solid rgba(158, 42, 43, 0.2)",
 								borderRadius: 12,
 								padding: "12px 14px",
-								fontSize: 13,
+								fontSize: "1rem",
 								color: "#9E2A2B",
 								lineHeight: 1.5,
 							}}
@@ -229,14 +229,14 @@ export function OrganizationOnboardingPage() {
 					<form onSubmit={handleOrgSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 						{/* Org Name */}
 						<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-							<label htmlFor="org-name" style={{ fontSize: 13, fontWeight: 500, color: "#181B20" }}>
+							<label htmlFor="org-name" style={{ fontSize: "1rem", fontWeight: 500, color: "#181B20" }}>
 								Nama Desa Adat / Lembaga Penyelenggara
 							</label>
 							<div
 								style={{
 									display: "flex",
 									alignItems: "center",
-									background: "#F8FAF8",
+									background: "var(--color-surface)",
 									border: fieldErrors.name
 										? "1.5px solid #9E2A2B"
 										: "1px solid rgba(228, 231, 229, 0.9)",
@@ -260,27 +260,27 @@ export function OrganizationOnboardingPage() {
 										outline: "none",
 										background: "transparent",
 										width: "100%",
-										fontSize: 14,
+										fontSize: "1rem",
 										color: "#181B20",
 										fontFamily: "var(--font-family)",
 									}}
 								/>
 							</div>
 							{fieldErrors.name && (
-								<span style={{ fontSize: 12, color: "#9E2A2B" }}>{fieldErrors.name}</span>
+								<span style={{ fontSize: "1rem", color: "#9E2A2B" }}>{fieldErrors.name}</span>
 							)}
 						</div>
 
 						{/* District / Kabupaten */}
 						<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-							<label htmlFor="org-district" style={{ fontSize: 13, fontWeight: 500, color: "#181B20" }}>
+							<label htmlFor="org-district" style={{ fontSize: "1rem", fontWeight: 500, color: "#181B20" }}>
 								Kabupaten / Kota di Bali
 							</label>
 							<div
 								style={{
 									display: "flex",
 									alignItems: "center",
-									background: "#F8FAF8",
+									background: "var(--color-surface)",
 									border: "1px solid rgba(228, 231, 229, 0.9)",
 									borderRadius: 12,
 									padding: "10px 14px",
@@ -297,7 +297,7 @@ export function OrganizationOnboardingPage() {
 										outline: "none",
 										background: "transparent",
 										width: "100%",
-										fontSize: 14,
+										fontSize: "1rem",
 										color: "#181B20",
 										fontFamily: "var(--font-family)",
 									}}
@@ -313,14 +313,14 @@ export function OrganizationOnboardingPage() {
 
 						{/* Village / Kecamatan */}
 						<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-							<label htmlFor="org-village" style={{ fontSize: 13, fontWeight: 500, color: "#181B20" }}>
+							<label htmlFor="org-village" style={{ fontSize: "1rem", fontWeight: 500, color: "#181B20" }}>
 								Kecamatan & Wilayah Desa / Banjar
 							</label>
 							<div
 								style={{
 									display: "flex",
 									alignItems: "center",
-									background: "#F8FAF8",
+									background: "var(--color-surface)",
 									border: fieldErrors.village
 										? "1.5px solid #9E2A2B"
 										: "1px solid rgba(228, 231, 229, 0.9)",
@@ -344,14 +344,14 @@ export function OrganizationOnboardingPage() {
 										outline: "none",
 										background: "transparent",
 										width: "100%",
-										fontSize: 14,
+										fontSize: "1rem",
 										color: "#181B20",
 										fontFamily: "var(--font-family)",
 									}}
 								/>
 							</div>
 							{fieldErrors.village && (
-								<span style={{ fontSize: 12, color: "#9E2A2B" }}>{fieldErrors.village}</span>
+								<span style={{ fontSize: "1rem", color: "#9E2A2B" }}>{fieldErrors.village}</span>
 							)}
 						</div>
 
@@ -366,7 +366,7 @@ export function OrganizationOnboardingPage() {
 								border: "none",
 								borderRadius: 9999,
 								padding: "12px 20px",
-								fontSize: 14,
+								fontSize: "1rem",
 								fontWeight: 500,
 								display: "flex",
 								alignItems: "center",

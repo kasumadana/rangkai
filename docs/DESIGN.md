@@ -25,31 +25,31 @@ colors:
 typography:
   display:
     fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
-    fontSize: "1.875rem"
+    fontSize: "2.625rem"
     fontWeight: 700
     lineHeight: "1.25"
     letterSpacing: "-0.02em"
   headline:
     fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
-    fontSize: "1.5rem"
+    fontSize: "1.625rem"
     fontWeight: 600
     lineHeight: "1.3"
     letterSpacing: "-0.015em"
   title:
     fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
-    fontSize: "1.125rem"
+    fontSize: "1rem"
     fontWeight: 600
     lineHeight: "1.35"
     letterSpacing: "-0.01em"
   body:
     fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
-    fontSize: "0.9375rem"
+    fontSize: "1rem"
     fontWeight: 400
     lineHeight: "1.55"
     letterSpacing: "0em"
   label:
     fontFamily: "'Plus Jakarta Sans', system-ui, -apple-system, sans-serif"
-    fontSize: "0.75rem"
+    fontSize: "1rem"
     fontWeight: 600
     lineHeight: "1.2"
     letterSpacing: "0.025em"
@@ -162,13 +162,10 @@ Palet warna menggunakan fondasi Tri Datu yang ditransformasikan menjadi sistem w
 Kombinasi sans-serif geometris humanis dengan *x-height* besar memastikan teks terbaca jelas dalam resolusi layar rendah, ponsel murah, dan sudut pandang miring di lapangan.
 
 ### Hierarchy
-- **Display** (Bold 700, 24px mobile / 30px desktop, line-height 1.25, tracking -0.02em): Nama acara utama pada tampilan publik dan judul layar dashboard ringkasan.
-- **Headline / H2** (Semibold 600, 20px mobile / 24px desktop, line-height 1.3, tracking -0.015em): Judul seksi utama (Panel Review AI, Pemetaan Jalan Terkena Dampak, Verifikasi Kebersihan).
-- **Title / H3** (Semibold 600, 17px mobile / 18px desktop, line-height 1.35, tracking -0.01em): Nama ruas jalan pada daftar, kartu tugas petugas, sub-bagian formulir.
-- **Body Large** (Medium 500, 16px, line-height 1.5): Ringkasan status acara dan instruksi aksi bagi pengguna jalan.
-- **Body Default** (Regular 400, 15px mobile / 15px desktop, line-height 1.55): Teks deskripsi pengumuman, paragraf penjelasan, nilai input form.
-- **Body Small** (Regular 400, 13px, line-height 1.5, tracking +0.005em): Timestamp ("Diperbarui 12 mnt lalu oleh Pecalang Banjar"), catatan disclaimer hukum UU No. 22/2009.
-- **Label / Badge** (Semibold 600, 12px, line-height 1.2, tracking +0.025em, uppercase): Pill status jalan (`OPEN`, `CLOSED`), tag kategori sampah, status verifikasi AI.
+- **Display:** 2.625rem and 4.25rem reserved for large display contexts where needed.
+- **Workspace heading:** 1.625rem for the main page title; smaller section titles use weight and spacing for hierarchy.
+- **Body, labels, controls and metadata:** 1rem with readable line height; operational status always includes text.
+- **Navigation:** the workspace sidebar owns event destinations; on narrow screens its menu opens as a keyboard-accessible drawer. Wizard steps use a compact selector on mobile and a visible step list at larger widths.
 
 ### Named Rules
 **The Mobile 16px Floor Rule.** Ukuran font pada elemen `<input>`, `<select>`, dan `<textarea>` pada perangkat layar bergerak minimal 16px (1rem) guna mencegah peramban iOS Safari melakukan *auto-zoom* yang mengacaukan tata letak.

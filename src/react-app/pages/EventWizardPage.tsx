@@ -1,6 +1,5 @@
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
-import { HStack } from "@astryxdesign/core/Stack";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -945,13 +944,6 @@ export function EventWizardPage() {
 			{/* Header Workspace */}
 			<div className="teduh-workspace-header">
 				<div>
-					<div className="teduh-workspace-eyebrow">
-						<span>
-							{isCreateMode
-								? "Penyusunan Draf Pengumuman Baru"
-								: "Pengelolaan & Verifikasi Pengumuman Upacara"}
-						</span>
-					</div>
 					<div className="flex flex-wrap items-center gap-3">
 						<h1 className="teduh-workspace-title">
 							{isCreateMode
@@ -970,7 +962,7 @@ export function EventWizardPage() {
 				<div className="flex flex-wrap items-center gap-2">
 					<Link
 						to="/dashboard"
-						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-base font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
 					>
 						<ArrowLeft className="w-3.5 h-3.5" />
 						<span>Daftar Upacara</span>
@@ -978,7 +970,7 @@ export function EventWizardPage() {
 					{isRealUuidEvent && routeEventId ? (
 						<Link
 							to={`/dashboard/events/${routeEventId}/team`}
-							className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+							className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-base font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
 						>
 							<Users className="w-3.5 h-3.5 text-[#264D3B]" />
 							<span>Tim &amp; Undangan</span>
@@ -988,7 +980,7 @@ export function EventWizardPage() {
 						type="button"
 						disabled={saveDraftMutation.isPending}
 						onClick={() => void saveDraftMutation.mutateAsync()}
-						className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+						className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
 					>
 						<Save className="w-3.5 h-3.5" />
 						<span>
@@ -998,46 +990,11 @@ export function EventWizardPage() {
 				</div>
 			</div>
 
-			{/* Contextual Event Navigation Tabs for Saved Events */}
-			{isRealUuidEvent && routeEventId ? (
-				<HStack gap={2} wrap="wrap" className="mb-6">
-					<span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-[#264D3B] text-white shadow-xs cursor-default">
-						<FileText className="w-4 h-4" />
-						<span>Ringkasan / Wizard</span>
-					</span>
-					<Link
-						to={`/dashboard/events/${routeEventId}/document`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
-					>
-						<FileText className="w-4 h-4" />
-						<span>Dokumen &amp; AI</span>
-					</Link>
-					<Link
-						to={`/dashboard/events/${routeEventId}/roads`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
-					>
-						<MapPinned className="w-4 h-4" />
-						<span>Dampak Jalan</span>
-					</Link>
-					<Link
-						to={`/dashboard/events/${routeEventId}/cleanup`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
-					>
-						<ClipboardCheck className="w-4 h-4" />
-						<span>Kebersihan</span>
-					</Link>
-					<Link
-						to={`/dashboard/events/${routeEventId}/team`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
-					>
-						<Users className="w-4 h-4" />
-						<span>Tim &amp; Undangan</span>
-					</Link>
-				</HStack>
-			) : null}
-
 			{/* Step Navigation Bar */}
-			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+			<select aria-label="Langkah penyusunan kegiatan" value={activeStep} onChange={(event) => setActiveStep(Number(event.target.value))} className="sm:hidden w-full rounded-xl border border-stone-300 bg-white px-4 py-3 text-base mb-6">
+				{WIZARD_STEPS.map((step) => <option key={step.id} value={step.id}>{step.label}</option>)}
+			</select>
+			<div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-2 mb-6">
 				{WIZARD_STEPS.map((step) => {
 					const isCurrent = activeStep === step.id;
 					const isDone = activeStep > step.id;
@@ -1046,6 +1003,7 @@ export function EventWizardPage() {
 							key={step.id}
 							type="button"
 							onClick={() => setActiveStep(step.id)}
+							aria-current={isCurrent ? "step" : undefined}
 							className={`text-left rounded-2xl border p-3.5 transition-all ${
 								isCurrent
 									? "border-[#264D3B] bg-[#EBF3EE] ring-2 ring-[#264D3B]/10"
@@ -1056,7 +1014,7 @@ export function EventWizardPage() {
 						>
 							<div className="flex items-center justify-between gap-2 mb-1">
 								<span
-									className={`text-xs font-bold ${
+									className={`text-base font-semibold ${
 										isCurrent ? "text-[#264D3B]" : "text-[#181817]"
 									}`}
 								>
@@ -1066,7 +1024,7 @@ export function EventWizardPage() {
 									<CheckCircle2 className="w-3.5 h-3.5 text-[#264D3B] shrink-0" />
 								) : null}
 							</div>
-							<p className="text-[11px] text-[#585854] leading-snug">
+							<p className="text-base text-[#585854] leading-snug">
 								{step.description}
 							</p>
 						</button>
@@ -1116,7 +1074,7 @@ export function EventWizardPage() {
 									<h2 className="teduh-workspace-card-title">
 										1. Pilih Desa Adat &amp; Unggah Surat Edaran
 									</h2>
-									<p className="text-xs text-[#585854] mt-1">
+									<p className="text-base text-[#585854] mt-1">
 										Unggah foto atau PDF surat edaran resmi desa adat. Google
 										Gemini akan mengekstrak informasi ke draf terstruktur untuk
 										diperiksa Prajuru.
@@ -1127,7 +1085,7 @@ export function EventWizardPage() {
 								<div className="space-y-2">
 									<label
 										htmlFor="wizard-org-select"
-										className="block text-xs font-semibold text-[#181817]"
+										className="block text-base font-semibold text-[#181817]"
 									>
 										Desa Adat Penyelenggara *
 									</label>
@@ -1138,7 +1096,7 @@ export function EventWizardPage() {
 											updateField("organizationId", e.target.value);
 											saveOrganizationId(e.target.value);
 										}}
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs font-medium text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base font-medium text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									>
 										{orgOptions.map((opt) => (
 											<option key={opt.value} value={opt.value}>
@@ -1150,7 +1108,7 @@ export function EventWizardPage() {
 									{/* Quick-create Desa Adat if user has 0 memberships */}
 									{myOrganizations.length === 0 ? (
 										<div className="rounded-xl border border-[#F3D9A4] bg-[#FDF7EB] p-3.5 space-y-2.5 mt-2">
-											<div className="flex items-center gap-1.5 text-xs font-bold text-[#9A5B13]">
+											<div className="flex items-center gap-1.5 text-base font-bold text-[#9A5B13]">
 												<Building2 className="w-3.5 h-3.5" />
 												<span>
 													Belum punya Desa Adat terdaftar? Buat cepat di sini:
@@ -1162,14 +1120,14 @@ export function EventWizardPage() {
 													value={quickOrgName}
 													onChange={(e) => setQuickOrgName(e.target.value)}
 													placeholder="Nama Desa Adat / Banjar *"
-													className="rounded-xl border border-[#E5E3DC] bg-white px-3 py-1.5 text-xs text-[#181817]"
+													className="rounded-xl border border-[#E5E3DC] bg-white px-3 py-1.5 text-base text-[#181817]"
 												/>
 												<input
 													type="text"
 													value={quickOrgVillage}
 													onChange={(e) => setQuickOrgVillage(e.target.value)}
 													placeholder="Kelurahan / Kecamatan (Mis. Ubud)"
-													className="rounded-xl border border-[#E5E3DC] bg-white px-3 py-1.5 text-xs text-[#181817]"
+													className="rounded-xl border border-[#E5E3DC] bg-white px-3 py-1.5 text-base text-[#181817]"
 												/>
 											</div>
 											<button
@@ -1207,7 +1165,7 @@ export function EventWizardPage() {
 														});
 													}
 												}}
-												className="px-3 py-1.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+												className="px-3 py-1.5 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
 											>
 												{createOrgMutation.isPending
 													? "Mendaftarkan..."
@@ -1218,14 +1176,14 @@ export function EventWizardPage() {
 								</div>
 
 								{/* AI Consent Checkbox */}
-								<label className="flex items-start gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 cursor-pointer">
+								<label className="flex items-start gap-2.5 rounded-xl border border-[#E5E3DC] bg-white p-3.5 cursor-pointer">
 									<input
 										type="checkbox"
 										checked={aiConsentGranted}
 										onChange={(e) => setAiConsentGranted(e.target.checked)}
 										className="mt-0.5 rounded border-[#C5C3BC] text-[#264D3B] focus:ring-[#264D3B]"
 									/>
-									<div className="text-xs">
+									<div className="text-base">
 										<span className="font-bold text-[#181817] block">
 											Persetujuan Pemrosesan AI Gemini (Privat &amp; Sesuai
 											FR-012)
@@ -1245,14 +1203,14 @@ export function EventWizardPage() {
 										<p className="text-sm font-bold text-[#181817]">
 											Unggah Berkas Surat Edaran (PDF, JPG, PNG • Maks. 10 MB)
 										</p>
-										<p className="text-xs text-[#585854]">
+										<p className="text-base text-[#585854]">
 											Pilih berkas dari perangkat Anda untuk langsung diekstrak
 											oleh AI Gemini, atau lewati ke Langkah 2 untuk mengisi
 											manual.
 										</p>
 									</div>
 									<div>
-										<label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] cursor-pointer">
+										<label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] cursor-pointer">
 											<Upload className="w-3.5 h-3.5" />
 											<span>
 												{uploadAndExtractMutation.isPending
@@ -1292,7 +1250,7 @@ export function EventWizardPage() {
 										</label>
 									</div>
 									{activeDocument ? (
-										<p className="text-xs font-semibold text-[#264D3B]">
+										<p className="text-base font-semibold text-[#264D3B]">
 											Berkas terunggah: {activeDocument.originalName} (
 											{Math.round(activeDocument.sizeBytes / 1024)} KB)
 										</p>
@@ -1312,7 +1270,7 @@ export function EventWizardPage() {
 									<button
 										type="button"
 										onClick={() => setActiveStep(1)}
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-base font-semibold text-[#181817] hover:bg-[#F3F1EC]"
 									>
 										<span>Lewati &amp; Isi Rincian Manual</span>
 										<ArrowRight className="w-3.5 h-3.5" />
@@ -1330,7 +1288,7 @@ export function EventWizardPage() {
 										</h3>
 									</div>
 									{activeExtraction ? (
-										<span className="px-2.5 py-0.5 rounded-full bg-[#EBF3EE] text-[#264D3B] text-[11px] font-bold">
+										<span className="px-2.5 py-0.5 rounded-full bg-[#EBF3EE] text-[#264D3B] text-base font-bold">
 											{activeExtraction.modelName} ({activeExtraction.latencyMs}{" "}
 											ms)
 										</span>
@@ -1338,7 +1296,7 @@ export function EventWizardPage() {
 								</div>
 
 								{activeExtraction ? (
-									<div className="space-y-4 text-xs">
+									<div className="space-y-4 text-base">
 										{activeExtraction.issues.length > 0 ? (
 											<div className="rounded-xl border border-[#F3D9A4] bg-[#FDF7EB] p-3.5 space-y-1.5">
 												<div className="flex items-center gap-1.5 font-bold text-[#9A5B13]">
@@ -1357,24 +1315,24 @@ export function EventWizardPage() {
 										) : null}
 
 										<div className="space-y-2">
-											<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
-												<span className="text-[11px] text-[#585854] block">
+											<div className="rounded-xl border border-[#E5E3DC] bg-white p-3">
+												<span className="text-base text-[#585854] block">
 													Nama Upacara Terdeteksi
 												</span>
 												<p className="font-bold text-[#181817]">
 													{formState.title || "-"}
 												</p>
 											</div>
-											<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
-												<span className="text-[11px] text-[#585854] block">
+											<div className="rounded-xl border border-[#E5E3DC] bg-white p-3">
+												<span className="text-base text-[#585854] block">
 													Lokasi / Rute Prosesi
 												</span>
 												<p className="font-bold text-[#181817]">
 													{formState.venueName || "-"}
 												</p>
 											</div>
-											<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
-												<span className="text-[11px] text-[#585854] block">
+											<div className="rounded-xl border border-[#E5E3DC] bg-white p-3">
+												<span className="text-base text-[#585854] block">
 													Jadwal Pelaksanaan (WITA)
 												</span>
 												<p className="font-bold text-[#181817]">
@@ -1386,14 +1344,14 @@ export function EventWizardPage() {
 										<button
 											type="button"
 											onClick={() => setActiveStep(1)}
-											className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+											className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e]"
 										>
 											<span>Periksa &amp; Koreksi Rincian</span>
 											<ArrowRight className="w-3.5 h-3.5" />
 										</button>
 									</div>
 								) : (
-									<div className="py-8 text-center space-y-2 text-xs text-[#585854]">
+									<div className="py-8 text-center space-y-2 text-base text-[#585854]">
 										<FileText className="w-8 h-8 text-[#8A8984] mx-auto" />
 										<p className="font-semibold text-[#181817]">
 											Belum Ada Dokumen yang Dianalisis
@@ -1419,13 +1377,13 @@ export function EventWizardPage() {
 									<h2 className="teduh-workspace-card-title">
 										2. Detail Upacara &amp; Jadwal Operasional WITA
 									</h2>
-									<p className="text-xs text-[#585854] mt-0.5">
+									<p className="text-base text-[#585854] mt-0.5">
 										Periksa dan lengkapi seluruh kolom berikut. Setiap perubahan
 										dicatat sebagai hasil tinjauan resmi Panitia Desa Adat.
 									</p>
 								</div>
 								{activeExtraction ? (
-									<span className="px-3 py-1 rounded-full bg-[#EBF3EE] text-[#264D3B] text-xs font-semibold">
+									<span className="px-3 py-1 rounded-full bg-[#EBF3EE] text-[#264D3B] text-base font-semibold">
 										Terisi dari Ekstraksi Surat Edaran
 									</span>
 								) : null}
@@ -1434,7 +1392,7 @@ export function EventWizardPage() {
 							<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 								{/* Nama Upacara */}
 								<div className="md:col-span-2 space-y-1.5">
-									<label className="block text-xs font-semibold text-[#181817]">
+									<label className="block text-base font-semibold text-[#181817]">
 										Nama Upacara / Kegiatan Adat *
 									</label>
 									<input
@@ -1442,10 +1400,10 @@ export function EventWizardPage() {
 										value={formState.title}
 										onChange={(e) => updateField("title", e.target.value)}
 										placeholder="Contoh: Karya Pujawali & Prosesi Melasti Pura Dalem Ubud"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									/>
 									{fieldErrors.title ? (
-										<p className="text-xs text-[#9E2A2B] font-medium">
+										<p className="text-base text-[#9E2A2B] font-medium">
 											{fieldErrors.title}
 										</p>
 									) : null}
@@ -1460,7 +1418,7 @@ export function EventWizardPage() {
 												}
 											/>
 											{activeExtraction.outputJson.event_name?.evidence ? (
-												<span className="text-[11px] text-[#585854] italic">
+												<span className="text-base text-[#585854] italic">
 													Bukti surat: &quot;
 													{activeExtraction.outputJson.event_name.evidence}
 													&quot;
@@ -1472,13 +1430,13 @@ export function EventWizardPage() {
 
 								{/* Kategori Upacara */}
 								<div className="space-y-1.5">
-									<label className="block text-xs font-semibold text-[#181817]">
+									<label className="block text-base font-semibold text-[#181817]">
 										Kategori Upacara *
 									</label>
 									<select
 										value={formState.category}
 										onChange={(e) => updateField("category", e.target.value)}
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									>
 										{CATEGORY_OPTIONS.map((opt) => (
 											<option key={opt.value} value={opt.value}>
@@ -1490,7 +1448,7 @@ export function EventWizardPage() {
 
 								{/* Nomor Surat */}
 								<div className="space-y-1.5">
-									<label className="block text-xs font-semibold text-[#181817]">
+									<label className="block text-base font-semibold text-[#181817]">
 										Nomor Surat Edaran / Referensi Desa Adat
 									</label>
 									<input
@@ -1500,13 +1458,13 @@ export function EventWizardPage() {
 											updateField("permitReference", e.target.value)
 										}
 										placeholder="Contoh: 14/DA-UBD/XI/2026"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									/>
 								</div>
 
 								{/* Lokasi Utama / Titik Pura */}
 								<div className="md:col-span-2 space-y-1.5">
-									<label className="block text-xs font-semibold text-[#181817]">
+									<label className="block text-base font-semibold text-[#181817]">
 										Titik Pura / Banjar &amp; Kawasan Utama
 									</label>
 									<input
@@ -1514,7 +1472,7 @@ export function EventWizardPage() {
 										value={formState.venueName}
 										onChange={(e) => updateField("venueName", e.target.value)}
 										placeholder="Contoh: Pura Desa Adat Ubud menuju Catus Pata Ubud"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									/>
 									{activeExtraction?.outputJson ? (
 										<div className="flex flex-wrap items-center justify-between gap-2 pt-1">
@@ -1527,7 +1485,7 @@ export function EventWizardPage() {
 												}
 											/>
 											{activeExtraction.outputJson.venue_name?.evidence ? (
-												<span className="text-[11px] text-[#585854] italic">
+												<span className="text-base text-[#585854] italic">
 													Bukti surat: &quot;
 													{activeExtraction.outputJson.venue_name.evidence}
 													&quot;
@@ -1539,7 +1497,7 @@ export function EventWizardPage() {
 
 								{/* Waktu Mulai WITA */}
 								<div className="space-y-1.5">
-									<label className="block text-xs font-semibold text-[#181817]">
+									<label className="block text-base font-semibold text-[#181817]">
 										Waktu Mulai (WITA • UTC+8)
 									</label>
 									<input
@@ -1548,23 +1506,23 @@ export function EventWizardPage() {
 										onChange={(e) =>
 											updateField("startsAtWita", e.target.value)
 										}
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									/>
 								</div>
 
 								{/* Waktu Selesai WITA */}
 								<div className="space-y-1.5">
-									<label className="block text-xs font-semibold text-[#181817]">
+									<label className="block text-base font-semibold text-[#181817]">
 										Waktu Selesai (WITA • UTC+8)
 									</label>
 									<input
 										type="datetime-local"
 										value={formState.endsAtWita}
 										onChange={(e) => updateField("endsAtWita", e.target.value)}
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									/>
 									{fieldErrors.endsAtWita ? (
-										<p className="text-xs text-[#9E2A2B] font-medium">
+										<p className="text-base text-[#9E2A2B] font-medium">
 											{fieldErrors.endsAtWita}
 										</p>
 									) : null}
@@ -1572,7 +1530,7 @@ export function EventWizardPage() {
 
 								{/* Deskripsi Prosesi */}
 								<div className="md:col-span-2 space-y-1.5">
-									<label className="block text-xs font-semibold text-[#181817]">
+									<label className="block text-base font-semibold text-[#181817]">
 										Rincian Prosesi &amp; Rangkaian Upacara
 									</label>
 									<textarea
@@ -1585,13 +1543,13 @@ export function EventWizardPage() {
 											}
 										}}
 										placeholder="Urutan iring-iringan, sarana upakara yang diusung, dan titik pemberhentian..."
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white p-3 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									/>
 								</div>
 
 								{/* Dampak Lalu Lintas & Pengalihan */}
 								<div className="md:col-span-2 space-y-1.5">
-									<label className="block text-xs font-semibold text-[#181817]">
+									<label className="block text-base font-semibold text-[#181817]">
 										Rekayasa Lalu Lintas &amp; Jalur Alternatif Warga
 									</label>
 									<textarea
@@ -1601,13 +1559,13 @@ export function EventWizardPage() {
 											updateField("trafficImpactDescription", e.target.value)
 										}
 										placeholder="Rute pengalihan arus kendaraan, kantong parkir krama, dan imbauan bagi pengguna jalan..."
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white p-3 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									/>
 								</div>
 
 								{/* Panitia & Narahubung */}
 								<div className="space-y-1.5">
-									<label className="block text-xs font-semibold text-[#181817]">
+									<label className="block text-base font-semibold text-[#181817]">
 										Nama Panitia / Prajuru Penyelenggara
 									</label>
 									<input
@@ -1617,12 +1575,12 @@ export function EventWizardPage() {
 											updateField("organizerName", e.target.value)
 										}
 										placeholder="Contoh: Prawartaka Karya Desa Adat Ubud"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									/>
 								</div>
 
 								<div className="space-y-1.5">
-									<label className="block text-xs font-semibold text-[#181817]">
+									<label className="block text-base font-semibold text-[#181817]">
 										Kontak Koordinasi / Pecalang
 									</label>
 									<input
@@ -1632,7 +1590,7 @@ export function EventWizardPage() {
 											updateField("contactInformation", e.target.value)
 										}
 										placeholder="Contoh: 0812-3456-7890 (Jro Pecalang)"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base text-[#181817] focus:outline-none focus:border-[#264D3B]"
 									/>
 								</div>
 							</div>
@@ -1641,7 +1599,7 @@ export function EventWizardPage() {
 								<button
 									type="button"
 									onClick={() => setActiveStep(0)}
-									className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+									className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-base font-semibold text-[#181817] hover:bg-[#F3F1EC]"
 								>
 									<ArrowLeft className="w-3.5 h-3.5" />
 									<span>Kembali ke Surat Edaran</span>
@@ -1652,7 +1610,7 @@ export function EventWizardPage() {
 										type="button"
 										disabled={saveDraftMutation.isPending}
 										onClick={() => void saveDraftMutation.mutateAsync()}
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4]"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-base font-semibold text-[#264D3B] hover:bg-[#dfece4]"
 									>
 										<Save className="w-3.5 h-3.5" />
 										<span>Simpan Rincian</span>
@@ -1660,7 +1618,7 @@ export function EventWizardPage() {
 									<button
 										type="button"
 										onClick={() => setActiveStep(2)}
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e]"
 									>
 										<span>Lanjut ke Peta &amp; Ruas Jalan</span>
 										<ArrowRight className="w-3.5 h-3.5" />
@@ -1681,7 +1639,7 @@ export function EventWizardPage() {
 										<h2 className="teduh-workspace-card-title">
 											3. Input Peta &amp; Ruas Jalan Terdampak
 										</h2>
-										<p className="text-xs text-[#585854] mt-0.5">
+										<p className="text-base text-[#585854] mt-0.5">
 											Tentukan lokasi penutupan jalan secara akurat: klik titik
 											koordinat langsung di peta untuk menggambar ruas jalan
 											baru, atau pilih dari katalog jalan terverifikasi.
@@ -1693,7 +1651,7 @@ export function EventWizardPage() {
 										<button
 											type="button"
 											onClick={() => setRoadInputMode("draw")}
-											className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+											className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-base font-semibold transition-colors ${
 												roadInputMode === "draw"
 													? "bg-[#264D3B] text-white"
 													: "text-[#585854] hover:text-[#181817]"
@@ -1705,7 +1663,7 @@ export function EventWizardPage() {
 										<button
 											type="button"
 											onClick={() => setRoadInputMode("catalog")}
-											className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+											className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-base font-semibold transition-colors ${
 												roadInputMode === "catalog"
 													? "bg-[#264D3B] text-white"
 													: "text-[#585854] hover:text-[#181817]"
@@ -1726,12 +1684,12 @@ export function EventWizardPage() {
 
 								{/* Road Candidate Suggestions from Document Extraction */}
 								{roadCandidates.length > 0 ? (
-									<div className="rounded-xl border border-stone-200 bg-[#FBFBFA] p-3 text-xs space-y-2">
+									<div className="rounded-xl border border-stone-200 bg-white p-3 text-base space-y-2">
 										<div className="flex items-center justify-between">
 											<span className="font-semibold text-stone-900">
 												Kandidat Ruas Jalan dari Dokumen ({roadCandidates.length} saran)
 											</span>
-											<span className="text-[11px] text-stone-500">
+											<span className="text-base text-stone-500">
 												Pilihan memerlukan konfirmasi panitia
 											</span>
 										</div>
@@ -1743,10 +1701,10 @@ export function EventWizardPage() {
 												>
 													<div>
 														<p className="font-bold text-stone-900">{cand.displayName}</p>
-														<p className="text-[11px] text-stone-500">
+														<p className="text-base text-stone-500">
 															Kawasan: {cand.coverageArea} • Skor: {Math.round(cand.matchScore * 100)}%
 														</p>
-														<p className="text-[11px] text-stone-600 italic mt-0.5">{cand.explanation}</p>
+														<p className="text-base text-stone-600 italic mt-0.5">{cand.explanation}</p>
 													</div>
 													<button
 														type="button"
@@ -1754,7 +1712,7 @@ export function EventWizardPage() {
 															setRoadInputMode("catalog");
 															setSelectedRoadSegmentId(cand.roadSegmentId);
 														}}
-														className={`w-full py-1.5 px-2 rounded-md font-semibold text-xs transition-colors ${
+														className={`w-full py-1.5 px-2 rounded-md font-semibold text-base transition-colors ${
 															selectedRoadSegmentId === cand.roadSegmentId
 																? "bg-[#264D3B] text-white"
 																: "bg-stone-100 hover:bg-stone-200 text-stone-800"
@@ -1774,7 +1732,7 @@ export function EventWizardPage() {
 								{roadSegmentsQuery.isLoading ? (
 									<div
 										role="status"
-										className="rounded-xl border border-stone-200 bg-[#FBFBFA] p-3 text-xs text-stone-600 flex items-center gap-2"
+										className="rounded-xl border border-stone-200 bg-white p-3 text-base text-stone-600 flex items-center gap-2"
 									>
 										<span className="w-2 h-2 rounded-full bg-stone-400 animate-pulse" />
 										<span>Memuat katalog ruas jalan terverifikasi...</span>
@@ -1782,14 +1740,14 @@ export function EventWizardPage() {
 								) : roadSegmentsQuery.isError ? (
 									<div
 										role="alert"
-										className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800 flex items-center justify-between gap-3 flex-wrap"
+										className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-800 flex items-center justify-between gap-3 flex-wrap"
 									>
 										<div>
 											<p className="font-semibold">
 												Katalog ruas jalan tidak dapat dimuat (503 / galat server).
 											</p>
 											{catalogRequestId ? (
-												<p className="text-[11px] text-red-600 mt-0.5">
+												<p className="text-base text-red-600 mt-0.5">
 													ID Permintaan: {catalogRequestId}
 												</p>
 											) : null}
@@ -1803,7 +1761,7 @@ export function EventWizardPage() {
 										</button>
 									</div>
 								) : catalogSegments.length === 0 ? (
-									<div className="rounded-xl border border-stone-200 bg-[#FBFBFA] p-3 text-xs text-stone-600">
+									<div className="rounded-xl border border-stone-200 bg-white p-3 text-base text-stone-600">
 										Katalog ruas jalan kosong untuk wilayah ini. Gunakan mode gambar untuk
 										menandai garis simulasi.
 									</div>
@@ -1829,12 +1787,12 @@ export function EventWizardPage() {
 										<div className="flex flex-wrap items-center justify-between gap-2">
 											<div className="flex items-center gap-2">
 												<PenTool className="w-4 h-4 text-[#264D3B]" />
-												<span className="text-xs font-bold text-[#181817]">
+												<span className="text-base font-bold text-[#181817]">
 													Formulir Ruas Jalan dari Titik Peta (
 													{draftCoordinates.length} titik dipilih)
 												</span>
 											</div>
-											<span className="text-[11px] font-semibold text-[#264D3B]">
+											<span className="text-base font-semibold text-[#264D3B]">
 												{draftCoordinates.length < 2
 													? "Klik minimal 2 titik pada peta di atas"
 													: "Garis ruas jalan siap disimpan"}
@@ -1843,7 +1801,7 @@ export function EventWizardPage() {
 
 										<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 											<div>
-												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+												<label className="block text-base font-semibold text-[#181817] mb-1">
 													Nama Ruas Jalan / Simpang *
 												</label>
 												<input
@@ -1851,12 +1809,12 @@ export function EventWizardPage() {
 													value={newSegmentName}
 													onChange={(e) => setNewSegmentName(e.target.value)}
 													placeholder="Mis. Jl. Raya Ubud (Depan Puri Saren)"
-													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-base text-[#181817]"
 												/>
 											</div>
 
 											<div>
-												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+												<label className="block text-base font-semibold text-[#181817] mb-1">
 													Kawasan / Desa Adat *
 												</label>
 												<input
@@ -1864,12 +1822,12 @@ export function EventWizardPage() {
 													value={newSegmentArea}
 													onChange={(e) => setNewSegmentArea(e.target.value)}
 													placeholder="Mis. Ubud, Gianyar"
-													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-base text-[#181817]"
 												/>
 											</div>
 
 											<div>
-												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+												<label className="block text-base font-semibold text-[#181817] mb-1">
 													Jenis Dampak Lalu Lintas *
 												</label>
 												<select
@@ -1879,7 +1837,7 @@ export function EventWizardPage() {
 															e.target.value as typeof selectedImpactType,
 														)
 													}
-													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-base text-[#181817]"
 												>
 													{IMPACT_TYPE_OPTIONS.map((opt) => (
 														<option key={opt.value} value={opt.value}>
@@ -1890,31 +1848,31 @@ export function EventWizardPage() {
 											</div>
 
 											<div>
-												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+												<label className="block text-base font-semibold text-[#181817] mb-1">
 													Mulai Penutupan (WITA)
 												</label>
 												<input
 													type="datetime-local"
 													value={impactFromWita || formState.startsAtWita}
 													onChange={(e) => setImpactFromWita(e.target.value)}
-													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-base text-[#181817]"
 												/>
 											</div>
 
 											<div>
-												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+												<label className="block text-base font-semibold text-[#181817] mb-1">
 													Selesai Penutupan (WITA)
 												</label>
 												<input
 													type="datetime-local"
 													value={impactToWita || formState.endsAtWita}
 													onChange={(e) => setImpactToWita(e.target.value)}
-													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-base text-[#181817]"
 												/>
 											</div>
 
 											<div>
-												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+												<label className="block text-base font-semibold text-[#181817] mb-1">
 													Catatan Pengalihan Arus / Rute Alternatif
 												</label>
 												<input
@@ -1924,13 +1882,13 @@ export function EventWizardPage() {
 														setImpactDiversionNote(e.target.value)
 													}
 													placeholder="Mis. Dialihkan melalui Jl. Sugriwa / Monkey Forest"
-													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-base text-[#181817]"
 												/>
 											</div>
 										</div>
 
 										<div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-											<label className="flex items-center gap-2 text-xs text-[#181817] cursor-pointer">
+											<label className="flex items-center gap-2 text-base text-[#181817] cursor-pointer">
 												<input
 													type="checkbox"
 													checked={humanVerifiedRoad}
@@ -1953,7 +1911,7 @@ export function EventWizardPage() {
 												onClick={() =>
 													void drawAndAttachRoadMutation.mutateAsync()
 												}
-												className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 shrink-0"
+												className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 shrink-0"
 											>
 												<Plus className="w-3.5 h-3.5" />
 												<span>
@@ -1965,17 +1923,17 @@ export function EventWizardPage() {
 										</div>
 									</div>
 								) : (
-									<div className="rounded-2xl border border-[#E5E3DC] bg-[#FBFBFA] p-4 space-y-4">
+									<div className="rounded-2xl border border-[#E5E3DC] bg-white p-4 space-y-4">
 										{roadSegmentsQuery.isError ? (
 											<div
 												role="alert"
-												className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800 flex items-center justify-between gap-2 flex-wrap"
+												className="rounded-xl border border-red-200 bg-red-50 p-3 text-base text-red-800 flex items-center justify-between gap-2 flex-wrap"
 											>
 												<span>Katalog ruas jalan tidak dapat dimuat.</span>
 												<button
 													type="button"
 													onClick={() => void roadSegmentsQuery.refetch()}
-													className="px-2.5 py-1 rounded bg-red-600 text-white font-semibold text-[11px] hover:bg-red-700 shrink-0"
+													className="px-2.5 py-1 rounded bg-red-600 text-white font-semibold text-base hover:bg-red-700 shrink-0"
 												>
 													Coba Lagi
 												</button>
@@ -1983,7 +1941,7 @@ export function EventWizardPage() {
 										) : null}
 										<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
 											<div className="md:col-span-2">
-												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+												<label className="block text-base font-semibold text-[#181817] mb-1">
 													Pilih Ruas Jalan dari Katalog Terverifikasi *
 												</label>
 												<select
@@ -1991,7 +1949,7 @@ export function EventWizardPage() {
 													onChange={(e) =>
 														setSelectedRoadSegmentId(e.target.value)
 													}
-													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-base text-[#181817]"
 												>
 													<option value="">
 														{roadSegmentsQuery.isLoading
@@ -2009,7 +1967,7 @@ export function EventWizardPage() {
 											</div>
 
 											<div>
-												<label className="block text-[11px] font-semibold text-[#181817] mb-1">
+												<label className="block text-base font-semibold text-[#181817] mb-1">
 													Jenis Dampak Lalu Lintas *
 												</label>
 												<select
@@ -2019,7 +1977,7 @@ export function EventWizardPage() {
 															e.target.value as typeof selectedImpactType,
 														)
 													}
-													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+													className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-base text-[#181817]"
 												>
 													{IMPACT_TYPE_OPTIONS.map((opt) => (
 														<option key={opt.value} value={opt.value}>
@@ -2044,7 +2002,7 @@ export function EventWizardPage() {
 														);
 													}
 												}}
-												className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+												className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
 											>
 												<Plus className="w-3.5 h-3.5" />
 												<span>
@@ -2071,20 +2029,20 @@ export function EventWizardPage() {
 										{attachedRoadImpacts.map((imp) => (
 											<div
 												key={imp.id}
-												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 max-w-full overflow-hidden"
+												className="rounded-xl border border-[#E5E3DC] bg-white p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 max-w-full overflow-hidden"
 											>
 												<div className="space-y-1 min-w-0 flex-1 break-words">
 													<div className="flex flex-wrap items-center gap-2">
-														<span className="text-xs font-bold text-[#181817] break-words">
+														<span className="text-base font-bold text-[#181817] break-words">
 															{imp.segment?.displayName ||
 																imp.displayName ||
 																"Ruas Jalan Terverifikasi"}
 														</span>
-														<span className="px-2 py-0.5 rounded-md bg-[#EBF3EE] text-[#264D3B] text-[11px] font-semibold shrink-0">
+														<span className="px-2 py-0.5 rounded-md bg-[#EBF3EE] text-[#264D3B] text-base font-semibold shrink-0">
 															{getImpactTypeLabel(imp.impactType)}
 														</span>
 													</div>
-													<p className="text-xs text-[#585854] break-words">
+													<p className="text-base text-[#585854] break-words">
 														{imp.segment?.coverageArea ||
 															imp.coverageArea ||
 															"Bali"}{" "}
@@ -2118,7 +2076,7 @@ export function EventWizardPage() {
 															onClick={() =>
 																void removeRoadImpactMutation.mutateAsync(imp.id)
 															}
-															className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-[11px] font-semibold text-[#9E2A2B] hover:bg-[#fae5e5]"
+															className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-base font-semibold text-[#9E2A2B] hover:bg-[#fae5e5]"
 														>
 															<Trash2 className="w-3 h-3" />
 															<span>Hapus</span>
@@ -2144,7 +2102,7 @@ export function EventWizardPage() {
 									<button
 										type="button"
 										onClick={() => setActiveStep(1)}
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-base font-semibold text-[#181817] hover:bg-[#F3F1EC]"
 									>
 										<ArrowLeft className="w-3.5 h-3.5" />
 										<span>Kembali ke Detail Upacara</span>
@@ -2152,7 +2110,7 @@ export function EventWizardPage() {
 									<button
 										type="button"
 										onClick={() => setActiveStep(3)}
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e]"
 									>
 										<span>Lanjut ke Verifikasi &amp; Terbitkan</span>
 										<ArrowRight className="w-3.5 h-3.5" />
@@ -2172,32 +2130,32 @@ export function EventWizardPage() {
 									<h2 className="teduh-workspace-card-title">
 										4. Verifikasi Prajuru &amp; Penerbitan Resmi
 									</h2>
-									<p className="text-xs text-[#585854] mt-0.5">
+									<p className="text-base text-[#585854] mt-0.5">
 										Periksa ringkasan akhir di bawah ini. Sesuai invarian domain
 										Rangkai, pengumuman wajib diverifikasi Prajuru (`REVIEW`)
 										sebelum diterbitkan ke publik (`PUBLISHED`).
 									</p>
 								</div>
 
-								<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
-										<span className="text-[11px] text-[#585854] block">
+								<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-base">
+									<div className="rounded-xl border border-[#E5E3DC] bg-white p-3">
+										<span className="text-base text-[#585854] block">
 											Nama Upacara
 										</span>
 										<p className="font-bold text-[#181817]">
 											{formState.title.trim() || "Belum diisi"}
 										</p>
 									</div>
-									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
-										<span className="text-[11px] text-[#585854] block">
+									<div className="rounded-xl border border-[#E5E3DC] bg-white p-3">
+										<span className="text-base text-[#585854] block">
 											Lokasi &amp; Kawasan
 										</span>
 										<p className="font-bold text-[#181817]">
 											{formState.venueName.trim() || "Belum diisi"}
 										</p>
 									</div>
-									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
-										<span className="text-[11px] text-[#585854] block">
+									<div className="rounded-xl border border-[#E5E3DC] bg-white p-3">
+										<span className="text-base text-[#585854] block">
 											Jadwal Pelaksanaan (WITA)
 										</span>
 										<p className="font-bold text-[#181817]">
@@ -2206,24 +2164,24 @@ export function EventWizardPage() {
 												: "Belum lengkap"}
 										</p>
 									</div>
-									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
-										<span className="text-[11px] text-[#585854] block">
+									<div className="rounded-xl border border-[#E5E3DC] bg-white p-3">
+										<span className="text-base text-[#585854] block">
 											Ruas Jalan Terdampak
 										</span>
 										<p className="font-bold text-[#264D3B]">
 																	{attachedRoadImpacts.length} ruas jalan tercatat
 										</p>
 									</div>
-									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
-										<span className="text-[11px] text-[#585854] block">
+									<div className="rounded-xl border border-[#E5E3DC] bg-white p-3">
+										<span className="text-base text-[#585854] block">
 											Nomor Surat Edaran
 										</span>
 										<p className="font-bold text-[#181817]">
 											{formState.permitReference.trim() || "-"}
 										</p>
 									</div>
-									<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3">
-										<span className="text-[11px] text-[#585854] block">
+									<div className="rounded-xl border border-[#E5E3DC] bg-white p-3">
+										<span className="text-base text-[#585854] block">
 											Status Verifikasi Prajuru
 										</span>
 										<p className="font-bold text-[#181817]">
@@ -2237,7 +2195,7 @@ export function EventWizardPage() {
 								{/* Action Bar: Save, Verify (Review), Publish, Complete */}
 								<div className="rounded-2xl border border-[#D7E3DC] bg-[#F6FAF7] p-4 space-y-3">
 									<div className="flex flex-wrap items-center justify-between gap-2">
-										<span className="text-xs font-bold text-[#181817]">
+										<span className="text-base font-bold text-[#181817]">
 											Tindakan Siklus Hidup Acara (Event Lifecycle)
 										</span>
 										<EventLifecycleBadge status={currentLifecycleStatus} />
@@ -2248,7 +2206,7 @@ export function EventWizardPage() {
 											type="button"
 											disabled={saveDraftMutation.isPending}
 											onClick={() => void saveDraftMutation.mutateAsync()}
-											className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+											className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-base font-semibold text-[#181817] hover:bg-[#F3F1EC]"
 										>
 											<Save className="w-3.5 h-3.5" />
 											<span>1. Simpan Draf</span>
@@ -2258,7 +2216,7 @@ export function EventWizardPage() {
 											type="button"
 											disabled={!isRealUuidEvent || reviewMutation.isPending}
 											onClick={() => void reviewMutation.mutateAsync()}
-											className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4] disabled:opacity-50"
+											className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-base font-semibold text-[#264D3B] hover:bg-[#dfece4] disabled:opacity-50"
 										>
 											<CheckCircle2 className="w-3.5 h-3.5" />
 											<span>
@@ -2277,7 +2235,7 @@ export function EventWizardPage() {
 													currentLifecycleStatus !== "review")
 											}
 											onClick={() => setIsPublishDialogOpen(true)}
-											className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+											className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
 										>
 											<Send className="w-3.5 h-3.5" />
 											<span>3. Terbitkan ke Warga</span>
@@ -2290,7 +2248,7 @@ export function EventWizardPage() {
 												type="button"
 												disabled={completeMutation.isPending}
 												onClick={() => void completeMutation.mutateAsync()}
-												className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B] bg-white text-xs font-semibold text-[#264D3B] hover:bg-[#EBF3EE]"
+												className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B] bg-white text-base font-semibold text-[#264D3B] hover:bg-[#EBF3EE]"
 											>
 												<CheckCircle2 className="w-3.5 h-3.5" />
 												<span>Tandai Acara Selesai</span>
@@ -2302,7 +2260,7 @@ export function EventWizardPage() {
 								{/* Cancellation Section */}
 								{isRealUuidEvent && currentLifecycleStatus !== "cancelled" ? (
 									<div className="pt-4 border-t border-[#F0EFEA] space-y-2">
-										<label className="block text-xs font-semibold text-[#585854]">
+										<label className="block text-base font-semibold text-[#585854]">
 											Alasan Pembatalan Pengumuman (Jika Dibatalkan)
 										</label>
 										<div className="flex flex-col sm:flex-row gap-2">
@@ -2310,13 +2268,13 @@ export function EventWizardPage() {
 												type="text"
 												value={cancelReason}
 												onChange={(e) => setCancelReason(e.target.value)}
-												className="flex-1 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+												className="flex-1 rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-base text-[#181817]"
 											/>
 											<button
 												type="button"
 												disabled={cancelMutation.isPending}
 												onClick={() => void cancelMutation.mutateAsync()}
-												className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E8B4B4] bg-[#FDF2F2] text-xs font-semibold text-[#9E2A2B] hover:bg-[#fae5e5] shrink-0"
+												className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E8B4B4] bg-[#FDF2F2] text-base font-semibold text-[#9E2A2B] hover:bg-[#fae5e5] shrink-0"
 											>
 												<Trash2 className="w-3.5 h-3.5" />
 												<span>Batalkan Pengumuman</span>
@@ -2333,7 +2291,7 @@ export function EventWizardPage() {
 									<h3 className="teduh-workspace-card-title">
 										Modul Operasional Lanjutan
 									</h3>
-									<p className="text-xs text-[#585854]">
+									<p className="text-base text-[#585854]">
 										Setelah draf disimpan, Anda dapat langsung menugaskan
 										Pecalang, membagikan tautan undangan petugas, memperbarui
 										status jalan saat acara berlangsung, dan mencatat kebersihan
@@ -2345,15 +2303,15 @@ export function EventWizardPage() {
 										<div className="space-y-2.5">
 											<Link
 												to={`/dashboard/events/${routeEventId}/team`}
-												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
+												className="rounded-xl border border-[#E5E3DC] bg-white p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
 											>
 												<div className="flex items-center gap-3">
 													<Users className="w-4 h-4 text-[#264D3B]" />
 													<div>
-														<p className="text-xs font-bold text-[#181817]">
+														<p className="text-base font-bold text-[#181817]">
 															Tim Lapangan &amp; Tautan Undangan
 														</p>
-														<p className="text-[11px] text-[#585854]">
+														<p className="text-base text-[#585854]">
 															Buat tautan undangan Pecalang &amp; petugas
 															kebersihan
 														</p>
@@ -2365,15 +2323,15 @@ export function EventWizardPage() {
 
 											<Link
 												to={`/field/events/${routeEventId}`}
-												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
+												className="rounded-xl border border-[#E5E3DC] bg-white p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
 											>
 												<div className="flex items-center gap-3">
 													<Radio className="w-4 h-4 text-[#264D3B]" />
 													<div>
-														<p className="text-xs font-bold text-[#181817]">
+														<p className="text-base font-bold text-[#181817]">
 															Pos Pecalang (Status Jalan Live)
 														</p>
-														<p className="text-[11px] text-[#585854]">
+														<p className="text-base text-[#585854]">
 															Perbarui status OPEN / INTERMITTENT / CLOSED
 														</p>
 													</div>
@@ -2383,15 +2341,15 @@ export function EventWizardPage() {
 
 											<Link
 												to={`/dashboard/events/${routeEventId}/cleanup`}
-												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
+												className="rounded-xl border border-[#E5E3DC] bg-white p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
 											>
 												<div className="flex items-center gap-3">
 													<ClipboardCheck className="w-4 h-4 text-[#264D3B]" />
 													<div>
-														<p className="text-xs font-bold text-[#181817]">
+														<p className="text-base font-bold text-[#181817]">
 															Kebersihan &amp; Pencatatan Sampah
 														</p>
-														<p className="text-[11px] text-[#585854]">
+														<p className="text-base text-[#585854]">
 															Unggah bukti foto &amp; catat timbangan sampah
 														</p>
 													</div>
@@ -2400,7 +2358,7 @@ export function EventWizardPage() {
 											</Link>
 										</div>
 									) : (
-										<div className="rounded-xl border border-dashed border-[#D5D3CB] p-4 text-xs text-[#585854]">
+										<div className="rounded-xl border border-dashed border-[#D5D3CB] p-4 text-base text-[#585854]">
 											Klik tombol <strong>Simpan Draf</strong> terlebih dahulu
 											untuk mengaktifkan modul penugasan tim, pos Pecalang, dan
 											kebersihan.
