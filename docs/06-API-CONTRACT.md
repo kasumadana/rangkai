@@ -55,7 +55,132 @@ Organizer and officer sessions are cookie-based (`HttpOnly`, `SameSite=Lax`, `Se
 Missing or invalid authentication configuration (`BETTER_AUTH_SECRET` < 32 chars, missing `BETTER_AUTH_URL`) fails closed with HTTP 503.
 Public endpoints never require a session.
 
-## 4. Events
+## 4. Organizations & Onboarding
+
+### POST /api/organizations
+Permission: authenticated user  
+Requires: `Content-Type: application/json`
+
+Request:
+```json
+{
+  "name": "Banjar Kaja Sesetan",
+  "village": "Sesetan",
+  "district": "Denpasar Selatan"
+}
+```
+
+Behavior:
+- Atomically creates organization, assigns caller as `organizer` member, and writes initial audit log in a single CTE.
+- Idempotent: If caller already created an organization with identical name, returns existing organization (200 OK) without error or duplicates.
+- Default authority: `hasOperationalAuthority` defaults to `false`. Operational authority can only be granted by external authority.
+- Sanitized errors: Database constraint errors are mapped into standardized error envelopes without exposing internal table or SQL details.
+
+Response: 201 Created (or 200 OK if existing):
+```json
+{
+  "organization": {
+    "id": "uuid",
+    "name": "Banjar Kaja Sesetan",
+    "village": "Sesetan",
+    "district": "Denpasar Selatan",
+    "hasOperationalAuthority": false,
+    "createdAt": "2026-11-08T10:00:00Z"
+  }
+}
+```
+
+### GET /api/organizations/my
+Permission: authenticated user  
+Returns organizations where the caller has active membership.
+
+---
+
+## 5. Invitations & Officer Onboarding
+
+### POST /api/invitations
+Permission: organizer of the organization  
+Requires: `Content-Type: application/json`
+
+Request:
+```json
+{
+  "organizationId": "uuid",
+  "eventId": "uuid (optional)",
+  "role": "officer" | "organizer",
+  "recipientEmail": "pecalang@desaadat.id",
+  "canUpdateTraffic": true,
+  "canUpdateCleanup": false,
+  "expiresInDays": 7
+}
+```
+
+Behavior:
+- Generates cryptographically secure token and stores only its SHA-256 hash (`token_hash`).
+- `recipientEmail` is required; missing or invalid values return 422. Binding is enforced at acceptance time (case-insensitive, trimmed).
+- Atomically creates invitation and audit log.
+
+Response: 201 Created:
+```json
+{
+  "invitation": {
+    "id": "uuid",
+    "token": "raw-ephemeral-token-64-hex",
+    "inviteUrl": "https://rangkai.id/invite/raw-ephemeral-token-64-hex",
+    "role": "officer",
+    "status": "pending",
+    "recipientEmail": "pecalang@desaadat.id",
+    "expiresAt": "2026-11-15T10:00:00Z"
+  }
+}
+```
+
+### GET /api/invitations/:token
+Permission: public (no auth required)  
+Returns public invitation details (organization name, event title, permissions, recipient email) without revealing token hash or private document data. Returns 404/410 if expired or revoked.
+
+### POST /api/invitations/:token/accept
+Permission: authenticated user  
+Behavior:
+- Enforces recipient email match.
+- Re-verifies creator's current active organizer authority in the organization.
+- Atomically executes single-consumption compare-and-swap (CAS) via SQL CTE (`UPDATE invitations SET status = 'accepted' WHERE status = 'pending'`).
+- Grants membership and event assignments atomically with audit log. Concurrent double-acceptance by competing callers yields exactly one 200 OK and one 409 Conflict. Same-user repeat acceptance of their own already-accepted invitation returns 200 OK idempotently without duplicate grants.
+
+Response: 200 OK:
+```json
+{
+  "success": true,
+  "role": "officer",
+  "organizationId": "uuid",
+  "eventId": "uuid"
+}
+```
+
+### DELETE /api/invitations/:id
+Permission: organizer of the organization  
+Atomically revokes pending invitation via CAS (`UPDATE ... WHERE status = 'pending'`). Subsequent acceptance attempts return 410 Gone / 404.
+
+---
+
+## 6. Field Operations
+
+### GET /api/field/tasks
+Permission: authenticated user  
+Returns active event assignments for the authenticated officer:
+- Assigned officers receive ONLY events they are assigned to with scoped permissions (`canUpdateTraffic`, `canUpdateCleanup`).
+- Unassigned officers receive an empty array (`{ "assignments": [] }`).
+- Organizers receive oversight entries for all active events in their organization.
+
+### GET /api/field/events/:id
+Permission: assigned officer or organizer  
+Behavior:
+- Returns scoped operational detail for the event, including verified road impacts, active statuses, and cleanup tasks.
+- If caller is an unassigned officer, returns HTTP 403 Forbidden with standard access denied error.
+
+---
+
+## 7. Events
 
 POST /api/events
 Permission: organizer
@@ -144,9 +269,10 @@ Prerequisites:
 - Event must have explicit human review verification (`verifiedBy` and `verifiedAt` non-null).
 - Confirmed core fields (`title`, `startsAt`, `endsAt`, `venueName`).
 - At least one road impact referencing a verified road segment (`road_segments.verified_by` and `verified_at` non-null) with `plannedTo > plannedFrom`.
+- Operational Authority Gate (AGENTS §1): If publishing an operational event (`isSimulation: false`), the host organization must have `hasOperationalAuthority: true`. Otherwise, returns 403 Forbidden (`OPERATIONAL_AUTHORITY_REQUIRED`). Simulation events (`isSimulation: true`) may be published by any verified organization and are publicly tagged with `[SIMULATED]`.
 Idempotency:
 - If event is already published, returns 200 OK immediately without generating duplicate slugs or audit rows.
-Response: 200 OK with publicSlug, publishedAt, status "published". Atomic audit log recorded.
+Response: 200 OK with publicSlug, publishedAt, isSimulation, status "published". Atomic audit log recorded.
 
 POST /api/events/:eventId/cancel
 Permission: organizer
@@ -240,9 +366,10 @@ Permission: organizer
 Returns reviewed road-segment candidates.
 
 POST /api/road-segments
-Permission: organizer
+Global road verification is not available through this endpoint; it returns 403. Existing verified catalog rows require an independently authorized provenance process.
 
-Creates a human-verified road segment (`LineString`) drawn by an organizer on the dashboard map.
+POST /api/events/:eventId/simulation-road-impacts
+Permission: current organizer of the event's organization; event must be a simulation in draft or review. Creates and attaches an organization-scoped training line atomically. This line is not globally verified or eligible for operational publication. Repeating the same payload and `mutationId` returns the existing result; changing a payload for an existing ID returns 409.
 
 Request:
 
@@ -254,7 +381,11 @@ Request:
     [115.2612, -8.5068],
     [115.2645, -8.5069]
   ],
-  "humanVerified": true
+  "humanVerified": true,
+  "mutationId": "uuid",
+  "plannedFrom": "2026-11-10T00:00:00Z",
+  "plannedTo": "2026-11-10T02:00:00Z",
+  "impactType": "closure"
 }
 ```
 
@@ -505,3 +636,133 @@ Every endpoint needs:
 - Wrong organization test
 - State conflict test where applicable
 - Database failure test where applicable
+
+## 14. Public Road Geometry & Alternative Routes (P0 & P1)
+
+### GET /api/public/road-impacts
+Read-only anonymous list of operational road impacts across all published events.
+- **Query parameters:**
+  - `status` or `operationalStatus`: Optional filter (`open`, `intermittent`, `closed`, `unknown`, `unconfirmed`).
+  - `eventStatus`: Optional filter for event lifecycle status (`published`, `active`, `completed`). Defaults to published or active events.
+  - `from`: Optional ISO 8601 start window timestamp.
+  - `to`: Optional ISO 8601 end window timestamp.
+  - `bbox`: Optional Bali bounding box `minLng,minLat,maxLng,maxLat`.
+  - `page`: Optional integer page number (default 1).
+  - `limit`: Optional pagination limit (default 100, max 300).
+- **TTL Semantics:**
+  - Evaluates operational status dynamically against `ROAD_STATUS_TTL_MS` (30 minutes).
+  - Statuses older than 30 minutes return `effectiveStatus: "unconfirmed"`.
+  - Never silently coerces unconfirmed status to `open`.
+- **Response:**
+  ```json
+  {
+    "type": "FeatureCollection",
+    "features": [
+      {
+        "type": "Feature",
+        "id": "imp_01",
+        "geometry": { "type": "LineString", "coordinates": [[115.258, -8.691], [115.260, -8.695]] },
+        "properties": {
+          "impactId": "imp_01",
+          "roadSegmentId": "seg_01",
+          "eventId": "evt_01",
+          "eventSlug": "melasti-sanur-2026",
+          "eventTitle": "Karya Melasti Desa Adat Sanur Kauh",
+          "displayName": "Jl. Danau Tamblingan",
+          "coverageArea": "Kawasan Pesisir Sanur",
+          "impactType": "full_closure",
+          "plannedFrom": "2026-11-12T08:00:00Z",
+          "plannedTo": "2026-11-12T12:00:00Z",
+          "diversionNote": "Gunakan jalur bypass timur",
+          "rawStatus": "closed",
+          "effectiveStatus": "closed",
+          "isStale": false,
+          "observedAt": "2026-11-12T08:15:00Z",
+          "expiresAt": "2026-11-12T08:45:00Z",
+          "isSimulation": false
+        }
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 100,
+      "total": 1,
+      "totalPages": 1,
+      "truncated": false
+    }
+  }
+  ```
+
+### GET /api/public/events/:slug/alternative-routes
+Anonymous list of organizer-approved manual alternative routes for a published event.
+- **Eligibility:** Restricted to `published` and `active` events with active impacts. Unapproved, revoked, or expired alternative routes are never exposed.
+- **Response:**
+  ```json
+  {
+    "eventSlug": "melasti-sanur-2026",
+    "isSimulation": false,
+    "alternativeRoutes": [
+      {
+        "id": "alt_01",
+        "name": "Jalur Pengalihan Jl. Danau Poso",
+        "description": "Pengalihan kendaraan roda dua dan empat ringan.",
+        "provenance": "organizer_approved_manual_simulation",
+        "approvedAt": "2026-11-10T10:00:00Z",
+        "expiresAt": "2026-11-12T12:00:00Z",
+        "geometry": { "type": "LineString", "coordinates": [[115.258, -8.691], [115.260, -8.695]] }
+      }
+    ]
+  }
+  ```
+
+### POST /api/public/routes/alternatives
+Conditional network routing candidate avoiding road closures.
+- **Gate:** Unconditionally returns `HTTP 503 SERVICE_UNAVAILABLE` (Ticket 07 deferred). Real road-network avoidance routing is not active, preventing any unsafe fallback paths, external network calls, or pretend geometry. Points caller to verified manual alternative routes.
+
+## 15. Road Candidate Matching (Ticket 04)
+
+### GET /api/events/:eventId/road-candidates
+Ranked road candidates from the verified catalog matching user search terms.
+- **Permission:** Organizer only.
+- **Query:** `query` string (min 2 chars).
+- **Matching Methods:** `exact_normalized` (1.0), `substring` (0.8), `token_overlap` (0.5..0.7). Regional priority boosts candidates located in the event organization's village or district. Quarantined roads are excluded.
+- **Response:**
+  ```json
+  {
+    "query": "Gajah Mada",
+    "candidates": [
+      {
+        "candidateId": "seg_01",
+        "displayName": "Jl. Gajah Mada",
+        "coverageArea": "Denpasar Barat",
+        "matchScore": 1.0,
+        "matchMethod": "exact_normalized",
+        "reviewRequired": true,
+        "explanation": "Nama ruas jalan cocok persis dengan katalog resmi terverifikasi.",
+        "geometry": { "type": "LineString", "coordinates": [...] }
+      }
+    ]
+  }
+  ```
+
+## 16. Reviewed Manual Alternative Routes (Ticket 06)
+
+- `POST /api/events/:eventId/alternative-routes`: Create draft alternative route (Organizer only).
+- `GET /api/events/:eventId/alternative-routes`: List all alternative routes (draft, approved, revoked) for event organizers.
+- `POST /api/events/:eventId/alternative-routes/:routeId/approve`: Approve draft route with atomic membership and road impact snapshot binding (`sourceSnapshotHash`, `expiresAt`), recording append-only audit and history.
+- `POST /api/events/:eventId/alternative-routes/:routeId/revoke`: Revoke approved route with atomic organizer membership check and audit logging.
+- `DELETE /api/events/:eventId/alternative-routes/:routeId`: Delete draft route (Organizer only).
+
+## 17. AI Advisory Operations (Tickets 05, 08, 09)
+
+Shared advisory runs are stored in `advisory_runs` with an immutable snapshot hash of material inputs (`input_snapshot_hash`).
+Organizer decisions (`approved`, `dismissed`) are recorded in `advisory_decisions`.
+Advisory decisions NEVER directly mutate domain operational state (events, road statuses, cleanup tasks, or permissions).
+
+- `POST /api/events/:eventId/impact-analysis`: Runs grounded impact analysis using configured Gemini model or honest `rule_based_fallback`. Cross-org conflict analysis strictly respects organization privacy (no simulation leaks, only operational authority events).
+- `GET /api/events/:eventId/impact-analysis/latest`: Retrieves latest analysis with dynamic staleness evaluation against current event snapshot hash.
+- `POST /api/events/:eventId/impact-analysis/:runId/decision`: Records organizer review decision with atomic membership validation and 409 conflict on stale snapshot.
+- `POST /api/events/:eventId/public-notice-draft`: Generates public notice drafts adhering to word (<= 120 words) and character (<= 600 characters for WhatsApp) limits, with server-enforced simulation notices and verified facts only.
+- `GET /api/events/:eventId/public-notice-draft/latest`: Retrieves latest notice draft and approval status.
+- `POST /api/events/:eventId/public-notice-draft/:runId/decision`: Records approval/rejection or validated human correction. Validates length limits, rejects unsupported safety/authority claims (e.g., "dijamin aman", "resmi oleh polisi") or unlisted road names, and forces simulation tag.
+- `POST /api/events/:eventId/waste-plan`: Calculates scenario waste logistics. Supports user-specified generation rates (`wastePerPersonDayKg`) and fractions (`organicFraction`, `recyclableFraction`, `residualFraction`). If omitted or 0, returns `forecastKg: null`, `method: "operational_checklist"`, and checklist only without fabricated numeric assumptions.

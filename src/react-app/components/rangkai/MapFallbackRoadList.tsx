@@ -29,6 +29,7 @@ export interface RoadSegmentFallbackItem {
 	observedAt?: string | null;
 	expiresAt?: string | null;
 	diversionNote?: string | null;
+	isSimulation?: boolean;
 }
 
 const IMPACT_TYPE_LABELS: Record<RoadSegmentFallbackItem["impactType"], string> = {
@@ -92,6 +93,9 @@ export function MapFallbackRoadList({
 										<Text weight="semibold" size="base">
 											{seg.segmentName}
 										</Text>
+										{seg.isSimulation ? (
+											<Token color="purple" size="sm" label="SIMULASI" />
+										) : null}
 										<Token
 											color="gray"
 											size="sm"

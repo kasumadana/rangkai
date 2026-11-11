@@ -6,7 +6,6 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { Spinner } from "@astryxdesign/core/Spinner";
 import { HStack, VStack } from "@astryxdesign/core/Stack";
-import { Text } from "@astryxdesign/core/Text";
 import { Inbox, RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
 import { ApiClientError } from "../../lib/api-client";
@@ -32,9 +31,6 @@ export function LoadingStateBlock({
 			<VStack gap={4} role="status" aria-live="polite">
 				<HStack gap={2} vAlign="center">
 					<Spinner size="sm" label={label} />
-					<Text size="sm" color="secondary" weight="medium">
-						{label}
-					</Text>
 				</HStack>
 				<VStack gap={2}>
 					{Array.from({ length: rows }).map((_, idx) => (

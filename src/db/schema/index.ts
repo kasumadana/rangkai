@@ -85,11 +85,26 @@ export type WasteCategory = (typeof WASTE_CATEGORIES)[number];
 export const MEASUREMENT_METHODS = ["weighed", "estimated"] as const;
 export type MeasurementMethod = (typeof MEASUREMENT_METHODS)[number];
 
+export const INVITATION_ROLES = ["officer", "organizer"] as const;
+export type InvitationRole = (typeof INVITATION_ROLES)[number];
+
+export const INVITATION_STATUSES = [
+	"pending",
+	"accepted",
+	"revoked",
+	"expired",
+] as const;
+export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
+
 export const organizations = pgTable("organizations", {
 	id: uuid("id").primaryKey().defaultRandom(),
 	name: text("name").notNull(),
 	village: text("village"),
 	district: text("district"),
+	hasOperationalAuthority: boolean("has_operational_authority").default(false).notNull(),
+	operationalAuthorityGrantedAt: timestamp("operational_authority_granted_at", { withTimezone: true }),
+	operationalAuthorityGrantedBy: text("operational_authority_granted_by"),
+	operationalAuthorityProvenance: text("operational_authority_provenance"),
 	createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
@@ -142,6 +157,7 @@ export const events = pgTable(
 		verifiedBy: text("verified_by"),
 		verifiedAt: timestamp("verified_at", { withTimezone: true }),
 		publishedAt: timestamp("published_at", { withTimezone: true }),
+		isSimulation: boolean("is_simulation").default(true).notNull(),
 		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 		updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 	},
@@ -212,8 +228,12 @@ export const roadSegments = pgTable(
 		displayName: text("display_name").notNull(),
 		geom: lineStringGeometry("geom").notNull(),
 		coverageArea: text("coverage_area").notNull(),
+		organizationId: uuid("organization_id").references(() => organizations.id),
+		sourceType: text("source_type").default("catalog").notNull(),
+		createdBy: text("created_by").references(() => user.id),
 		verifiedBy: text("verified_by"),
 		verifiedAt: timestamp("verified_at", { withTimezone: true }),
+		quarantinedAt: timestamp("quarantined_at", { withTimezone: true }),
 		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 	},
 	(table) => [index("road_segments_geom_gist_idx").using("gist", table.geom)],
@@ -298,6 +318,53 @@ export const eventAssignments = pgTable(
 			table.eventId,
 			table.userId,
 		),
+	],
+);
+
+export const invitations = pgTable(
+	"invitations",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		eventId: uuid("event_id").references(() => events.id, {
+			onDelete: "cascade",
+		}),
+		invitationRole: text("invitation_role")
+			.$type<InvitationRole>()
+			.notNull(),
+		recipientEmail: text("recipient_email").notNull(),
+		tokenHash: text("token_hash").notNull().unique(),
+		canUpdateTraffic: boolean("can_update_traffic").default(false).notNull(),
+		canUpdateCleanup: boolean("can_update_cleanup").default(false).notNull(),
+		status: text("status")
+			.$type<InvitationStatus>()
+			.default("pending")
+			.notNull(),
+		invitedBy: text("invited_by")
+			.notNull()
+			.references(() => user.id),
+		acceptedBy: text("accepted_by").references(() => user.id),
+		acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+		revokedBy: text("revoked_by").references(() => user.id),
+		revokedAt: timestamp("revoked_at", { withTimezone: true }),
+		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check(
+			"invitations_role_check",
+			sql`invitation_role IN ('officer', 'organizer')`,
+		),
+		check(
+			"invitations_status_check",
+			sql`status IN ('pending', 'accepted', 'revoked', 'expired')`,
+		),
+		index("invitations_token_hash_idx").on(table.tokenHash),
+		index("invitations_org_status_idx").on(table.organizationId, table.status),
+		index("invitations_email_idx").on(table.recipientEmail),
 	],
 );
 
@@ -409,6 +476,192 @@ export const auditLogs = pgTable(
 	},
 	(table) => [
 		index("audit_logs_event_created_idx").on(
+			table.eventId,
+			table.createdAt.desc(),
+		),
+	],
+);
+
+// ---------------------------------------------------------------------------
+// Additive tables for AI Advisory (Impact Planner & Notices) and Alternative Routes
+// ---------------------------------------------------------------------------
+
+export const ADVISORY_KINDS = [
+	"impact_analysis",
+	"public_notice",
+	"waste_plan",
+] as const;
+export type AdvisoryKind = (typeof ADVISORY_KINDS)[number];
+
+export const ADVISORY_RUN_STATUSES = [
+	"pending",
+	"completed",
+	"failed",
+] as const;
+export type AdvisoryRunStatus = (typeof ADVISORY_RUN_STATUSES)[number];
+
+export const advisoryRuns = pgTable(
+	"advisory_runs",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		actorId: text("actor_id")
+			.notNull()
+			.references(() => user.id),
+		kind: text("kind").$type<AdvisoryKind>().notNull(),
+		inputSnapshotHash: text("input_snapshot_hash").notNull(),
+		modelName: text("model_name").notNull(),
+		promptVersion: text("prompt_version").notNull(),
+		schemaVersion: text("schema_version").notNull(),
+		status: text("status").$type<AdvisoryRunStatus>().default("pending").notNull(),
+		outputJson: jsonb("output_json"),
+		errorCode: text("error_code"),
+		errorMessage: text("error_message"),
+		latencyMs: integer("latency_ms"),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check(
+			"advisory_runs_kind_check",
+			sql`kind IN ('impact_analysis', 'public_notice', 'waste_plan')`,
+		),
+		check(
+			"advisory_runs_status_check",
+			sql`status IN ('pending', 'completed', 'failed')`,
+		),
+		index("advisory_runs_event_kind_idx").on(
+			table.eventId,
+			table.kind,
+			table.createdAt.desc(),
+		),
+	],
+);
+
+export const ADVISORY_DECISIONS = [
+	"approved",
+	"rejected",
+	"dismissed",
+] as const;
+export type AdvisoryDecision = (typeof ADVISORY_DECISIONS)[number];
+
+export const advisoryDecisions = pgTable(
+	"advisory_decisions",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		advisoryRunId: uuid("advisory_run_id")
+			.notNull()
+			.references(() => advisoryRuns.id, { onDelete: "cascade" }),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		actorId: text("actor_id")
+			.notNull()
+			.references(() => user.id),
+		decision: text("decision").$type<AdvisoryDecision>().notNull(),
+		reason: text("reason"),
+		inputSnapshotHash: text("input_snapshot_hash").notNull(),
+		correctedOutputJson: jsonb("corrected_output_json"),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check(
+			"advisory_decisions_decision_check",
+			sql`decision IN ('approved', 'rejected', 'dismissed')`,
+		),
+		index("advisory_decisions_run_idx").on(table.advisoryRunId),
+		index("advisory_decisions_event_idx").on(table.eventId, table.createdAt.desc()),
+	],
+);
+
+export const ALTERNATIVE_ROUTE_STATUSES = [
+	"draft",
+	"approved",
+	"revoked",
+] as const;
+export type AlternativeRouteStatus = (typeof ALTERNATIVE_ROUTE_STATUSES)[number];
+
+export const eventAlternativeRoutes = pgTable(
+	"event_alternative_routes",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		name: text("name").notNull(),
+		description: text("description"),
+		geom: lineStringGeometry("geom").notNull(),
+		status: text("status").$type<AlternativeRouteStatus>().default("draft").notNull(),
+		createdBy: text("created_by")
+			.notNull()
+			.references(() => user.id),
+		approvedBy: text("approved_by").references(() => user.id),
+		approvedAt: timestamp("approved_at", { withTimezone: true }),
+		revokedBy: text("revoked_by").references(() => user.id),
+		revokedAt: timestamp("revoked_at", { withTimezone: true }),
+		revocationReason: text("revocation_reason"),
+		sourceSnapshotHash: text("source_snapshot_hash"),
+		expiresAt: timestamp("expires_at", { withTimezone: true }),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check(
+			"event_alternative_routes_status_check",
+			sql`status IN ('draft', 'approved', 'revoked')`,
+		),
+		index("event_alternative_routes_event_idx").on(table.eventId, table.status),
+		index("event_alternative_routes_geom_gist_idx").using("gist", table.geom),
+	],
+);
+
+export const ALTERNATIVE_ROUTE_ACTIONS = [
+	"created",
+	"approved",
+	"reapproved",
+	"revoked",
+] as const;
+export type AlternativeRouteAction = (typeof ALTERNATIVE_ROUTE_ACTIONS)[number];
+
+export const eventAlternativeRouteHistory = pgTable(
+	"event_alternative_route_history",
+	{
+		id: uuid("id").primaryKey().defaultRandom(),
+		routeId: uuid("route_id")
+			.notNull()
+			.references(() => eventAlternativeRoutes.id, { onDelete: "cascade" }),
+		eventId: uuid("event_id")
+			.notNull()
+			.references(() => events.id, { onDelete: "cascade" }),
+		organizationId: uuid("organization_id")
+			.notNull()
+			.references(() => organizations.id, { onDelete: "cascade" }),
+		actorId: text("actor_id")
+			.notNull()
+			.references(() => user.id),
+		action: text("action").$type<AlternativeRouteAction>().notNull(),
+		sourceSnapshotHash: text("source_snapshot_hash"),
+		expiresAt: timestamp("expires_at", { withTimezone: true }),
+		metadata: jsonb("metadata"),
+		createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+	},
+	(table) => [
+		check(
+			"event_alternative_route_history_action_check",
+			sql`action IN ('created', 'approved', 'reapproved', 'revoked')`,
+		),
+		index("event_alternative_route_history_route_idx").on(
+			table.routeId,
+			table.createdAt.desc(),
+		),
+		index("event_alternative_route_history_event_idx").on(
 			table.eventId,
 			table.createdAt.desc(),
 		),

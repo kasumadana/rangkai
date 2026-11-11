@@ -1,5 +1,8 @@
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Banner } from "@astryxdesign/core/Banner";
+import { Token } from "@astryxdesign/core/Token";
+import { VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -12,7 +15,6 @@ import {
 	Copy,
 	FileText,
 	Info,
-	Link2,
 	MapPin,
 	MapPinned,
 	Milestone,
@@ -26,14 +28,25 @@ import {
 	Search,
 	Send,
 	ShieldCheck,
+
 	Sparkles,
 	Trash2,
 	Upload,
+
 	UserPlus,
 	Users,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
+import {
+	ImpactPlannerPanel,
+	PublicNoticeDraftPanel,
+	WastePlanningPanel,
+} from "../components/rangkai/AdvisoryPanels";
+import {
+	OrganizerAlternativeRoutesManager,
+	PublicAlternativeRoutesList,
+} from "../components/rangkai/AlternativeRoutesPanel";
 import {
 	CleanupStatusBadge,
 	type CleanupTaskStatus,
@@ -51,9 +64,8 @@ import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
 import {
 	assignEventOfficer,
 	createCleanupTask,
-	createEventInvitation,
 	createRoadImpact,
-	createRoadSegment,
+	createSimulationRoadImpact,
 	createWasteRecord,
 	deleteRoadImpact,
 	fetchCleanupTasks,
@@ -64,9 +76,15 @@ import {
 	fetchPublicEventDetail,
 	fetchPublicEventRoads,
 	fetchPublicEvents,
+
+	fetchFieldEventDetail,
+
+	fetchRoadCandidates,
 	fetchRoadSegments,
+
 	formatWitaEventSchedule,
 	fromIsoToWitaInput,
+	getSavedOrganizationId,
 	mapPublicEventToCeremonyProfile,
 	normalizeEventCategory,
 	publishVerifiedEvent,
@@ -74,6 +92,7 @@ import {
 	revokeEventAssignment,
 	saveExtractedFields,
 	submitCleanupTask,
+	startCleanupTask,
 	toWitaIsoTimestamp,
 	transitionEventToReview,
 	triggerDocumentExtraction,
@@ -82,6 +101,12 @@ import {
 	uploadEventDocument,
 	verifyCleanupTask,
 } from "../lib/events-api";
+import {
+	createInvitation,
+	fetchInvitations,
+	revokeInvitation,
+	useMyOrganizationsQuery,
+} from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
 import type { OperationalRoadStatus } from "../lib/road-status";
 import { formatWitaDateTime, formatWitaRange } from "../lib/wita";
@@ -307,11 +332,16 @@ export function PublicEventsListPage() {
 												{evt.organizationName || evt.village} •{" "}
 												{evt.district || "Bali"}
 											</span>
-											<span
-												className={`road-status-badge ${statusBadgeClass}`}
-											>
-												{statusBadgeText}
-											</span>
+											<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+												{evt.isSimulation ? (
+													<Token color="orange" size="sm" label="SIMULASI" />
+												) : null}
+												<span
+													className={`road-status-badge ${statusBadgeClass}`}
+												>
+													{statusBadgeText}
+												</span>
+											</div>
 										</div>
 
 										<h2 className="schedule-card-title">{evt.title}</h2>
@@ -539,6 +569,8 @@ export function PublicEventDetailPage({
 						left: 16,
 						zIndex: 20,
 						display: "flex",
+						flexWrap: "wrap",
+						alignItems: "center",
 						gap: 8,
 					}}
 				>
@@ -561,6 +593,44 @@ export function PublicEventDetailPage({
 						<ArrowLeft size={15} />
 						<span>Kembali ke Rincian Acara</span>
 					</Link>
+
+					{apiEvent.isSimulation !== false ? (
+						<span
+							style={{
+								display: "inline-flex",
+								alignItems: "center",
+								background: "#D97706",
+								color: "#FFFFFF",
+								padding: "10px 18px",
+								borderRadius: 9999,
+								fontSize: 12,
+								fontWeight: 700,
+								textTransform: "uppercase",
+								letterSpacing: "0.05em",
+								boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
+							}}
+						>
+							SIMULASI
+						</span>
+					) : null}
+
+					{spatialProfile.roadSegments?.[0]?.roadName ? (
+						<span
+							style={{
+								display: "inline-flex",
+								alignItems: "center",
+								background: "rgba(255, 255, 255, 0.96)",
+								color: "#181B20",
+								padding: "10px 18px",
+								borderRadius: 9999,
+								fontSize: 13,
+								fontWeight: 600,
+								boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
+							}}
+						>
+							{spatialProfile.roadSegments[0].roadName}
+						</span>
+					) : null}
 				</div>
 				<BaliMapTilerView
 					village={spatialProfile}
@@ -628,6 +698,17 @@ export function PublicEventDetailPage({
 							<RoadStatusBadge status={spatialProfile.primaryStatus} />
 						</div>
 					</div>
+
+					{apiEvent.isSimulation ? (
+						<div style={{ marginBottom: 16 }}>
+							<Banner
+								status="warning"
+								collapsible={false}
+								title="SIMULASI — Bukan Penutupan Jalan Sebenarnya"
+								description="Kegiatan ini dipublikasikan dalam mode simulasi atau latihan koordinasi desa adat. Ruas jalan dan status buka-tutup tidak mencerminkan penutupan operasional resmi di lapangan."
+							/>
+						</div>
+					) : null}
 
 					<h1 className="teduh-detail-title">{apiEvent.title}</h1>
 
@@ -774,7 +855,7 @@ export function PublicEventDetailPage({
 										road.operationalStatus?.effectiveStatus === "unconfirmed"
 											? "unknown"
 											: ((road.operationalStatus?.effectiveStatus ??
-													"intermittent") as OperationalRoadStatus);
+													"unknown") as OperationalRoadStatus);
 
 									return (
 										<button
@@ -852,6 +933,13 @@ export function PublicEventDetailPage({
 						</div>
 					</div>
 				</section>
+
+				{/* 4.5 JALUR ALTERNATIF TERVERIFIKASI PANITIA */}
+				{slug ? (
+					<section className="teduh-detail-section" data-gsap="scroll-section">
+						<PublicAlternativeRoutesList slug={slug} />
+					</section>
+				) : null}
 
 				{/* 5. POST-EVENT CLEANUP & WASTE SUMMARY (FROM BACKEND) */}
 				{cleanupData &&
@@ -953,7 +1041,7 @@ export function WorkflowRouteShellPage({
 	title,
 	subtitle,
 }: WorkflowRouteShellProps) {
-	const { id: eventId = "" } = useParams<{ id: string }>();
+	const { id: eventId = "", taskId } = useParams<{ id: string; taskId?: string }>();
 	const { pathname } = useLocation();
 	const navigate = useNavigate();
 	const queryClient = useQueryClient();
@@ -981,6 +1069,32 @@ export function WorkflowRouteShellPage({
 		refetchInterval: 15_000,
 	});
 
+	const myOrgsQuery = useMyOrganizationsQuery();
+	const myOrganizations = useMemo(
+		() => myOrgsQuery.data?.organizations ?? [],
+		[myOrgsQuery.data?.organizations],
+	);
+	const rawEvent = eventDetailQuery.data?.event;
+
+	const fieldDetailQuery = useQuery({
+		queryKey: ["field", "events", eventId],
+		queryFn: () => fetchFieldEventDetail(eventId),
+		enabled: Boolean(eventId && isRealUuidEvent),
+		retry: false,
+	});
+	const permissions = fieldDetailQuery.data?.permissions;
+	const isOrganizer = useMemo(() => {
+		if (permissions?.isOrganizer) return true;
+		if (rawEvent?.organizationId) {
+			return myOrganizations.some(
+				(o) => o.id === rawEvent.organizationId && o.role === "organizer",
+			);
+		}
+		return myOrganizations.some((o) => o.role === "organizer");
+	}, [permissions?.isOrganizer, rawEvent, myOrganizations]);
+	const canTraffic = permissions?.canUpdateTraffic ?? false;
+	const canCleanup = permissions?.canUpdateCleanup ?? false;
+
 	const roadSegmentsCatalogQuery = useQuery({
 		queryKey: ["road-segments", "catalog"],
 		queryFn: () => fetchRoadSegments(),
@@ -988,10 +1102,22 @@ export function WorkflowRouteShellPage({
 		staleTime: 60_000,
 	});
 
+	const roadCandidatesQuery = useQuery({
+		queryKey: ["road-candidates", eventId],
+		queryFn: () => fetchRoadCandidates(eventId),
+		enabled: Boolean(isRealUuidEvent && pathname.endsWith("/roads") && isOrganizer),
+		staleTime: 30_000,
+	});
+	const roadCandidates = roadCandidatesQuery.data?.candidates ?? [];
+
 	const cleanupTasksQuery = useQuery({
 		queryKey: ["cleanup-tasks", eventId],
 		queryFn: () => fetchCleanupTasks(eventId),
-		enabled: Boolean(isRealUuidEvent && pathname.endsWith("/cleanup")),
+		enabled: Boolean(
+			isRealUuidEvent &&
+				(/\/cleanup(?:\/[^/]+)?$/.test(pathname) ||
+					(pathname.startsWith("/field") && !isOrganizer && !canTraffic && canCleanup)),
+		),
 		retry: false,
 	});
 
@@ -1002,7 +1128,6 @@ export function WorkflowRouteShellPage({
 		retry: false,
 	});
 
-	const rawEvent = eventDetailQuery.data?.event;
 	const attachedRoadImpacts = useMemo(
 		() => eventRoadImpactsQuery.data?.roadImpacts ?? [],
 		[eventRoadImpactsQuery.data?.roadImpacts],
@@ -1040,7 +1165,8 @@ export function WorkflowRouteShellPage({
 	);
 	const [newSegmentName, setNewSegmentName] = useState("");
 	const [newSegmentArea, setNewSegmentArea] = useState("Bali");
-	const [humanVerifiedRoad, setHumanVerifiedRoad] = useState(true);
+	const [humanVerifiedRoad, setHumanVerifiedRoad] = useState(false);
+	const roadAttempt = useRef<{ fingerprint: string; id: string } | null>(null);
 	const [selectedCatalogSegmentId, setSelectedCatalogSegmentId] =
 		useState<string>("");
 	const [selectedImpactType, setSelectedImpactType] = useState<
@@ -1064,12 +1190,14 @@ export function WorkflowRouteShellPage({
 		message: string;
 	} | null>(null);
 
+
 	// Cleanup & Waste Tab State
 	const [evidenceStage, setEvidenceStage] = useState<"before" | "after">(
 		"after",
 	);
 	const [selectedTaskForEvidence, setSelectedTaskForEvidence] =
-		useState<string>("");
+		useState<string>(taskId ?? "");
+
 	const [newTaskTitle, setNewTaskTitle] = useState("");
 	const [newTaskLocation, setNewTaskLocation] = useState("");
 	const [isAddingTask, setIsAddingTask] = useState(false);
@@ -1087,6 +1215,30 @@ export function WorkflowRouteShellPage({
 	// Team & Invitation Tab State
 	const [inviteCanTraffic, setInviteCanTraffic] = useState(true);
 	const [inviteCanCleanup, setInviteCanCleanup] = useState(true);
+	const [inviteEmail, setInviteEmail] = useState("");
+	const [inviteRole, setInviteRole] = useState<"officer" | "organizer">("officer");
+	const invitationsOrgId = rawEvent?.organizationId || getSavedOrganizationId();
+	const invitationsQuery = useQuery({
+		queryKey: ["invitations", invitationsOrgId],
+		queryFn: () => fetchInvitations(invitationsOrgId),
+		enabled: Boolean(invitationsOrgId && pathname.endsWith("/team") && isOrganizer),
+	});
+	const revokeInvitationMutation = useMutation({
+		mutationFn: revokeInvitation,
+		onSuccess: () => {
+			void invitationsQuery.refetch();
+			void queryClient.invalidateQueries({ queryKey: ["invitations"] });
+			setStatusFeedback({
+				type: "success",
+				message: "Tautan undangan berhasil dibatalkan.",
+			});
+		},
+		onError: () =>
+			setStatusFeedback({
+				type: "error",
+				message: "Undangan gagal dibatalkan. Coba lagi.",
+			}),
+	});
 	const [generatedInviteUrl, setGeneratedInviteUrl] = useState<string | null>(
 		null,
 	);
@@ -1182,15 +1334,14 @@ export function WorkflowRouteShellPage({
 			if (!isRealUuidEvent) throw new Error("Kegiatan belum tersimpan.");
 			return publishVerifiedEvent(eventId);
 		},
-		onSuccess: async () => {
+		onSuccess: async (result) => {
 			await queryClient.invalidateQueries({
 				queryKey: ["events", "detail", eventId],
 			});
 			await queryClient.invalidateQueries({ queryKey: ["events"] });
 			setStatusFeedback({
 				type: "success",
-				message:
-					"Pengumuman upacara resmi diterbitkan ke portal publik dan peta warga!",
+				message: result.event.isSimulation === false ? "Kegiatan diterbitkan ke portal publik." : "Kegiatan diterbitkan sebagai SIMULASI.",
 			});
 		},
 		onError: (err) => {
@@ -1224,24 +1375,24 @@ export function WorkflowRouteShellPage({
 				throw new Error("Centang verifikasi lokasi ruas jalan oleh Prajuru.");
 			}
 
-			const segRes = await createRoadSegment({
+			const payload = {
 				displayName: newSegmentName.trim(),
 				coverageArea:
 					newSegmentArea.trim() || rawEvent?.venueName || "Kawasan Desa Adat",
 				coordinates: draftCoordinates,
 				humanVerified: true,
-			});
-
-			await createRoadImpact(eventId, {
-				roadSegmentId: segRes.segment.id,
 				impactType: selectedImpactType,
 				plannedFrom: rawEvent?.startsAt || null,
 				plannedTo: rawEvent?.endsAt || null,
 				diversionNote: impactDiversionNote.trim() || null,
-			});
-			return segRes.segment.displayName;
+			};
+			const fingerprint = JSON.stringify([eventId, payload]);
+			if (roadAttempt.current?.fingerprint !== fingerprint) roadAttempt.current = { fingerprint, id: crypto.randomUUID() };
+			await createSimulationRoadImpact(eventId, { ...payload, mutationId: roadAttempt.current.id });
+			return payload.displayName;
 		},
 		onSuccess: async (segName) => {
+			roadAttempt.current = null;
 			setDraftCoordinates([]);
 			setNewSegmentName("");
 			setImpactDiversionNote("");
@@ -1253,7 +1404,7 @@ export function WorkflowRouteShellPage({
 			});
 			setStatusFeedback({
 				type: "success",
-				message: `Ruas jalan "${segName}" berhasil digambar, diverifikasi, dan ditautkan ke kegiatan ini.`,
+				message: `Ruas "${segName}" tersimpan sebagai garis latihan untuk kegiatan ini.`,
 			});
 		},
 		onError: (err) => {
@@ -1449,7 +1600,9 @@ export function WorkflowRouteShellPage({
 		mutationFn: async (file: File) => {
 			const tasks = cleanupTasksQuery.data?.cleanupTasks ?? [];
 			const targetTask =
-				tasks.find((t) => t.id === selectedTaskForEvidence) || tasks[0];
+
+				tasks.find((t) => t.id === (taskId ?? selectedTaskForEvidence));
+
 			if (!targetTask) {
 				throw new Error(
 					"Buat minimal 1 tugas kebersihan terlebih dahulu sebelum mengunggah foto bukti.",
@@ -1535,9 +1688,11 @@ export function WorkflowRouteShellPage({
 		mutationFn: async (params?: { taskId?: string }) => {
 			const tasks = cleanupTasksQuery.data?.cleanupTasks ?? [];
 			const targetTask =
-				tasks.find((t) => t.id === params?.taskId) || tasks[0];
+
+				tasks.find((t) => t.id === params?.taskId);
 			if (!targetTask) {
 				throw new Error("Belum ada tugas kebersihan yang dapat diverifikasi.");
+
 			}
 			await verifyCleanupTask(targetTask.id, "Diverifikasi oleh Prajuru Adat.");
 		},
@@ -1568,18 +1723,23 @@ export function WorkflowRouteShellPage({
 			if (!isRealUuidEvent) {
 				throw new Error("Simpan kegiatan terlebih dahulu.");
 			}
-			return createEventInvitation({
-				eventId,
-				canUpdateTraffic: inviteCanTraffic,
-				canUpdateCleanup: inviteCanCleanup,
+			const orgId = rawEvent?.organizationId || getSavedOrganizationId();
+			if (!orgId) {
+				throw new Error("Organisasi belum dipilih.");
+			}
+			return createInvitation({
+				organizationId: orgId,
+				eventId: inviteRole === "officer" ? eventId : undefined,
+				role: inviteRole,
+				recipientEmail: inviteEmail.trim(),
+				canUpdateTraffic: inviteRole === "officer" && inviteCanTraffic,
+				canUpdateCleanup: inviteRole === "officer" && inviteCanCleanup,
 			});
 		},
 		onSuccess: (res) => {
-			const origin =
-				typeof window !== "undefined" ? window.location.origin : "";
-			setGeneratedInviteUrl(
-				res.inviteUrl || `${origin}${res.invitePath || `/invite/${res.token}`}`,
-			);
+			setGeneratedInviteUrl(res.invitation.inviteUrl ?? null);
+			void invitationsQuery.refetch();
+			void queryClient.invalidateQueries({ queryKey: ["invitations"] });
 			setStatusFeedback({
 				type: "success",
 				message:
@@ -1645,22 +1805,36 @@ export function WorkflowRouteShellPage({
 		},
 	});
 
+	const startCleanupMutation = useMutation({
+		mutationFn: startCleanupTask,
+		onSuccess: () => { void cleanupTasksQuery.refetch(); setStatusFeedback({ type: "success", message: "Tugas dimulai." }); },
+		onError: (error) => setStatusFeedback({ type: "error", message: error instanceof Error ? error.message : "Tugas gagal dimulai." }),
+	});
+
 	const currentTabValue = useMemo(() => {
 		if (pathname.endsWith("/document") || pathname.endsWith("/review")) {
 			return "document";
 		}
 		if (pathname.endsWith("/roads")) return "roads";
-		if (pathname.startsWith("/field")) return "field";
-		if (pathname.endsWith("/cleanup")) return "cleanup";
+		if (/\/cleanup(?:\/[^/]+)?$/.test(pathname)) return "cleanup";
 		if (pathname.endsWith("/team")) return "team";
-		return "field";
-	}, [pathname]);
+		if (pathname.startsWith("/field")) {
+			if (!isOrganizer && !canTraffic && canCleanup) {
+				return "cleanup";
+			}
+			return "field";
+		}
+		return "wizard";
+	}, [pathname, isOrganizer, canTraffic, canCleanup]);
 
 	function handleTabChange(nextTab: string) {
 		setStatusFeedback(null);
 		switch (nextTab) {
+			case "wizard":
+				navigate(`/dashboard/events/${eventId}`);
+				break;
 			case "document":
-				navigate(`/dashboard/events/${eventId}/review`);
+				navigate(`/dashboard/events/${eventId}/document`);
 				break;
 			case "roads":
 				navigate(`/dashboard/events/${eventId}/roads`);
@@ -1669,7 +1843,11 @@ export function WorkflowRouteShellPage({
 				navigate(`/field/events/${eventId}`);
 				break;
 			case "cleanup":
-				navigate(`/dashboard/events/${eventId}/cleanup`);
+				navigate(
+					pathname.startsWith("/field")
+						? `/field/events/${eventId}/cleanup`
+						: `/dashboard/events/${eventId}/cleanup`,
+				);
 				break;
 			case "team":
 				navigate(`/dashboard/events/${eventId}/team`);
@@ -1704,12 +1882,18 @@ export function WorkflowRouteShellPage({
 	}, [attachedRoadImpacts, segmentStatuses]);
 
 	const WORKFLOW_TABS = [
-		{ id: "document", label: "Surat Edaran & Review", icon: FileText },
-		{ id: "roads", label: "Peta & Ruas Jalan", icon: MapPinned },
-		{ id: "field", label: "Pos Pecalang (Live)", icon: Radio },
-		{ id: "cleanup", label: "Kebersihan & Sampah", icon: ClipboardCheck },
-		{ id: "team", label: "Tim & Undangan Petugas", icon: Users },
-	];
+		{ id: "wizard", label: "Ringkasan / Detail", icon: FileText },
+		{ id: "document", label: "Dokumen & AI", icon: FileText },
+		{ id: "roads", label: "Dampak Jalan", icon: MapPinned },
+		{ id: "cleanup", label: "Kebersihan", icon: ClipboardCheck },
+		{ id: "team", label: "Tim & Petugas", icon: Users },
+		{ id: "field", label: "Pos Pecalang", icon: Radio },
+	].filter((tab) =>
+		!pathname.startsWith("/field")
+			? tab.id !== "field" || isOrganizer || canTraffic
+			: (tab.id === "field" && (isOrganizer || canTraffic)) ||
+				(tab.id === "cleanup" && (isOrganizer || canCleanup)),
+	);
 
 	return (
 		<div>
@@ -1717,7 +1901,6 @@ export function WorkflowRouteShellPage({
 			<div className="teduh-workspace-header">
 				<div>
 					<div className="teduh-workspace-eyebrow">
-						<ShieldCheck className="w-3.5 h-3.5" />
 						<span>
 							Ruang Kerja Operasional Upacara •{" "}
 							{rawEvent?.venueName || "Desa Adat Bali"}
@@ -1737,7 +1920,7 @@ export function WorkflowRouteShellPage({
 				<div className="flex flex-wrap items-center gap-2">
 					<Link
 						to="/dashboard"
-						className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
+						className="teduh-btn-secondary !text-xs !py-2 !min-h-[48px]"
 					>
 						<ArrowLeft className="w-3.5 h-3.5" />
 						<span>Daftar Upacara</span>
@@ -1745,7 +1928,7 @@ export function WorkflowRouteShellPage({
 					{isRealUuidEvent ? (
 						<Link
 							to={`/dashboard/events/${eventId}`}
-							className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] no-underline"
+							className="teduh-btn-primary !text-xs !py-2 !min-h-[48px]"
 						>
 							<Sparkles className="w-3.5 h-3.5" />
 							<span>Buka Wizard Lengkap</span>
@@ -1755,7 +1938,7 @@ export function WorkflowRouteShellPage({
 			</div>
 
 			{/* Workflow Module Navigation Tabs */}
-			<div className="flex flex-wrap items-center gap-2 mb-6 border-b border-[#E5E3DC] pb-3">
+			<div className="flex flex-wrap items-center gap-2 mb-6" role="tablist" aria-label="Modul Alur Kerja">
 				{WORKFLOW_TABS.map((tab) => {
 					const IconComp = tab.icon;
 					const active = currentTabValue === tab.id;
@@ -1763,14 +1946,12 @@ export function WorkflowRouteShellPage({
 						<button
 							key={tab.id}
 							type="button"
+							role="tab"
+							aria-selected={active}
 							onClick={() => handleTabChange(tab.id)}
-							className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-								active
-									? "bg-[#264D3B] text-white shadow-xs"
-									: "bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC]"
-							}`}
+							className={`teduh-tab-item ${active ? "is-active" : ""}`}
 						>
-							<IconComp className="w-3.5 h-3.5" />
+							<IconComp className="w-4 h-4" />
 							<span>{tab.label}</span>
 						</button>
 					);
@@ -1806,23 +1987,23 @@ export function WorkflowRouteShellPage({
 			{currentTabValue === "document" ? (
 				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 					<div className="xl:col-span-5 teduh-workspace-card space-y-4">
-						<div className="border-b border-[#F0EFEA] pb-3">
+						<div className="space-y-1">
 							<h2 className="teduh-workspace-card-title">
 								Unggah Surat Edaran &amp; Ekstraksi AI
 							</h2>
-							<p className="text-xs text-[#585854] mt-0.5">
+							<p className="text-xs text-stone-600 mt-0.5">
 								Unggah berkas surat pengumuman Desa Adat (PDF/JPG/PNG) untuk
 								diekstrak otomatis oleh Google Gemini.
 							</p>
 						</div>
 
-						<div className="rounded-2xl border-2 border-dashed border-[#C7DBD0] bg-[#F6FAF7] p-6 text-center space-y-3">
-							<Upload className="w-7 h-7 text-[#264D3B] mx-auto" />
-							<p className="text-xs font-bold text-[#181817]">
+						<div className="rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-6 text-center space-y-3">
+							<Upload className="w-7 h-7 text-emerald-800 mx-auto" />
+							<p className="text-xs font-bold text-stone-900">
 								Berkas Surat Edaran Desa Adat (Maks. 10 MB)
 							</p>
-							<label className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] cursor-pointer">
-								<Upload className="w-3.5 h-3.5" />
+							<label className="teduh-btn-primary min-h-[48px] cursor-pointer">
+								<Upload className="w-4 h-4" />
 								<span>
 									{uploadAndExtractDocMutation.isPending
 										? "Menganalisis Dokumen..."
@@ -1843,8 +2024,8 @@ export function WorkflowRouteShellPage({
 							</label>
 						</div>
 
-						<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 text-xs text-[#585854] space-y-1">
-							<p className="font-bold text-[#181817]">
+						<div className="rounded-xl border border-stone-200 bg-stone-50 p-3.5 text-xs text-stone-600 space-y-1">
+							<p className="font-bold text-stone-900">
 								Prinsip Human-in-the-Loop Rangkai
 							</p>
 							<p>
@@ -1856,16 +2037,16 @@ export function WorkflowRouteShellPage({
 					</div>
 
 					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
-						<div className="flex items-center justify-between border-b border-[#F0EFEA] pb-3">
+						<div className="flex items-center justify-between">
 							<h2 className="teduh-workspace-card-title">
 								Periksa &amp; Konfirmasi Rincian Upacara
 							</h2>
 							{rawEvent?.verifiedAt ? (
-								<span className="px-2.5 py-1 rounded-full bg-[#EBF3EE] text-[#264D3B] text-[11px] font-bold">
+								<span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-bold">
 									Terverifikasi Prajuru
 								</span>
 							) : (
-								<span className="px-2.5 py-1 rounded-full bg-[#FDF7EB] text-[#9A5B13] text-[11px] font-bold">
+								<span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 text-[11px] font-bold">
 									Menunggu Konfirmasi
 								</span>
 							)}
@@ -1873,86 +2054,86 @@ export function WorkflowRouteShellPage({
 
 						<div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
 							<div className="sm:col-span-2">
-								<label className="block text-xs font-semibold text-[#181817] mb-1">
+								<label className="block text-xs font-semibold text-stone-900 mb-1">
 									Nama Upacara / Kegiatan Adat *
 								</label>
 								<input
 									type="text"
 									value={docTitle}
 									onChange={(e) => setDocTitle(e.target.value)}
-									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+									className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 								/>
 							</div>
 
 							<div>
-								<label className="block text-xs font-semibold text-[#181817] mb-1">
+								<label className="block text-xs font-semibold text-stone-900 mb-1">
 									Lokasi Pura &amp; Kawasan Utama
 								</label>
 								<input
 									type="text"
 									value={docVenue}
 									onChange={(e) => setDocVenue(e.target.value)}
-									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+									className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 								/>
 							</div>
 
 							<div>
-								<label className="block text-xs font-semibold text-[#181817] mb-1">
+								<label className="block text-xs font-semibold text-stone-900 mb-1">
 									Nomor Surat Edaran
 								</label>
 								<input
 									type="text"
 									value={docPermitRef}
 									onChange={(e) => setDocPermitRef(e.target.value)}
-									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+									className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 								/>
 							</div>
 
 							<div>
-								<label className="block text-xs font-semibold text-[#181817] mb-1">
+								<label className="block text-xs font-semibold text-stone-900 mb-1">
 									Waktu Mulai (WITA)
 								</label>
 								<input
 									type="datetime-local"
 									value={docStartsWita}
 									onChange={(e) => setDocStartsWita(e.target.value)}
-									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+									className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 								/>
 							</div>
 
 							<div>
-								<label className="block text-xs font-semibold text-[#181817] mb-1">
+								<label className="block text-xs font-semibold text-stone-900 mb-1">
 									Waktu Selesai (WITA)
 								</label>
 								<input
 									type="datetime-local"
 									value={docEndsWita}
 									onChange={(e) => setDocEndsWita(e.target.value)}
-									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2 text-xs text-[#181817]"
+									className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 								/>
 							</div>
 
 							<div className="sm:col-span-2">
-								<label className="block text-xs font-semibold text-[#181817] mb-1">
+								<label className="block text-xs font-semibold text-stone-900 mb-1">
 									Ringkasan Rekayasa Lalu Lintas &amp; Pengalihan Arus
 								</label>
 								<textarea
 									rows={3}
 									value={docTrafficNote}
 									onChange={(e) => setDocTrafficNote(e.target.value)}
-									className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 text-xs text-[#181817]"
+									className="teduh-form-textarea text-base text-stone-900 bg-stone-50 border-stone-200"
 								/>
 							</div>
 						</div>
 
-						<div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#F0EFEA]">
+						<div className="flex flex-wrap items-center justify-between gap-3 pt-2">
 							<button
 								type="button"
 								disabled={saveDocReviewMutation.isPending}
 								onClick={() => void saveDocReviewMutation.mutateAsync(false)}
-								className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC]"
+								className="teduh-btn-secondary min-h-[48px]"
 							>
-								<Save className="w-3.5 h-3.5" />
+								<Save className="w-4 h-4" />
 								<span>Simpan Draf</span>
 							</button>
 
@@ -1961,9 +2142,9 @@ export function WorkflowRouteShellPage({
 									type="button"
 									disabled={saveDocReviewMutation.isPending}
 									onClick={() => void saveDocReviewMutation.mutateAsync(true)}
-									className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4]"
+									className="teduh-btn-secondary !border-emerald-800 !text-emerald-800 hover:!bg-emerald-50 min-h-[48px]"
 								>
-									<CheckCircle2 className="w-3.5 h-3.5" />
+									<CheckCircle2 className="w-4 h-4" />
 									<span>Konfirmasi Prajuru (Review)</span>
 								</button>
 
@@ -1971,14 +2152,22 @@ export function WorkflowRouteShellPage({
 									type="button"
 									disabled={publishEventMutation.isPending}
 									onClick={() => void publishEventMutation.mutateAsync()}
-									className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+									className="teduh-btn-primary min-h-[48px]"
 								>
-									<Send className="w-3.5 h-3.5" />
+									<Send className="w-4 h-4" />
 									<span>Terbitkan ke Warga</span>
 								</button>
 							</div>
 						</div>
 					</div>
+
+					{/* AI Advisory: Impact Analysis & Notice Draft Panels */}
+					{isRealUuidEvent && isOrganizer ? (
+						<div className="xl:col-span-12 space-y-6 mt-2">
+							<ImpactPlannerPanel eventId={eventId!} isOrganizer={isOrganizer} />
+							<PublicNoticeDraftPanel eventId={eventId!} isOrganizer={isOrganizer} />
+						</div>
+					) : null}
 				</div>
 			) : null}
 
@@ -1989,25 +2178,25 @@ export function WorkflowRouteShellPage({
 				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 					{/* Left: Dedicated Dashboard Road Map Input */}
 					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
-						<div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
+						<div className="flex flex-wrap items-center justify-between gap-2">
 							<div>
 								<h2 className="teduh-workspace-card-title">
 									Peta Input Ruas Jalan Terdampak
 								</h2>
-								<p className="text-xs text-[#585854]">
+								<p className="text-xs text-stone-600">
 									Klik titik koordinat di peta untuk menggambar ruas jalan baru,
 									atau pilih dari katalog jalan terverifikasi.
 								</p>
 							</div>
 
-							<div className="inline-flex rounded-xl border border-[#E5E3DC] bg-[#F3F1EC] p-1">
+							<div className="inline-flex rounded-xl border border-stone-200 bg-stone-100 p-1">
 								<button
 									type="button"
 									onClick={() => setRoadInputMode("draw")}
-									className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
+									className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold min-h-[48px] transition-colors ${
 										roadInputMode === "draw"
-											? "bg-[#264D3B] text-white"
-											: "text-[#585854] hover:text-[#181817]"
+											? "bg-emerald-800 text-white shadow-2xs"
+											: "text-stone-600 hover:text-stone-900"
 									}`}
 								>
 									<PenTool className="w-3.5 h-3.5" />
@@ -2016,18 +2205,65 @@ export function WorkflowRouteShellPage({
 								<button
 									type="button"
 									onClick={() => setRoadInputMode("catalog")}
-									className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold ${
+									className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold min-h-[48px] transition-colors ${
 										roadInputMode === "catalog"
-											? "bg-[#264D3B] text-white"
-											: "text-[#585854] hover:text-[#181817]"
+											? "bg-emerald-800 text-white shadow-2xs"
+											: "text-stone-600 hover:text-stone-900"
 									}`}
 								>
 									<MapPinned className="w-3.5 h-3.5" />
-									<span>Katalog ({catalogSegments.length})</span>
+									<span>Katalog{roadSegmentsCatalogQuery.isSuccess ? ` (${catalogSegments.length})` : ""}</span>
 								</button>
 							</div>
 						</div>
 
+						{/* Road Candidate Suggestions from Document Extraction */}
+						{roadCandidates.length > 0 ? (
+							<div className="rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs space-y-2">
+								<div className="flex items-center justify-between">
+									<span className="font-semibold text-stone-900">
+										Kandidat Ruas Jalan dari Dokumen ({roadCandidates.length} saran)
+									</span>
+									<span className="text-[11px] text-stone-500">
+										Pilihan memerlukan konfirmasi panitia
+									</span>
+								</div>
+								<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+									{roadCandidates.map((cand) => (
+										<div
+											key={cand.candidateId}
+											className="p-2.5 rounded-lg border border-stone-200 bg-white flex flex-col justify-between gap-2"
+										>
+											<div>
+												<p className="font-bold text-stone-900">{cand.displayName}</p>
+												<p className="text-[11px] text-stone-500">
+													Kawasan: {cand.coverageArea} • Skor: {Math.round(cand.matchScore * 100)}%
+												</p>
+												<p className="text-[11px] text-stone-600 italic mt-0.5">{cand.explanation}</p>
+											</div>
+											<button
+												type="button"
+												onClick={() => {
+													setRoadInputMode("catalog");
+													setSelectedCatalogSegmentId(cand.roadSegmentId);
+												}}
+												className={`w-full py-2.5 px-3 rounded-lg font-semibold text-xs min-h-[48px] transition-colors ${
+													selectedCatalogSegmentId === cand.roadSegmentId
+														? "bg-emerald-800 text-white shadow-2xs"
+														: "bg-stone-100 hover:bg-stone-200 text-stone-800"
+												}`}
+											>
+												{selectedCatalogSegmentId === cand.roadSegmentId
+													? "Terpilih di Peta"
+													: "Pilih Ruas Ini"}
+											</button>
+										</div>
+									))}
+								</div>
+							</div>
+						) : null}
+
+						{roadSegmentsCatalogQuery.isLoading ? <p role="status">Memuat katalog ruas jalan...</p> : roadSegmentsCatalogQuery.isError ? <div role="alert">Katalog ruas jalan tidak tersedia. <button type="button" onClick={() => void roadSegmentsCatalogQuery.refetch()}>Coba lagi</button></div> : catalogSegments.length === 0 ? <p>Katalog ruas jalan kosong.</p> : null}
 						<DashboardRoadMapInput
 							mode={roadInputMode}
 							height={430}
@@ -2052,7 +2288,7 @@ export function WorkflowRouteShellPage({
 							{roadInputMode === "draw" ? (
 								<div className="space-y-3">
 									<div>
-										<label className="block text-xs font-semibold text-[#181817] mb-1">
+										<label className="block text-xs font-semibold text-stone-900 mb-1">
 											Nama Ruas Jalan / Simpang *
 										</label>
 										<input
@@ -2060,11 +2296,11 @@ export function WorkflowRouteShellPage({
 											value={newSegmentName}
 											onChange={(e) => setNewSegmentName(e.target.value)}
 											placeholder="Mis. Jl. Raya Ubud — Depan Puri Saren"
-											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 										/>
 									</div>
 									<div>
-										<label className="block text-xs font-semibold text-[#181817] mb-1">
+										<label className="block text-xs font-semibold text-stone-900 mb-1">
 											Kawasan / Desa Adat *
 										</label>
 										<input
@@ -2072,11 +2308,11 @@ export function WorkflowRouteShellPage({
 											value={newSegmentArea}
 											onChange={(e) => setNewSegmentArea(e.target.value)}
 											placeholder="Mis. Ubud, Gianyar"
-											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 										/>
 									</div>
 									<div>
-										<label className="block text-xs font-semibold text-[#181817] mb-1">
+										<label className="block text-xs font-semibold text-stone-900 mb-1">
 											Jenis Dampak Operasional *
 										</label>
 										<select
@@ -2086,7 +2322,7 @@ export function WorkflowRouteShellPage({
 													e.target.value as typeof selectedImpactType,
 												)
 											}
-											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-select text-base text-stone-900 bg-stone-50 border-stone-200"
 										>
 											{IMPACT_TYPE_OPTIONS.map((opt) => (
 												<option key={opt.value} value={opt.value}>
@@ -2096,7 +2332,7 @@ export function WorkflowRouteShellPage({
 										</select>
 									</div>
 									<div>
-										<label className="block text-xs font-semibold text-[#181817] mb-1">
+										<label className="block text-xs font-semibold text-stone-900 mb-1">
 											Arahan Pengalihan Arus
 										</label>
 										<input
@@ -2104,42 +2340,43 @@ export function WorkflowRouteShellPage({
 											value={impactDiversionNote}
 											onChange={(e) => setImpactDiversionNote(e.target.value)}
 											placeholder="Mis. Dialihkan ke Jl. Sugriwa / Peliatan"
-											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 										/>
 									</div>
-									<label className="flex items-start gap-2 text-xs text-[#181817] cursor-pointer">
+									<label className="flex items-start gap-2 text-xs text-stone-900 cursor-pointer">
 										<input
 											type="checkbox"
 											checked={humanVerifiedRoad}
 											onChange={(e) => setHumanVerifiedRoad(e.target.checked)}
-											className="mt-0.5 rounded border-[#C5C3BC] text-[#264D3B]"
+											className="mt-0.5 rounded border-stone-300 text-emerald-800"
 										/>
 										<span>
-											Garis ruas jalan ini telah diverifikasi sesuai lokasi
-											lapangan (Human-Verified).
+											Saya memeriksa garis ini untuk latihan. Garis ini bukan ruas operasional terverifikasi.
 										</span>
 									</label>
-									<button
-										type="button"
-										disabled={
-											drawRoadOnTabMutation.isPending ||
-											draftCoordinates.length < 2
-										}
-										onClick={() => void drawRoadOnTabMutation.mutateAsync()}
-										className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
-									>
-										<Plus className="w-3.5 h-3.5" />
-										<span>
-											{drawRoadOnTabMutation.isPending
-												? "Menyimpan..."
-												: "Simpan & Tautkan Ruas Jalan"}
-										</span>
-									</button>
+									{isOrganizer ? (
+										<button
+											type="button"
+											disabled={
+												drawRoadOnTabMutation.isPending ||
+												draftCoordinates.length < 2
+											}
+											onClick={() => void drawRoadOnTabMutation.mutateAsync()}
+											className="w-full teduh-btn-primary min-h-[48px]"
+										>
+											<Plus className="w-4 h-4" />
+											<span>
+												{drawRoadOnTabMutation.isPending
+													? "Menyimpan..."
+													: "Simpan & Tautkan Ruas Jalan"}
+											</span>
+										</button>
+									) : null}
 								</div>
 							) : (
 								<div className="space-y-3">
 									<div>
-										<label className="block text-xs font-semibold text-[#181817] mb-1">
+										<label className="block text-xs font-semibold text-stone-900 mb-1">
 											Pilih Ruas Jalan Terverifikasi *
 										</label>
 										<select
@@ -2147,7 +2384,7 @@ export function WorkflowRouteShellPage({
 											onChange={(e) =>
 												setSelectedCatalogSegmentId(e.target.value)
 											}
-											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-select text-base text-stone-900 bg-stone-50 border-stone-200"
 										>
 											<option value="">
 												-- Pilih dari katalog atau klik garis biru di peta --
@@ -2160,7 +2397,7 @@ export function WorkflowRouteShellPage({
 										</select>
 									</div>
 									<div>
-										<label className="block text-xs font-semibold text-[#181817] mb-1">
+										<label className="block text-xs font-semibold text-stone-900 mb-1">
 											Jenis Dampak Operasional *
 										</label>
 										<select
@@ -2170,7 +2407,7 @@ export function WorkflowRouteShellPage({
 													e.target.value as typeof selectedImpactType,
 												)
 											}
-											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-select text-base text-stone-900 bg-stone-50 border-stone-200"
 										>
 											{IMPACT_TYPE_OPTIONS.map((opt) => (
 												<option key={opt.value} value={opt.value}>
@@ -2180,7 +2417,7 @@ export function WorkflowRouteShellPage({
 										</select>
 									</div>
 									<div>
-										<label className="block text-xs font-semibold text-[#181817] mb-1">
+										<label className="block text-xs font-semibold text-stone-900 mb-1">
 											Arahan Pengalihan Arus
 										</label>
 										<input
@@ -2188,7 +2425,7 @@ export function WorkflowRouteShellPage({
 											value={impactDiversionNote}
 											onChange={(e) => setImpactDiversionNote(e.target.value)}
 											placeholder="Mis. Dialihkan melalui jalur alternatif desa"
-											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 										/>
 									</div>
 									<button
@@ -2202,9 +2439,9 @@ export function WorkflowRouteShellPage({
 												selectedCatalogSegmentId,
 											)
 										}
-										className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+										className="w-full teduh-btn-primary min-h-[48px]"
 									>
-										<Plus className="w-3.5 h-3.5" />
+										<Plus className="w-4 h-4" />
 										<span>Tautkan Ruas Katalog</span>
 									</button>
 								</div>
@@ -2226,42 +2463,46 @@ export function WorkflowRouteShellPage({
 									{attachedRoadImpacts.map((imp) => (
 										<div
 											key={imp.id}
-											className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-center justify-between gap-2"
+											className="rounded-xl border border-stone-200 bg-stone-50 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 max-w-full overflow-hidden"
 										>
-											<div className="min-w-0">
-												<p className="text-xs font-bold text-[#181817] truncate">
+											<div className="min-w-0 flex-1 break-words">
+												<p className="text-xs font-bold text-stone-900 break-words">
 													{imp.segment?.displayName ||
 														imp.displayName ||
 														"Ruas Jalan"}
 												</p>
-												<p className="text-[11px] text-[#585854] truncate">
+												<p className="text-[11px] text-stone-600 break-words">
 													{getImpactTypeLabel(imp.impactType)}
 													{imp.diversionNote ? ` • ${imp.diversionNote}` : ""}
 												</p>
 											</div>
-											<div className="flex items-center gap-2 shrink-0">
-												<RoadStatusBadge
-													status={
-														imp.operationalStatus?.effectiveStatus ===
-														"unconfirmed"
-															? "unknown"
-															: (imp.operationalStatus?.effectiveStatus ??
-																"unknown")
-													}
-													expiresAt={imp.operationalStatus?.expiresAt}
-												/>
-												<button
-													type="button"
-													onClick={() =>
-														void deleteRoadImpactOnTabMutation.mutateAsync(
-															imp.id,
-														)
-													}
-													className="p-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-[#9E2A2B] hover:bg-[#fae5e5]"
-													title="Hapus ruas jalan"
-												>
-													<Trash2 className="w-3.5 h-3.5" />
-												</button>
+											<div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-stone-200">
+												<div className="max-w-full overflow-hidden">
+													<RoadStatusBadge
+														status={
+															imp.operationalStatus?.effectiveStatus ===
+															"unconfirmed"
+																? "unknown"
+																: (imp.operationalStatus?.effectiveStatus ??
+																	"unknown")
+														}
+														expiresAt={imp.operationalStatus?.expiresAt}
+													/>
+												</div>
+												<div className="flex justify-end shrink-0">
+													<button
+														type="button"
+														onClick={() =>
+															void deleteRoadImpactOnTabMutation.mutateAsync(
+																imp.id,
+															)
+														}
+														className="p-2.5 rounded-xl border border-red-300 bg-red-50 text-red-700 hover:bg-red-100 min-h-[48px] min-w-[48px] inline-flex items-center justify-center cursor-pointer"
+														title="Hapus ruas jalan"
+													>
+														<Trash2 className="w-4 h-4" />
+													</button>
+												</div>
 											</div>
 										</div>
 									))}
@@ -2269,20 +2510,30 @@ export function WorkflowRouteShellPage({
 							)}
 						</div>
 					</div>
+
+					{/* Organizer Reviewed Alternative Routes Manager */}
+					{isRealUuidEvent ? (
+						<div className="xl:col-span-12 mt-4">
+							<OrganizerAlternativeRoutesManager eventId={eventId!} isOrganizer={isOrganizer} />
+						</div>
+					) : null}
 				</div>
 			) : null}
 
 			{/* =================================================================== */}
 			{/* TAB 3: POS PECALANG — STATUS JALAN LIVE (`field`)                   */}
 			{/* =================================================================== */}
-			{currentTabValue === "field" ? (
+			{pathname.startsWith("/field") && fieldDetailQuery.isLoading ? <p role="status">Memeriksa penugasan...</p> : null}
+			{pathname.startsWith("/field") && fieldDetailQuery.isError ? <p role="alert">Penugasan tidak dapat dimuat. <button type="button" onClick={() => void fieldDetailQuery.refetch()}>Coba lagi</button></p> : null}
+			{pathname.startsWith("/field") && fieldDetailQuery.isSuccess && ((currentTabValue === "field" && !canTraffic && !isOrganizer) || (currentTabValue === "cleanup" && !canCleanup && !isOrganizer)) ? <p role="alert">Anda tidak memiliki izin untuk tugas ini.</p> : null}
+			{currentTabValue === "field" && (isOrganizer || canTraffic) ? (
 				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
-						<div className="border-b border-[#F0EFEA] pb-3">
+						<div className="space-y-1">
 							<h2 className="teduh-workspace-card-title">
 								Peta Operasional Pos Pecalang
 							</h2>
-							<p className="text-xs text-[#585854]">
+							<p className="text-xs text-stone-600">
 								Klik ruas jalan pada peta atau pada panel kendali di sebelah
 								kanan untuk memperbarui status penutupan jalan secara real-time.
 							</p>
@@ -2298,18 +2549,18 @@ export function WorkflowRouteShellPage({
 					</div>
 
 					<div className="xl:col-span-5 teduh-workspace-card space-y-4">
-						<div className="border-b border-[#F0EFEA] pb-3">
+						<div className="space-y-1">
 							<h2 className="teduh-workspace-card-title">
 								Kendali Status Ruas Jalan (Pecalang)
 							</h2>
-							<p className="text-xs text-[#585854]">
+							<p className="text-xs text-stone-600">
 								Setiap pembaruan berlaku selama 30 menit sebelum ditandai perlu
 								konfirmasi ulang (`UNCONFIRMED`).
 							</p>
 						</div>
 
 						<div>
-							<label className="block text-xs font-semibold text-[#181817] mb-1">
+							<label className="block text-xs font-semibold text-stone-900 mb-1">
 								Catatan Lapangan Pos Pecalang (Opsional)
 							</label>
 							<input
@@ -2317,7 +2568,7 @@ export function WorkflowRouteShellPage({
 								value={fieldNote}
 								onChange={(e) => setFieldNote(e.target.value)}
 								placeholder="Contoh: Iring-iringan Melasti tiba di Catus Pata"
-								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+								className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 							/>
 						</div>
 
@@ -2334,7 +2585,7 @@ export function WorkflowRouteShellPage({
 									<button
 										type="button"
 										onClick={() => handleTabChange("roads")}
-										className="px-3.5 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold"
+										className="teduh-btn-primary !text-xs !py-2 !min-h-[48px]"
 									>
 										+ Tambah Ruas Jalan di Peta
 									</button>
@@ -2347,16 +2598,16 @@ export function WorkflowRouteShellPage({
 										key={seg.id}
 										className={`rounded-xl border p-3.5 space-y-2.5 ${
 											selectedImpactId === seg.id
-												? "border-[#264D3B] bg-[#EBF3EE]/40"
-												: "border-[#E5E3DC] bg-[#FBFBFA]"
+												? "border-emerald-800 bg-emerald-50/40"
+												: "border-stone-200 bg-stone-50"
 										}`}
 									>
 										<div className="flex items-start justify-between gap-2">
 											<div>
-												<p className="text-xs font-bold text-[#181817]">
+												<p className="text-xs font-bold text-stone-900">
 													{seg.roadName}
 												</p>
-												<p className="text-[11px] text-[#585854]">
+												<p className="text-[11px] text-stone-600">
 													{seg.corridorSection} • {seg.windowWita}
 												</p>
 											</div>
@@ -2376,10 +2627,10 @@ export function WorkflowRouteShellPage({
 														nextStatus: "closed",
 													})
 												}
-												className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
+												className={`px-2.5 py-2.5 rounded-xl text-xs font-bold border min-h-[48px] inline-flex items-center justify-center transition-colors cursor-pointer ${
 													seg.status === "closed"
-														? "bg-[#9E2A2B] text-white border-[#9E2A2B]"
-														: "bg-white text-[#9E2A2B] border-[#E8B4B4] hover:bg-[#FDF2F2]"
+														? "bg-red-700 text-white border-red-700 shadow-2xs"
+														: "bg-white text-red-700 border-red-300 hover:bg-red-50"
 												}`}
 											>
 												Tutup Total
@@ -2393,10 +2644,10 @@ export function WorkflowRouteShellPage({
 														nextStatus: "intermittent",
 													})
 												}
-												className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
+												className={`px-2.5 py-2.5 rounded-xl text-xs font-bold border min-h-[48px] inline-flex items-center justify-center transition-colors cursor-pointer ${
 													seg.status === "intermittent"
-														? "bg-[#B86B14] text-white border-[#B86B14]"
-														: "bg-white text-[#9A5B13] border-[#F3D9A4] hover:bg-[#FDF7EB]"
+														? "bg-amber-700 text-white border-amber-700 shadow-2xs"
+														: "bg-white text-amber-800 border-amber-200 hover:bg-amber-50"
 												}`}
 											>
 												Buka-Tutup
@@ -2410,10 +2661,10 @@ export function WorkflowRouteShellPage({
 														nextStatus: "open",
 													})
 												}
-												className={`px-2.5 py-2 rounded-xl text-xs font-bold border transition-colors ${
+												className={`px-2.5 py-2.5 rounded-xl text-xs font-bold border min-h-[48px] inline-flex items-center justify-center transition-colors cursor-pointer ${
 													seg.status === "open"
-														? "bg-[#264D3B] text-white border-[#264D3B]"
-														: "bg-white text-[#264D3B] border-[#C7DBD0] hover:bg-[#EBF3EE]"
+														? "bg-emerald-800 text-white border-emerald-800 shadow-2xs"
+														: "bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-50"
 												}`}
 											>
 												Buka Lajur
@@ -2461,7 +2712,7 @@ export function WorkflowRouteShellPage({
 			{/* =================================================================== */}
 			{/* TAB 4: KEBERSIHAN & PENCATATAN SAMPAH (`cleanup`)                   */}
 			{/* =================================================================== */}
-			{currentTabValue === "cleanup" ? (
+			{currentTabValue === "cleanup" && (isOrganizer || canCleanup) ? (
 				<div className="space-y-6">
 					<Banner
 						status="info"
@@ -2474,24 +2725,26 @@ export function WorkflowRouteShellPage({
 						{/* Left Column: Cleanup Tasks & Photo Evidence */}
 						<div className="xl:col-span-7 space-y-6">
 							<div className="teduh-workspace-card space-y-4">
-								<div className="flex items-center justify-between border-b border-[#F0EFEA] pb-3">
+								<div className="flex items-center justify-between">
 									<h2 className="teduh-workspace-card-title">
 										Daftar Tugas Kebersihan Area Upacara
 									</h2>
-									<button
-										type="button"
-										onClick={() => setIsAddingTask((prev) => !prev)}
-										className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
-									>
-										<Plus className="w-3.5 h-3.5" />
-										<span>Tambah Tugas</span>
-									</button>
+									{isOrganizer ? (
+										<button
+											type="button"
+											onClick={() => setIsAddingTask((prev) => !prev)}
+											className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 min-h-[48px] cursor-pointer shadow-2xs"
+										>
+											<Plus className="w-4 h-4" />
+											<span>Tambah Tugas</span>
+										</button>
+									) : null}
 								</div>
 
 								{isAddingTask ? (
-									<div className="rounded-xl border border-[#D7E3DC] bg-[#F6FAF7] p-4 space-y-3">
+									<div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3">
 										<div>
-											<label className="block text-xs font-semibold text-[#181817] mb-1">
+											<label className="block text-xs font-semibold text-stone-900 mb-1">
 												Judul Tugas Kebersihan *
 											</label>
 											<input
@@ -2499,11 +2752,11 @@ export function WorkflowRouteShellPage({
 												value={newTaskTitle}
 												onChange={(e) => setNewTaskTitle(e.target.value)}
 												placeholder="Contoh: Pembersihan Sisa Canang & Sampah Plastik Catus Pata"
-												className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+												className="teduh-form-input text-base text-stone-900 bg-white border-stone-200"
 											/>
 										</div>
 										<div>
-											<label className="block text-xs font-semibold text-[#181817] mb-1">
+											<label className="block text-xs font-semibold text-stone-900 mb-1">
 												Catatan Titik Lokasi
 											</label>
 											<input
@@ -2511,14 +2764,14 @@ export function WorkflowRouteShellPage({
 												value={newTaskLocation}
 												onChange={(e) => setNewTaskLocation(e.target.value)}
 												placeholder="Contoh: Seputar Jaba Luar Pura Desa dan Simpang Utama"
-												className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+												className="teduh-form-input text-base text-stone-900 bg-white border-stone-200"
 											/>
 										</div>
 										<div className="flex justify-end gap-2">
 											<button
 												type="button"
 												onClick={() => setIsAddingTask(false)}
-												className="px-3 py-1.5 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817]"
+												className="px-4 py-2.5 rounded-xl border border-stone-300 bg-white text-xs font-semibold text-stone-700 hover:bg-stone-50 min-h-[48px] cursor-pointer"
 											>
 												Batal
 											</button>
@@ -2534,7 +2787,7 @@ export function WorkflowRouteShellPage({
 														locationNotes: newTaskLocation,
 													})
 												}
-												className="px-3.5 py-1.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold disabled:opacity-50"
+												className="px-4 py-2.5 rounded-xl bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
 											>
 												Simpan Tugas
 											</button>
@@ -2545,16 +2798,16 @@ export function WorkflowRouteShellPage({
 								{cleanupTasksQuery.data?.cleanupTasks &&
 								cleanupTasksQuery.data.cleanupTasks.length > 0 ? (
 									<div className="space-y-2.5">
-										{cleanupTasksQuery.data.cleanupTasks.map((task) => (
+										{cleanupTasksQuery.data.cleanupTasks.filter((task) => !taskId || task.id === taskId).map((task) => (
 											<div
 												key={task.id}
-												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+												className="rounded-xl border border-stone-200 bg-stone-50 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
 											>
 												<div>
-													<p className="text-xs font-bold text-[#181817]">
+													<p className="text-xs font-bold text-stone-900">
 														{task.title}
 													</p>
-													<p className="text-[11px] text-[#585854]">
+													<p className="text-[11px] text-stone-600">
 														{task.description || "Area Utama Upacara"}
 													</p>
 												</div>
@@ -2562,20 +2815,28 @@ export function WorkflowRouteShellPage({
 													<CleanupStatusBadge
 														status={task.status as CleanupTaskStatus}
 													/>
-													{task.status === "todo" ||
-													task.status === "in_progress" ||
-													task.status === "reopened" ? (
+													{(task.status === "todo" || task.status === "reopened") && canCleanup ? (
+														<button
+															type="button"
+															disabled={startCleanupMutation.isPending}
+															onClick={() => startCleanupMutation.mutate(task.id)}
+															className="px-3.5 py-2 rounded-xl bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 min-h-[48px] cursor-pointer shadow-2xs"
+														>
+															Mulai Kerjakan
+														</button>
+													) : null}
+													{task.status === "in_progress" && canCleanup ? (
 														<button
 															type="button"
 															onClick={() =>
 																void submitCleanupMutation.mutateAsync(task.id)
 															}
-															className="px-2.5 py-1 rounded-lg bg-[#264D3B] text-white text-[11px] font-semibold"
+															className="px-3.5 py-2 rounded-xl bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 min-h-[48px] cursor-pointer shadow-2xs"
 														>
 															Serahkan Tugas
 														</button>
 													) : null}
-													{task.status === "submitted" ? (
+													{isOrganizer && task.status === "submitted" ? (
 														<>
 															<button
 																type="button"
@@ -2584,7 +2845,7 @@ export function WorkflowRouteShellPage({
 																		taskId: task.id,
 																	})
 																}
-																className="px-2.5 py-1 rounded-lg bg-[#264D3B] text-white text-[11px] font-semibold"
+																className="px-3.5 py-2 rounded-xl bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 min-h-[48px] cursor-pointer shadow-2xs"
 															>
 																Verifikasi Prajuru
 															</button>
@@ -2597,7 +2858,7 @@ export function WorkflowRouteShellPage({
 																			"Perlu pembersihan ulang sisa sampah di lokasi.",
 																	})
 																}
-																className="px-2.5 py-1 rounded-lg border border-[#E5E3DC] bg-white text-[11px] font-semibold text-[#181817]"
+																className="px-3.5 py-2 rounded-xl border border-stone-300 bg-white text-xs font-semibold text-stone-900 hover:bg-stone-50 min-h-[48px] cursor-pointer"
 															>
 																Buka Kembali
 															</button>
@@ -2608,7 +2869,7 @@ export function WorkflowRouteShellPage({
 										))}
 									</div>
 								) : (
-									<div className="rounded-xl border border-dashed border-[#D5D3CB] p-4 text-xs text-[#585854] text-center">
+									<div className="rounded-xl border border-dashed border-stone-300 p-4 text-xs text-stone-600 text-center">
 										Belum ada tugas kebersihan terdaftar. Klik{" "}
 										<strong>+ Tambah Tugas</strong> untuk membuat daftar tugas
 										petugas kebersihan.
@@ -2623,16 +2884,18 @@ export function WorkflowRouteShellPage({
 								</h3>
 								<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 									<div>
-										<label className="block text-xs font-semibold text-[#181817] mb-1">
+										<label className="block text-xs font-semibold text-stone-900 mb-1">
 											Pilih Tugas Kebersihan
 										</label>
 										<select
-											value={selectedTaskForEvidence}
+											value={taskId ?? selectedTaskForEvidence}
+											disabled={Boolean(taskId)}
 											onChange={(e) =>
 												setSelectedTaskForEvidence(e.target.value)
 											}
-											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-select text-base text-stone-900 bg-stone-50 border-stone-200"
 										>
+											<option value="">-- Pilih tugas --</option>
 											{cleanupTasksQuery.data?.cleanupTasks?.map((t) => (
 												<option key={t.id} value={t.id}>
 													{t.title} ({t.status})
@@ -2647,7 +2910,7 @@ export function WorkflowRouteShellPage({
 									</div>
 
 									<div>
-										<label className="block text-xs font-semibold text-[#181817] mb-1">
+										<label className="block text-xs font-semibold text-stone-900 mb-1">
 											Tahap Dokumentasi Foto
 										</label>
 										<select
@@ -2655,7 +2918,7 @@ export function WorkflowRouteShellPage({
 											onChange={(e) =>
 												setEvidenceStage(e.target.value as "before" | "after")
 											}
-											className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-select text-base text-stone-900 bg-stone-50 border-stone-200"
 										>
 											<option value="before">
 												Sebelum Pembersihan (Before)
@@ -2665,9 +2928,9 @@ export function WorkflowRouteShellPage({
 									</div>
 								</div>
 
-								<label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#C7DBD0] bg-[#F6FAF7] p-5 text-center cursor-pointer hover:bg-[#EBF3EE]/60 transition-colors">
-									<Upload className="w-6 h-6 text-[#264D3B] mb-1.5" />
-									<span className="text-xs font-bold text-[#181817]">
+								<label className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-5 text-center cursor-pointer hover:bg-emerald-50 transition-colors">
+									<Upload className="w-6 h-6 text-emerald-800 mb-1.5" />
+									<span className="text-xs font-bold text-stone-900">
 										{uploadCleanupEvidenceMutation.isPending
 											? "Mengunggah Bukti Foto ke R2..."
 											: "Klik untuk Mengunggah Foto Bukti (JPG, PNG, WEBP)"}
@@ -2690,19 +2953,19 @@ export function WorkflowRouteShellPage({
 
 						{/* Right Column: Waste Quantity Recording */}
 						<div className="xl:col-span-5 teduh-workspace-card space-y-4">
-							<div className="border-b border-[#F0EFEA] pb-3">
+							<div className="space-y-1">
 								<h2 className="teduh-workspace-card-title">
 									Pencatatan Timbunan Sampah Pasca-Upacara
 								</h2>
-								<p className="text-xs text-[#585854]">
+								<p className="text-xs text-stone-600">
 									Pisahkan secara jujur antara berat terukur (ditimbang) dan
 									estimasi / jumlah karung sesuai standar Rangkai.
 								</p>
 							</div>
 
 							<div className="space-y-3">
-								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-2">
-									<label className="block text-xs font-bold text-[#181817]">
+								<div className="rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-2">
+									<label className="block text-xs font-bold text-stone-900">
 										1. Sampah Organik / Canang &amp; Janur (Kg)
 									</label>
 									<div className="grid grid-cols-2 gap-2">
@@ -2713,7 +2976,7 @@ export function WorkflowRouteShellPage({
 											value={organicKg}
 											onChange={(e) => setOrganicKg(e.target.value)}
 											placeholder="Berat (Kg)"
-											className="rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-input text-base text-stone-900 bg-white border-stone-200"
 										/>
 										<select
 											value={organicMethod}
@@ -2722,7 +2985,7 @@ export function WorkflowRouteShellPage({
 													e.target.value as "weighed" | "estimated",
 												)
 											}
-											className="rounded-xl border border-[#E5E3DC] bg-white px-2.5 py-2 text-xs text-[#181817]"
+											className="teduh-form-select text-base text-stone-900 bg-white border-stone-200"
 										>
 											<option value="weighed">Ditimbang Aktual</option>
 											<option value="estimated">Estimasi Petugas</option>
@@ -2730,8 +2993,8 @@ export function WorkflowRouteShellPage({
 									</div>
 								</div>
 
-								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-2">
-									<label className="block text-xs font-bold text-[#181817]">
+								<div className="rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-2">
+									<label className="block text-xs font-bold text-stone-900">
 										2. Sampah Daur Ulang / Botol &amp; Plastik (Kg)
 									</label>
 									<div className="grid grid-cols-2 gap-2">
@@ -2742,7 +3005,7 @@ export function WorkflowRouteShellPage({
 											value={recyclableKg}
 											onChange={(e) => setRecyclableKg(e.target.value)}
 											placeholder="Berat (Kg)"
-											className="rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+											className="teduh-form-input text-base text-stone-900 bg-white border-stone-200"
 										/>
 										<select
 											value={recyclableMethod}
@@ -2751,7 +3014,7 @@ export function WorkflowRouteShellPage({
 													e.target.value as "weighed" | "estimated",
 												)
 											}
-											className="rounded-xl border border-[#E5E3DC] bg-white px-2.5 py-2 text-xs text-[#181817]"
+											className="teduh-form-select text-base text-stone-900 bg-white border-stone-200"
 										>
 											<option value="weighed">Ditimbang Aktual</option>
 											<option value="estimated">Estimasi Petugas</option>
@@ -2759,8 +3022,8 @@ export function WorkflowRouteShellPage({
 									</div>
 								</div>
 
-								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-2">
-									<label className="block text-xs font-bold text-[#181817]">
+								<div className="rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-2">
+									<label className="block text-xs font-bold text-stone-900">
 										3. Sampah Residu (Jumlah Karung)
 									</label>
 									<input
@@ -2770,7 +3033,7 @@ export function WorkflowRouteShellPage({
 										value={residualSacks}
 										onChange={(e) => setResidualSacks(e.target.value)}
 										placeholder="Contoh: 8 karung"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-white px-3 py-2 text-xs text-[#181817]"
+										className="teduh-form-input text-base text-stone-900 bg-white border-stone-200"
 									/>
 								</div>
 
@@ -2778,7 +3041,7 @@ export function WorkflowRouteShellPage({
 									type="button"
 									disabled={recordWasteMutation.isPending}
 									onClick={() => void recordWasteMutation.mutateAsync()}
-									className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+									className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-800 text-white text-sm font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
 								>
 									<Save className="w-3.5 h-3.5" />
 									<span>
@@ -2790,6 +3053,13 @@ export function WorkflowRouteShellPage({
 							</div>
 						</div>
 					</div>
+
+					{/* Post-Event Waste Logistics & Scenario Planning Tool */}
+					{isRealUuidEvent ? (
+						<div className="xl:col-span-12 mt-4">
+							<WastePlanningPanel eventId={eventId!} isOrganizer={isOrganizer} />
+						</div>
+					) : null}
 				</div>
 			) : null}
 
@@ -2801,99 +3071,149 @@ export function WorkflowRouteShellPage({
 					{/* Left Column: Generate One-Time Invitation Link & Direct Assign */}
 					<div className="xl:col-span-5 space-y-6">
 						<div className="teduh-workspace-card space-y-4">
-							<div className="border-b border-[#F0EFEA] pb-3">
-								<div className="flex items-center gap-2">
-									<Link2 className="w-4 h-4 text-[#264D3B]" />
-									<h2 className="teduh-workspace-card-title">
-										Buat Tautan Undangan Petugas Lapangan
-									</h2>
-								</div>
-								<p className="text-xs text-[#585854] mt-1">
+							<div className="space-y-1">
+								<h2 className="teduh-workspace-card-title">
+									Buat Tautan Undangan Petugas
+								</h2>
+								<Text type="body" color="secondary" className="text-base text-stone-600 mt-1 leading-relaxed">
 									Hasilkan tautan undangan resmi sekali pakai (berlaku 7 hari)
-									untuk dibagikan kepada Pecalang atau petugas kebersihan via
-									WhatsApp.
-								</p>
+									untuk dibagikan kepada Pecalang atau petugas kebersihan via WhatsApp.
+								</Text>
 							</div>
 
-							<div className="space-y-2.5 text-xs">
-								<label className="flex items-center gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer">
+							<VStack gap={3}>
+								<div>
+									<Text type="label" weight="semibold" className="block text-base text-stone-900 mb-1">
+										Email Penerima Undangan *
+									</Text>
 									<input
-										type="checkbox"
-										checked={inviteCanTraffic}
-										onChange={(e) => setInviteCanTraffic(e.target.checked)}
-										className="rounded border-[#C5C3BC] text-[#264D3B]"
+										type="email"
+										required
+										value={inviteEmail}
+										onChange={(e) => setInviteEmail(e.target.value)}
+										placeholder="contoh: pecalang.desa@rangkai.local"
+										className="teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 									/>
-									<div>
-										<span className="font-bold text-[#181817] block">
-											Wewenang Lalu Lintas (`traffic:update`)
-										</span>
-										<span className="text-[#585854]">
-											Dapat memperbarui status ruas jalan (Pos Pecalang)
-										</span>
-									</div>
-								</label>
+								</div>
 
-								<label className="flex items-center gap-2.5 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 cursor-pointer">
-									<input
-										type="checkbox"
-										checked={inviteCanCleanup}
-										onChange={(e) => setInviteCanCleanup(e.target.checked)}
-										className="rounded border-[#C5C3BC] text-[#264D3B]"
-									/>
-									<div>
-										<span className="font-bold text-[#181817] block">
-											Wewenang Kebersihan (`cleanup:update`)
-										</span>
-										<span className="text-[#585854]">
-											Dapat mengunggah foto bukti &amp; menyerahkan tugas
-											kebersihan
-										</span>
-									</div>
-								</label>
-							</div>
+								<div>
+									<Text type="label" weight="semibold" className="block text-base text-stone-900 mb-1">
+										Peran Undangan
+									</Text>
+									<select
+										value={inviteRole}
+										onChange={(e) =>
+											setInviteRole(
+												e.target.value === "organizer" ? "organizer" : "officer",
+											)
+										}
+										className="teduh-form-select text-base text-stone-900 bg-stone-50 border-stone-200"
+									>
+										<option value="officer">
+											Petugas Lapangan (Pecalang / Kebersihan)
+										</option>
+										<option value="organizer">
+											Panitia Penyelenggara (Organizer)
+										</option>
+									</select>
+								</div>
+
+								{inviteRole === "officer" ? (
+									<VStack gap={2} className="pt-1">
+										<Text type="label" weight="semibold" className="block text-base text-stone-900">
+											Hak Akses Penugasan Lapangan:
+										</Text>
+										<label className="flex items-start gap-2.5 rounded-xl border border-stone-200 bg-stone-50 p-3 cursor-pointer hover:bg-stone-100 transition-colors">
+											<input
+												type="checkbox"
+												checked={inviteCanTraffic}
+												onChange={(e) => setInviteCanTraffic(e.target.checked)}
+												className="mt-1 rounded border-stone-300 text-emerald-800"
+											/>
+											<div className="text-base">
+												<span className="font-bold text-stone-900 block">
+													Wewenang Status Jalan (traffic:update)
+												</span>
+												<span className="text-stone-600 text-sm">
+													Dapat memperbarui status buka/tutup ruas jalan di Pos Pecalang
+												</span>
+											</div>
+										</label>
+
+										<label className="flex items-start gap-2.5 rounded-xl border border-stone-200 bg-stone-50 p-3 cursor-pointer hover:bg-stone-100 transition-colors">
+											<input
+												type="checkbox"
+												checked={inviteCanCleanup}
+												onChange={(e) => setInviteCanCleanup(e.target.checked)}
+												className="mt-1 rounded border-stone-300 text-emerald-800"
+											/>
+											<div className="text-base">
+												<span className="font-bold text-stone-900 block">
+													Wewenang Kebersihan (cleanup:update)
+												</span>
+												<span className="text-stone-600 text-sm">
+													Dapat mengunggah foto bukti &amp; menyerahkan tugas kebersihan
+												</span>
+											</div>
+										</label>
+									</VStack>
+								) : null}
+							</VStack>
 
 							<button
 								type="button"
 								disabled={
 									generateInviteMutation.isPending ||
-									(!inviteCanTraffic && !inviteCanCleanup)
+									!inviteEmail.trim() ||
+									(inviteRole === "officer" &&
+										!inviteCanTraffic &&
+										!inviteCanCleanup)
 								}
-								onClick={() => void generateInviteMutation.mutateAsync()}
-								className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+								onClick={() => {
+									generateInviteMutation.mutate();
+								}}
+								className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-800 text-white text-base font-semibold hover:bg-emerald-900 disabled:opacity-50 transition-colors shadow-xs min-h-[48px] cursor-pointer"
 							>
-								<UserPlus className="w-3.5 h-3.5" />
+								<UserPlus className="w-4 h-4" />
 								<span>
 									{generateInviteMutation.isPending
-										? "Membuat Tautan..."
+										? "Membuat Tautan Undangan..."
 										: "Buat Tautan Undangan Petugas"}
 								</span>
 							</button>
 
 							{generatedInviteUrl ? (
-								<div className="rounded-xl border border-[#A6D9B8] bg-[#EBF7F0] p-3.5 space-y-2">
-									<span className="text-[11px] font-bold uppercase tracking-wider text-[#1D5E3A] block">
-										Tautan Undangan Siap Dibagikan:
+								<div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3.5 space-y-2">
+									<span className="text-base font-semibold text-emerald-800 block">
+										Tautan undangan siap dibagikan:
 									</span>
 									<div className="flex items-center gap-2">
 										<input
 											type="text"
 											readOnly
 											value={generatedInviteUrl}
-											className="flex-1 rounded-lg border border-[#A6D9B8] bg-white px-2.5 py-1.5 text-xs font-mono text-[#181817]"
+											className="flex-1 rounded-lg border border-emerald-300 bg-white px-3 py-2 text-base font-mono text-stone-900"
 										/>
 										<button
 											type="button"
-											onClick={() => {
-												void navigator.clipboard.writeText(generatedInviteUrl);
-												setStatusFeedback({
-													type: "info",
-													message:
-														"Tautan undangan berhasil disalin ke papan klip!",
-												});
+											onClick={async () => {
+												try {
+													await navigator.clipboard.writeText(generatedInviteUrl);
+													setStatusFeedback({
+														type: "info",
+														message: "Tautan undangan berhasil disalin ke papan klip.",
+													});
+												} catch {
+													setStatusFeedback({
+														type: "error",
+														message:
+															"Gagal menyalin tautan otomatis. Pilih dan salin teks tautan secara manual.",
+													});
+												}
 											}}
-											className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#264D3B] text-white text-xs font-semibold"
+											className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-800 text-white text-xs font-semibold hover:bg-emerald-900 shrink-0 min-h-[48px] cursor-pointer"
 										>
-											<Copy className="w-3.5 h-3.5" />
+											<Copy className="w-4 h-4" />
 											<span>Salin</span>
 										</button>
 									</div>
@@ -2901,12 +3221,94 @@ export function WorkflowRouteShellPage({
 							) : null}
 						</div>
 
+						{/* Daftar Undangan Organisasi */}
+						<div className="teduh-workspace-card space-y-3">
+							<div className="flex items-center justify-between">
+								<h3 className="teduh-workspace-card-title">
+									Daftar Tautan Undangan Organisasi
+								</h3>
+								<span className="px-2 py-0.5 rounded-md bg-stone-100 text-xs font-semibold text-stone-600">
+									{invitationsQuery.data?.invitations?.length ?? 0}
+								</span>
+							</div>
+
+							{invitationsQuery.isLoading ? (
+								<LoadingStateBlock label="Memuat daftar undangan..." rows={2} />
+							) : invitationsQuery.isError ? (
+								<div className="p-3 rounded-xl border border-red-300 bg-red-50 text-xs text-red-700 space-y-2">
+									<p>Undangan tidak dapat dimuat.</p>
+									<button
+										type="button"
+										onClick={() => void invitationsQuery.refetch()}
+										className="font-bold underline"
+									>
+										Coba lagi
+									</button>
+								</div>
+							) : !invitationsQuery.data?.invitations?.length ? (
+								<p className="text-xs text-stone-600 py-2">
+									Belum ada tautan undangan yang dibuat.
+								</p>
+							) : (
+								<div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+									{invitationsQuery.data.invitations.map((invitation) => (
+										<div
+											key={invitation.id}
+											className="rounded-xl border border-stone-200 bg-stone-50 p-3 flex items-center justify-between gap-2"
+										>
+											<div className="min-w-0 space-y-1">
+												<p className="text-xs font-semibold text-stone-900 truncate">
+													{invitation.recipientEmail}
+												</p>
+												<div className="flex flex-wrap items-center gap-1 text-[11px]">
+													<span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 font-medium">
+														{invitation.role === "organizer"
+															? "Panitia"
+															: "Petugas Lapangan"}
+													</span>
+													<span
+														className={`px-1.5 py-0.5 rounded font-medium ${
+															invitation.status === "pending"
+																? "bg-amber-100 text-amber-800"
+																: invitation.status === "accepted"
+																	? "bg-emerald-100 text-emerald-900"
+																	: "bg-stone-100 text-stone-500"
+														}`}
+													>
+														{invitation.status === "pending"
+															? "Menunggu"
+															: invitation.status === "accepted"
+																? "Diterima"
+																: "Dibatalkan"}
+													</span>
+												</div>
+											</div>
+
+											{invitation.status === "pending" ? (
+												<button
+													type="button"
+													disabled={revokeInvitationMutation.isPending}
+													onClick={() =>
+														revokeInvitationMutation.mutate(invitation.id)
+													}
+													className="px-3 py-2 rounded-xl border border-red-300 bg-white text-xs font-semibold text-red-700 hover:bg-red-50 transition-colors shrink-0 min-h-[48px] cursor-pointer"
+												>
+													Batalkan
+												</button>
+											) : null}
+										</div>
+									))}
+								</div>
+							)}
+						</div>
+
+
 						{/* Direct Assign by User ID */}
 						<div className="teduh-workspace-card space-y-3">
 							<h3 className="teduh-workspace-card-title">
 								Penugasan Langsung via ID Akun
 							</h3>
-							<p className="text-xs text-[#585854]">
+							<p className="text-xs text-stone-600">
 								Jika petugas sudah memiliki akun di Desa Adat ini, masukkan ID
 								Akun mereka untuk menugaskan secara langsung.
 							</p>
@@ -2916,7 +3318,7 @@ export function WorkflowRouteShellPage({
 									value={directOfficerUserId}
 									onChange={(e) => setDirectOfficerUserId(e.target.value)}
 									placeholder="Masukkan ID Akun Petugas..."
-									className="flex-1 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3 py-2 text-xs text-[#181817]"
+									className="flex-1 teduh-form-input text-base text-stone-900 bg-stone-50 border-stone-200"
 								/>
 								<button
 									type="button"
@@ -2925,7 +3327,7 @@ export function WorkflowRouteShellPage({
 										directAssignMutation.isPending
 									}
 									onClick={() => void directAssignMutation.mutateAsync()}
-									className="px-3.5 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4] disabled:opacity-50"
+									className="px-4 py-2.5 rounded-xl border border-emerald-800 bg-emerald-50 text-xs font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-50 min-h-[48px] cursor-pointer"
 								>
 									Tugaskan
 								</button>
@@ -2935,7 +3337,7 @@ export function WorkflowRouteShellPage({
 
 					{/* Right Column: Assigned Officers List */}
 					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
-						<div className="flex items-center justify-between border-b border-[#F0EFEA] pb-3">
+						<div className="flex items-center justify-between">
 							<h2 className="teduh-workspace-card-title">
 								Daftar Petugas Lapangan Terdaftar (
 								{assignmentsQuery.data?.assignments?.length ?? 0})
@@ -2945,9 +3347,9 @@ export function WorkflowRouteShellPage({
 						{assignmentsQuery.isLoading ? (
 							<LoadingStateBlock label="Memuat daftar petugas..." rows={3} />
 						) : !assignmentsQuery.data?.assignments?.length ? (
-							<div className="rounded-xl border border-dashed border-[#D5D3CB] p-6 text-center space-y-2 text-xs text-[#585854]">
-								<Users className="w-7 h-7 text-[#8A8984] mx-auto" />
-								<p className="font-bold text-[#181817]">
+							<div className="rounded-xl border border-dashed border-stone-300 p-6 text-center space-y-2 text-xs text-stone-600">
+								<Users className="w-7 h-7 text-stone-400 mx-auto" />
+								<p className="font-bold text-stone-900">
 									Belum Ada Petugas Lapangan yang Ditugaskan
 								</p>
 								<p className="max-w-sm mx-auto">
@@ -2961,25 +3363,25 @@ export function WorkflowRouteShellPage({
 								{assignmentsQuery.data.assignments.map((asg) => (
 									<div
 										key={asg.id}
-										className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+										className="rounded-xl border border-stone-200 bg-stone-50 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
 									>
 										<div className="space-y-1">
-											<p className="text-xs font-bold text-[#181817]">
+											<p className="text-xs font-bold text-stone-900">
 												{asg.userName || "Petugas Lapangan"} (
 												{asg.userEmail || asg.userId})
 											</p>
 											<div className="flex flex-wrap items-center gap-1.5">
 												{asg.canUpdateTraffic ? (
-													<span className="px-2 py-0.5 rounded-md bg-[#EBF3EE] text-[#264D3B] text-[11px] font-semibold">
+													<span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-800 text-[11px] font-semibold">
 														Pos Pecalang (traffic:update)
 													</span>
 												) : null}
 												{asg.canUpdateCleanup ? (
-													<span className="px-2 py-0.5 rounded-md bg-[#FDF7EB] text-[#9A5B13] text-[11px] font-semibold">
+													<span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 text-[11px] font-semibold">
 														Kebersihan (cleanup:update)
 													</span>
 												) : null}
-												<span className="text-[11px] text-[#585854]">
+												<span className="text-[11px] text-stone-600">
 													• Ditugaskan{" "}
 													{formatWitaDateTime(asg.assignedAt || asg.createdAt)}
 												</span>
@@ -2992,9 +3394,9 @@ export function WorkflowRouteShellPage({
 											onClick={() =>
 												void revokeAssignmentMutation.mutateAsync(asg.id)
 											}
-											className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-[#E8B4B4] bg-[#FDF2F2] text-[11px] font-semibold text-[#9E2A2B] hover:bg-[#fae5e5] shrink-0"
+											className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-red-300 bg-red-50 text-xs font-semibold text-red-700 hover:bg-red-100 shrink-0 min-h-[48px] cursor-pointer"
 										>
-											<Trash2 className="w-3 h-3" />
+											<Trash2 className="w-4 h-4" />
 											<span>Cabut Tugas</span>
 										</button>
 									</div>
@@ -3005,5 +3407,6 @@ export function WorkflowRouteShellPage({
 				</div>
 			) : null}
 		</div>
+
 	);
 }

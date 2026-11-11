@@ -13,8 +13,10 @@ import {
 	useAcceptInvitationMutation,
 	useAuthSession,
 	useInvitationQuery,
+	useSignOutMutation,
 } from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
+import { saveOrganizationId } from "../lib/events-api";
 
 export function AcceptInvitationPage() {
 	const params = useParams();
@@ -23,6 +25,7 @@ export function AcceptInvitationPage() {
 	const pageRef = useRef<HTMLDivElement>(null);
 
 	const { data: sessionData, isLoading: isSessionLoading } = useAuthSession();
+	const signOutMutation = useSignOutMutation();
 	const { data: inviteData, isLoading: isInviteLoading, error: inviteError } =
 		useInvitationQuery(token);
 	const acceptMutation = useAcceptInvitationMutation();
@@ -31,11 +34,22 @@ export function AcceptInvitationPage() {
 
 	useGsapPageReveal(pageRef, [isInviteLoading, Boolean(inviteData?.valid)]);
 
+	const sessionEmail = sessionData?.user?.email?.trim().toLowerCase();
+	const targetEmail = inviteData?.recipientEmail?.trim().toLowerCase();
+	const isEmailMismatch = Boolean(
+		sessionEmail && targetEmail && sessionEmail !== targetEmail,
+	);
+
 	async function handleAccept() {
 		setActionError(null);
 		try {
 			const res = await acceptMutation.mutateAsync(token);
-			navigate(`/field/events/${res.eventId}`);
+			saveOrganizationId(res.organizationId);
+			if (res.role === "organizer" || !res.eventId) {
+				navigate("/dashboard");
+			} else {
+				navigate(`/field/events/${res.eventId}`);
+			}
 		} catch (err) {
 			if (err instanceof ApiClientError) {
 				setActionError(err.message);
@@ -106,7 +120,7 @@ export function AcceptInvitationPage() {
 										marginBottom: 10,
 									}}
 								>
-									Undangan Petugas Lapangan Resmi
+									{inviteData.invitationRole === "organizer" ? "Undangan Penyelenggara" : "Undangan Petugas Lapangan"}
 								</span>
 								<h1
 									style={{
@@ -121,7 +135,7 @@ export function AcceptInvitationPage() {
 									Bergabung ke {inviteData.organization.name}
 								</h1>
 								<p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "#545B67" }}>
-									Anda diundang bertugas dalam koordinasi kegiatan upacara adat di Bali.
+									{inviteData.invitationRole === "organizer" ? "Anda diundang sebagai penyelenggara organisasi ini." : "Anda diundang bertugas dalam koordinasi kegiatan upacara adat di Bali."}
 								</p>
 							</div>
 
@@ -137,18 +151,18 @@ export function AcceptInvitationPage() {
 									border: "1px solid rgba(228, 231, 229, 0.8)",
 								}}
 							>
-								<div>
-									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500, textTransform: "uppercase" }}>
-										Kegiatan yang Ditugaskan
+								{inviteData.event ? <div>
+									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 600 }}>
+										Kegiatan yang ditugaskan
 									</div>
 									<div style={{ fontSize: 15, fontWeight: 600, color: "#181B20", marginTop: 2 }}>
 										{inviteData.event.title}
 									</div>
-								</div>
+								</div> : null}
 
-								<div>
-									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500, textTransform: "uppercase", marginBottom: 6 }}>
-										Izin Hak Tugas Lapangan
+								{inviteData.invitationRole === "officer" ? <div>
+									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 600, marginBottom: 6 }}>
+										Izin hak tugas lapangan
 									</div>
 									<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 										{inviteData.permissions.canUpdateTraffic && (
@@ -164,7 +178,7 @@ export function AcceptInvitationPage() {
 											</div>
 										)}
 									</div>
-								</div>
+								</div> : <p>Hak penyelenggara berlaku untuk organisasi ini. Tidak ada tugas lapangan yang diberikan.</p>}
 							</div>
 
 							{actionError && (
@@ -184,43 +198,83 @@ export function AcceptInvitationPage() {
 
 							{/* Actions: Logged In vs Logged Out */}
 							{!isSessionLoading && sessionData?.user ? (
-								<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+								isEmailMismatch ? (
 									<div
 										style={{
-											fontSize: 13,
-											color: "#545B67",
-											background: "#F4F4F3",
-											borderRadius: 12,
-											padding: "10px 14px",
-										}}
-									>
-										Masuk sebagai: <strong>{sessionData.user.name}</strong> ({sessionData.user.email})
-									</div>
-									<button
-										type="button"
-										onClick={handleAccept}
-										disabled={acceptMutation.isPending}
-										style={{
-											background: "#264D3B",
-											color: "#FFFFFF",
-											border: "none",
-											borderRadius: 9999,
-											padding: "12px 20px",
-											fontSize: 14,
-											fontWeight: 500,
+											background: "#FEF2F2",
+											border: "1px solid rgba(185, 28, 28, 0.3)",
+											borderRadius: 14,
+											padding: "16px 18px",
 											display: "flex",
-											alignItems: "center",
-											justifyContent: "center",
-											gap: 8,
-											cursor: acceptMutation.isPending ? "not-allowed" : "pointer",
-											opacity: acceptMutation.isPending ? 0.75 : 1,
-											transition: "all var(--transition-fast)",
+											flexDirection: "column",
+											gap: 10,
 										}}
 									>
-										<CheckCircle2 size={16} />
-										<span>{acceptMutation.isPending ? "Menerima..." : "Terima Undangan & Mulai Bertugas"}</span>
-									</button>
-								</div>
+										<div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9E2A2B", fontWeight: 600, fontSize: 14 }}>
+											<AlertCircle size={18} />
+											<span>Alamat Email Tidak Cocok</span>
+										</div>
+										<p style={{ margin: 0, fontSize: 13, color: "#545B67", lineHeight: 1.5 }}>
+											Undangan ini ditujukan untuk email: <strong>{targetEmail}</strong>. Saat ini Anda masuk sebagai: <strong>{sessionEmail}</strong>.
+										</p>
+										<div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+											<button
+												type="button"
+												onClick={() => signOutMutation.mutate()}
+												style={{
+													background: "#9E2A2B",
+													color: "#FFFFFF",
+													border: "none",
+													borderRadius: 9999,
+													padding: "8px 16px",
+													fontSize: 12.5,
+													cursor: "pointer",
+													fontWeight: 500,
+												}}
+											>
+												Keluar Akun & Ganti Email
+											</button>
+										</div>
+									</div>
+								) : (
+									<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+										<div
+											style={{
+												fontSize: 13,
+												color: "#545B67",
+												background: "#F4F4F3",
+												borderRadius: 12,
+												padding: "10px 14px",
+											}}
+										>
+											Masuk sebagai: <strong>{sessionData.user.name}</strong> ({sessionData.user.email})
+										</div>
+										<button
+											type="button"
+											onClick={handleAccept}
+											disabled={acceptMutation.isPending}
+											style={{
+												background: "#264D3B",
+												color: "#FFFFFF",
+												border: "none",
+												borderRadius: 9999,
+												padding: "12px 20px",
+												fontSize: 14,
+												fontWeight: 500,
+												display: "flex",
+												alignItems: "center",
+												justifyContent: "center",
+												gap: 8,
+												cursor: acceptMutation.isPending ? "not-allowed" : "pointer",
+												opacity: acceptMutation.isPending ? 0.75 : 1,
+												transition: "all var(--transition-fast)",
+											}}
+										>
+											<CheckCircle2 size={16} />
+											<span>{acceptMutation.isPending ? "Menerima..." : "Terima Undangan & Mulai Bertugas"}</span>
+										</button>
+									</div>
+								)
 							) : (
 								<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 									<p style={{ margin: 0, fontSize: 13.5, color: "#545B67", lineHeight: 1.5 }}>
@@ -238,6 +292,7 @@ export function AcceptInvitationPage() {
 										</Link>
 										<Link
 											to="/register"
+											state={{ from: `/invite/${token}`, email: inviteData.recipientEmail }}
 											className="teduh-back-link"
 											style={{ flex: 1, justifyContent: "center" }}
 										>

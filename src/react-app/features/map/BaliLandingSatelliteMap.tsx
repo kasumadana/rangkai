@@ -3,7 +3,9 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	CeremonyDetailModal,
+	MapFallbackRoadList,
 	type CeremonyDetailItem,
+	type RoadSegmentFallbackItem,
 } from "../../components/rangkai";
 import type {
 	BaliDistrictProperties,
@@ -137,6 +139,44 @@ export function BaliLandingSatelliteMap({
 		() => buildDistrictFeaturesFromEvents(ceremonies),
 		[ceremonies],
 	);
+
+	const allFallbackSegments: RoadSegmentFallbackItem[] = useMemo(() => {
+		const result: RoadSegmentFallbackItem[] = [];
+		for (const ceremony of ceremonies) {
+			for (const seg of ceremony.roadSegments || []) {
+				const rawImpact = (seg.impactType || "").toLowerCase();
+				const mappedImpact: RoadSegmentFallbackItem["impactType"] =
+					rawImpact.includes("intermittent") || rawImpact.includes("buka_tutup")
+						? "intermittent_flow"
+						: rawImpact.includes("parking")
+							? "parking_restriction"
+							: rawImpact.includes("procession")
+								? "procession_route"
+								: "closure";
+
+				result.push({
+					id: seg.id,
+					segmentName: seg.roadName,
+					corridorArea: seg.corridorSection || ceremony.desaAdatName,
+					impactType: mappedImpact,
+					plannedFrom: seg.plannedFrom || ceremony.scheduleIso?.startsAt || new Date().toISOString(),
+					plannedTo: seg.plannedTo || ceremony.scheduleIso?.endsAt || new Date().toISOString(),
+					observedAt: seg.observedAt || null,
+					expiresAt: seg.expiresAt || null,
+					diversionNote: seg.guidanceNote || null,
+					isSimulation: ceremony.isSimulation !== false,
+					status: (seg.status === "closed"
+						? "closed"
+						: seg.status === "intermittent"
+							? "intermittent"
+							: seg.status === "open"
+								? "open"
+								: "unknown") as OperationalRoadStatus,
+				});
+			}
+		}
+		return result;
+	}, [ceremonies]);
 	const districtFeaturesRef = useRef(districtFeaturesData);
 	useEffect(() => {
 		districtFeaturesRef.current = districtFeaturesData;
@@ -202,11 +242,13 @@ export function BaliLandingSatelliteMap({
 			}
 
 			const badge = getStatusBadgeConfig(ceremony.status);
+			const isSim = ceremony.isSimulation !== false;
 			const popupNode = document.createElement("div");
 			popupNode.className = "map-popup-card";
 			popupNode.innerHTML = `
 				<div class="map-popup-header">
 					<span class="map-popup-badge ${badge.className}">${badge.label}</span>
+					${isSim ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ''}
 					<span class="map-popup-location">${ceremony.desaAdatName}</span>
 				</div>
 				<h4 class="map-popup-title">${ceremony.title}</h4>
@@ -241,6 +283,7 @@ export function BaliLandingSatelliteMap({
 						sacredCenterName: ceremony.sacredCenterName,
 						roadName: ceremony.roadName,
 						detourRoute: ceremony.detourRoute,
+						isSimulation: ceremony.isSimulation !== false,
 					});
 				});
 			}
@@ -861,34 +904,15 @@ export function BaliLandingSatelliteMap({
 						background: "#FFFFFF",
 						display: "flex",
 						flexDirection: "column",
-						alignItems: "center",
-						justifyContent: "center",
-						padding: 24,
-						textAlign: "center",
+						padding: 20,
 						zIndex: 10,
-						color: "#181B20",
+						overflowY: "auto",
 					}}
 				>
-					<div
-						style={{
-							fontWeight: 600,
-							fontSize: 14,
-							color: "#181B20",
-							marginBottom: 6,
-						}}
-					>
-						Peta Wilayah Belum Dapat Ditampilkan
-					</div>
-					<div
-						style={{
-							fontSize: 12.5,
-							color: "#71717A",
-							maxWidth: 360,
-							lineHeight: 1.6,
-						}}
-					>
-						{mapError}
-					</div>
+					<MapFallbackRoadList
+						showMapUnavailableNotice
+						segments={allFallbackSegments}
+					/>
 				</div>
 			) : null}
 

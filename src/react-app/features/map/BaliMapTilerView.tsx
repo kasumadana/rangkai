@@ -19,11 +19,22 @@ import {
 import {
 	MapFallbackRoadList,
 	type CeremonyDetailItem,
+	type RoadSegmentFallbackItem,
 } from "../../components/rangkai";
 
 interface BaliMapTilerViewProps {
 	village?: BaliVillageCeremonyProfile | null;
 	allVillages?: BaliVillageCeremonyProfile[];
+	alternativeRoutes?: Array<{
+		id: string;
+		name: string;
+		description?: string | null;
+		coordinates?: [number, number][];
+		geometry?: {
+			type?: string;
+			coordinates?: [number, number][];
+		};
+	}>;
 	selectedSegmentId?: string;
 	onSelectSegment?: (segmentId: string) => void;
 	onSelectVillage?: (village: BaliVillageCeremonyProfile) => void;
@@ -128,6 +139,7 @@ const SATELLITE_STYLE: maplibregl.StyleSpecification = {
 export function BaliMapTilerView({
 	village = null,
 	allVillages = [],
+	alternativeRoutes = [],
 	selectedSegmentId,
 	onSelectSegment,
 	onSelectVillage,
@@ -442,7 +454,7 @@ export function BaliMapTilerView({
 	const openCompactPopupForVillage = useCallback(
 		(v: BaliVillageCeremonyProfile) => {
 			const map = mapRef.current;
-			if (!map) return;
+			if (!map || !v.roadSegments.some((road) => road.coordinates.length > 0)) return;
 
 			if (activePopupRef.current) {
 				activePopupRef.current.remove();
@@ -457,26 +469,34 @@ export function BaliMapTilerView({
 			popupNode.innerHTML = `
 				<div class="map-popup-header">
 					<span class="map-popup-badge ${statusBadge.className}">${statusBadge.label}</span>
-					<span class="map-popup-location">${v.desaAdatName}</span>
+					${v.isSimulation !== false ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ''}
+					<span class="map-popup-location"></span>
 				</div>
-				<h4 class="map-popup-title">${v.ceremonyTitle}</h4>
+				<h4 class="map-popup-title"></h4>
 				<div class="map-popup-meta-box">
 					<div class="map-popup-meta-row">
 						<span class="map-popup-meta-label">Jalur:</span>
-						<span class="map-popup-meta-val">${v.roadSegments[0]?.roadName || v.sacredCenterName || "Koridor Wilayah"}</span>
+						<span class="map-popup-meta-val"></span>
 					</div>
 					<div class="map-popup-meta-row">
 						<span class="map-popup-meta-label">Waktu:</span>
-						<span class="map-popup-meta-val">${v.scheduleWindowWita || "08:00 - Selesai"}</span>
+						<span class="map-popup-meta-val"></span>
 					</div>
 				</div>
-				<button type="button" class="map-popup-btn" id="btn-compact-detail-map-${v.id}">
+				<button type="button" class="map-popup-btn">
 					<span>Lihat Detail</span>
 					<span aria-hidden="true">→</span>
 				</button>
 			`;
 
-			const btn = popupNode.querySelector(`#btn-compact-detail-map-${v.id}`);
+			const location = popupNode.querySelector(".map-popup-location");
+			const title = popupNode.querySelector(".map-popup-title");
+			const values = popupNode.querySelectorAll(".map-popup-meta-val");
+			if (location) location.textContent = v.desaAdatName;
+			if (title) title.textContent = v.ceremonyTitle;
+			if (values[0]) values[0].textContent = v.roadSegments[0]?.roadName || v.sacredCenterName || "Koridor Wilayah";
+			if (values[1]) values[1].textContent = v.scheduleWindowWita || "Jadwal menyusul";
+			const btn = popupNode.querySelector(".map-popup-btn");
 			if (btn) {
 				btn.addEventListener("click", () => {
 					if (activePopupRef.current) {
@@ -496,6 +516,7 @@ export function BaliMapTilerView({
 							sacredCenterName: v.puraPoint.name,
 							roadName: v.roadSegments[0]?.roadName,
 							detourRoute: v.roadSegments[0]?.guidanceNote || v.alternativeRouteSummary,
+							isSimulation: v.isSimulation,
 						});
 					}
 				});
@@ -543,6 +564,8 @@ export function BaliMapTilerView({
 		allVillagesMarkersRef.current = [];
 
 		allVillages.forEach((v) => {
+			if (v.isSimulation !== false) return;
+			if (!v.roadSegments.some((road) => road.coordinates.length > 0)) return;
 			const pinColor = getStatusColor(v.primaryStatus);
 			const isCurrent = village ? v.id === village.id : false;
 
@@ -559,8 +582,10 @@ export function BaliMapTilerView({
 						<circle cx="16" cy="14" r="5.5" fill="#FFFFFF"/>
 					</svg>
 				</div>
-				<div class="marker-hover-label">${v.desaAdatName}</div>
+				<div class="marker-hover-label"></div>
 			`;
+			const label = pinEl.querySelector(".marker-hover-label");
+			if (label) label.textContent = v.desaAdatName;
 
 			pinEl.addEventListener("click", (evt) => {
 				evt.stopPropagation();
@@ -694,6 +719,101 @@ export function BaliMapTilerView({
 			});
 		}
 	}, [village, selectedSegmentId, isMapLoaded, onSelectSegment, activeLayer]);
+
+	// Render Alternative Routes Overlay (SPEC-08: Dashed blue LineString distinct from closures)
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map || !isMapLoaded) return;
+
+		const sourceId = "rangkai-alt-routes-source";
+		const lineLayerId = "rangkai-alt-routes-line";
+
+		const activeAltRoutes = [
+			...(alternativeRoutes || []),
+			...(village?.alternativeRoutes || []),
+		];
+
+		const geojsonData = {
+			type: "FeatureCollection" as const,
+			features: activeAltRoutes
+				.map((r) => {
+					const coords =
+						("coordinates" in r && Array.isArray(r.coordinates) && r.coordinates.length > 0)
+							? r.coordinates
+							: ("geometry" in r && r.geometry && Array.isArray(r.geometry.coordinates))
+								? (r.geometry.coordinates as [number, number][])
+								: [];
+					return {
+						id: r.id,
+						name: r.name,
+						description: r.description || "Jalur pengalihan sementara panitia",
+						coords,
+					};
+				})
+				.filter((r) => r.coords.length >= 2)
+				.map((r) => ({
+					type: "Feature" as const,
+					id: r.id,
+					properties: {
+						id: r.id,
+						name: r.name,
+						description: r.description,
+					},
+					geometry: {
+						type: "LineString" as const,
+						coordinates: r.coords,
+					},
+				})),
+		};
+
+		if (map.getSource(sourceId)) {
+			(map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojsonData);
+		} else {
+			map.addSource(sourceId, {
+				type: "geojson",
+				data: geojsonData,
+			});
+
+			map.addLayer({
+				id: lineLayerId,
+				type: "line",
+				source: sourceId,
+				layout: {
+					"line-join": "round",
+					"line-cap": "round",
+				},
+				paint: {
+					"line-color": "#2563EB",
+					"line-width": 4.5,
+					"line-dasharray": [2, 2],
+				},
+			});
+
+			map.on("click", lineLayerId, (e: maplibregl.MapLayerMouseEvent) => {
+				const feat = e.features?.[0];
+				if (feat && feat.properties) {
+					new maplibregl.Popup({ closeButton: true, closeOnClick: true })
+						.setLngLat(e.lngLat)
+						.setHTML(
+							`<div style="font-family:sans-serif; padding:4px;">` +
+								`<div style="font-size:12px; font-weight:700; color:#1E40AF;">Jalur Alternatif Sementara (Simulasi)</div>` +
+								`<div style="font-size:11px; font-weight:600; color:#181817; margin-top:2px;">${feat.properties.name || "Rute Pengalihan"}</div>` +
+								`<div style="font-size:10px; color:#585854; margin-top:2px;">${feat.properties.description || ""}</div>` +
+								`<div style="font-size:9.5px; color:#92400E; margin-top:4px; font-style:italic;">Panduan adat • Bukan rute resmi kepolisian</div>` +
+							`</div>`,
+						)
+						.addTo(map);
+				}
+			});
+
+			map.on("mouseenter", lineLayerId, () => {
+				map.getCanvas().style.cursor = "pointer";
+			});
+			map.on("mouseleave", lineLayerId, () => {
+				map.getCanvas().style.cursor = "";
+			});
+		}
+	}, [alternativeRoutes, village, isMapLoaded, activeLayer]);
 
 	// Render Territorial District Boundaries & Handle Regional Selection
 	useEffect(() => {
@@ -1120,19 +1240,37 @@ export function BaliMapTilerView({
 					<MapFallbackRoadList
 						showMapUnavailableNotice
 						segments={
-							village?.roadSegments?.map((seg) => ({
-								id: seg.id,
-								segmentName: seg.roadName,
-								corridorArea: village.desaAdatName,
-								impactType: "closure",
-								plannedFrom: new Date().toISOString(),
-								plannedTo: new Date(Date.now() + 3600000).toISOString(),
-								status: (seg.status === "closed"
-									? "closed"
-									: seg.status === "intermittent"
-										? "intermittent"
-										: "open") as OperationalRoadStatus,
-							})) ?? []
+							village?.roadSegments?.map((seg) => {
+								const rawImpact = (seg.impactType || "").toLowerCase();
+								const mappedImpact: RoadSegmentFallbackItem["impactType"] =
+									rawImpact.includes("intermittent") || rawImpact.includes("buka_tutup")
+										? "intermittent_flow"
+										: rawImpact.includes("parking")
+											? "parking_restriction"
+											: rawImpact.includes("procession")
+												? "procession_route"
+												: "closure";
+
+								return {
+									id: seg.id,
+									segmentName: seg.roadName,
+									corridorArea: seg.corridorSection || village.desaAdatName,
+									impactType: mappedImpact,
+									plannedFrom: seg.plannedFrom || village.scheduleIso?.startsAt || new Date().toISOString(),
+									plannedTo: seg.plannedTo || village.scheduleIso?.endsAt || new Date().toISOString(),
+									observedAt: seg.observedAt || null,
+									expiresAt: seg.expiresAt || null,
+									diversionNote: seg.guidanceNote || null,
+									isSimulation: village.isSimulation !== false,
+									status: (seg.status === "closed"
+										? "closed"
+										: seg.status === "intermittent"
+											? "intermittent"
+											: seg.status === "open"
+												? "open"
+												: "unknown") as OperationalRoadStatus,
+								};
+							}) ?? []
 						}
 					/>
 				</div>

@@ -1,8 +1,10 @@
 import {
+	ArrowLeft,
 	Bell,
 	Building2,
 	ClipboardCheck,
 	Compass,
+	FileText,
 	KeyRound,
 	LayoutDashboard,
 	LogOut,
@@ -16,16 +18,18 @@ import {
 	X,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { forwardRef, useEffect, useRef, useState, type AnchorHTMLAttributes } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState, type AnchorHTMLAttributes } from "react";
 import { Link as RouterLink, Outlet, useLocation } from "react-router";
-import { RangkaiPreloader, shouldPlayPreloader } from "../rangkai";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
+import { EventLifecycleBadge, RangkaiPreloader, shouldPlayPreloader } from "../rangkai";
 import {
 	useAuthSession,
 	useMyOrganizationsQuery,
 	useSignOutMutation,
 } from "../../lib/auth";
 import {
-	fetchEventsList,
+	fetchEventDetail,
 	fetchPublicEvents,
 	formatWitaEventSchedule,
 	getSavedOrganizationId,
@@ -448,7 +452,9 @@ export function PublicShellLayout() {
 										<RouterLinkBridge href="/dashboard">Panel Panitia Desa</RouterLinkBridge>
 									</li>
 									<li>
-										<RouterLinkBridge href="/dashboard">Pos Komando Lapangan</RouterLinkBridge>
+
+										<RouterLinkBridge href="/field">Pos Komando Lapangan</RouterLinkBridge>
+
 									</li>
 									<li>
 										<RouterLinkBridge href="/login">Akses Masuk Petugas</RouterLinkBridge>
@@ -489,39 +495,65 @@ export function WorkspaceShellLayout() {
 	const signOutMutation = useSignOutMutation();
 	const myOrgsQuery = useMyOrganizationsQuery();
 
-	const eventsQuery = useQuery({
-		queryKey: ["events", "list", { page: 1, limit: 20 }],
-		queryFn: () => fetchEventsList({ page: 1, limit: 20 }),
-		enabled: Boolean(sessionData?.user),
-		retry: false,
-	});
-
 	useGsapRouteTransition(workspaceContentRef, pathname);
 
-	const organizations = myOrgsQuery.data?.organizations ?? [];
-	const savedOrgId = getSavedOrganizationId();
-	const activeOrg =
-		organizations.find((o) => o.id === savedOrgId) ?? organizations[0] ?? null;
-	const hasOrganizerRole = organizations.some((o) => o.role === "organizer");
-	const effectiveRole = activeOrg?.role ?? (hasOrganizerRole ? "organizer" : "officer");
+	const [activeOrgIdState, setActiveOrgIdState] = useState(() =>
+		getSavedOrganizationId(),
+	);
 
-	// Extract active event ID from URL or fall back to the first real event from backend
+	useEffect(() => {
+		function onOrgChanged(e: Event) {
+			const custom = e as CustomEvent<string>;
+			if (custom.detail) {
+				setActiveOrgIdState(custom.detail);
+			} else {
+				setActiveOrgIdState(getSavedOrganizationId());
+			}
+		}
+		window.addEventListener("rangkai:organization-changed", onOrgChanged);
+		return () =>
+			window.removeEventListener("rangkai:organization-changed", onOrgChanged);
+	}, []);
+
+	const organizations = useMemo(
+		() => myOrgsQuery.data?.organizations ?? [],
+		[myOrgsQuery.data?.organizations],
+	);
+
+	// Extract active event ID from URL strictly
 	const eventIdMatch = pathname.match(/(?:dashboard|field)\/events\/([^/]+)/);
 	const urlEventId =
 		eventIdMatch && eventIdMatch[1] !== "new" ? eventIdMatch[1] : null;
-	const firstRealEventId = eventsQuery.data?.events?.[0]?.id ?? null;
-	const activeNavEventId = urlEventId || firstRealEventId;
+	const activeNavEventId = urlEventId;
 
-	const getWorkflowHref = (suffix: string, isFieldRoute = false) => {
-		if (activeNavEventId) {
-			return isFieldRoute
-				? `/field/events/${activeNavEventId}`
-				: `/dashboard/events/${activeNavEventId}${suffix}`;
+	// Query active event details for contextual header if inside an event
+	const eventDetailQuery = useQuery({
+		queryKey: ["events", "detail", activeNavEventId],
+		queryFn: () => fetchEventDetail(activeNavEventId!),
+		enabled: Boolean(activeNavEventId),
+		staleTime: 30_000,
+	});
+	const activeEvent = eventDetailQuery.data?.event ?? null;
+
+	const activeOrg = useMemo(() => {
+		if (organizations.length === 0) return null;
+		if (activeOrgIdState && activeOrgIdState !== "all") {
+			const found = organizations.find((o) => o.id === activeOrgIdState);
+			if (found) return found;
 		}
-		return hasOrganizerRole || !sessionData?.user
-			? "/dashboard/events/new"
-			: "/dashboard";
-	};
+		if (activeEvent?.organizationId) {
+			const eventOrg = organizations.find((o) => o.id === activeEvent.organizationId);
+			if (eventOrg) return eventOrg;
+		}
+		const organizerOrg = organizations.find((o) => o.role === "organizer");
+		return organizerOrg ?? organizations[0];
+	}, [organizations, activeOrgIdState, activeEvent]);
+
+	const currentOrgRole = activeOrg?.role ?? null;
+	const isCurrentOrgOrganizer = currentOrgRole === "organizer";
+	const isCurrentOrgOfficer = currentOrgRole === "officer";
+
+	const isOrgLoading = isSessionLoading || myOrgsQuery.isLoading;
 
 	return (
 		<div className="teduh-workspace-shell">
@@ -533,19 +565,25 @@ export function WorkspaceShellLayout() {
 					</RouterLink>
 
 					<span
-						className={`teduh-workspace-role-pill ${effectiveRole === "officer" && !hasOrganizerRole ? "is-officer" : ""}`}
+						className={`teduh-workspace-role-pill ${isCurrentOrgOfficer ? "is-officer" : ""}`}
 					>
-						{ !sessionData?.user
-							? "Mode Tamu / Pratinjau"
-							: effectiveRole === "organizer" || hasOrganizerRole
-								? "Panitia Desa (Organizer)"
-								: "Petugas Lapangan (Pecalang)" }
+						{isOrgLoading
+							? "Memuat keanggotaan..."
+							: !sessionData?.user
+								? "Mode Tamu / Pratinjau"
+								: isCurrentOrgOrganizer
+									? "Panitia Desa (Organizer)"
+									: isCurrentOrgOfficer
+										? "Petugas Lapangan (Pecalang)"
+										: organizations.length === 0
+											? "Belum terdaftar desa adat"
+											: "Pilih organisasi"}
 					</span>
 
 					{activeOrg ? (
 						<span className="teduh-workspace-org-badge" title={activeOrg.name}>
-							<Building2 size={13} />
-							<span>{activeOrg.name}</span>
+							<Building2 size={13} className="shrink-0" />
+							<span className="truncate max-w-[200px] break-words">{activeOrg.name}</span>
 						</span>
 					) : null}
 				</div>
@@ -557,7 +595,7 @@ export function WorkspaceShellLayout() {
 						style={{ textDecoration: "none" }}
 					>
 						<Compass size={14} />
-						<span>Portal Publik</span>
+						<span className="hidden sm:inline">Portal Publik</span>
 					</RouterLink>
 
 					{!isSessionLoading && sessionData?.user ? (
@@ -569,7 +607,9 @@ export function WorkspaceShellLayout() {
 								title={sessionData.user.email}
 							>
 								<Settings size={14} />
-								<span>{sessionData.user.name || "Akun"}</span>
+								<span className="max-w-24 truncate">
+									{sessionData.user.name || "Akun"}
+								</span>
 							</RouterLink>
 							<button
 								type="button"
@@ -601,94 +641,352 @@ export function WorkspaceShellLayout() {
 
 			{/* Main Body: Sidebar + Content */}
 			<div className="teduh-workspace-body">
-				<aside className="teduh-workspace-sidebar" aria-label="Menu Ruang Kerja">
-					<div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
-						<div className="teduh-sidebar-group">
-							<div className="teduh-sidebar-group-label">Manajemen Desa</div>
-							<RouterLink
-								to="/dashboard"
-								className={`teduh-sidebar-link ${pathname === "/dashboard" || pathname === "/dashboard/events" ? "is-active" : ""}`}
-							>
-								<LayoutDashboard size={16} />
-								<span>Ikhtisar Kegiatan</span>
-							</RouterLink>
-							<RouterLink
-								to="/dashboard/events/new"
-								className={`teduh-sidebar-link ${pathname === "/dashboard/events/new" ? "is-active" : ""}`}
-							>
-								<PlusCircle size={16} />
-								<span>Buat Kegiatan Baru</span>
-							</RouterLink>
-							<RouterLink
-								to="/settings"
-								className={`teduh-sidebar-link ${pathname === "/settings" ? "is-active" : ""}`}
-							>
-								<Building2 size={16} />
-								<span>Desa Adat & Akun</span>
-							</RouterLink>
-						</div>
+				<aside
+					className="teduh-workspace-sidebar"
+					aria-label="Menu Ruang Kerja"
+				>
+					<div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+						{pathname.startsWith("/field") ? (
+							activeNavEventId ? (
+								<>
+									{/* Field Officer Contextual Navigation */}
+									<div className="teduh-sidebar-group">
+										<RouterLink
+											to="/field"
+											className="teduh-sidebar-link font-medium text-[#264D3B]"
+										>
+											<ArrowLeft size={16} />
+											<span>Kembali ke Pos Jaga</span>
+										</RouterLink>
 
-						<div className="teduh-sidebar-group">
-							<div className="teduh-sidebar-group-label">
-								Alur Kerja Kegiatan
-							</div>
-							<RouterLink
-								to={
-									activeNavEventId
-										? `/dashboard/events/${activeNavEventId}`
-										: "/dashboard/events/new"
-								}
-								className={`teduh-sidebar-link ${
-									Boolean(
-										urlEventId &&
-											pathname === `/dashboard/events/${urlEventId}`,
-									) || pathname.endsWith("/review")
-										? "is-active"
-										: ""
-								}`}
-							>
-								<ShieldCheck size={16} />
-								<span>Surat Edaran & Detail</span>
-							</RouterLink>
-							<RouterLink
-								to={getWorkflowHref("/roads")}
-								className={`teduh-sidebar-link ${pathname.endsWith("/roads") ? "is-active" : ""}`}
-							>
-								<MapPinned size={16} />
-								<span>Peta & Ruas Jalan</span>
-							</RouterLink>
-							<RouterLink
-								to={getWorkflowHref("/team")}
-								className={`teduh-sidebar-link ${pathname.endsWith("/team") ? "is-active" : ""}`}
-							>
-								<Users size={16} />
-								<span>Tim & Undangan Petugas</span>
-							</RouterLink>
-						</div>
+										<VStack gap={1.5} className="p-3 mt-1.5 rounded-xl bg-white border border-[#E2E4E8]">
+											<HStack justify="between" align="center" gap={1.5}>
+												<Text type="label" color="secondary" className="uppercase tracking-wider text-xs font-semibold">
+													Tugas Lapangan
+												</Text>
+												{activeEvent ? (
+													<EventLifecycleBadge status={activeEvent.status} />
+												) : null}
+											</HStack>
+											<Text type="body" weight="bold" maxLines={2} className="text-sm leading-snug m-0 text-[#181B20]">
+												{activeEvent?.title || "Memuat kegiatan..."}
+											</Text>
+										</VStack>
+									</div>
 
-						<div className="teduh-sidebar-group">
-							<div className="teduh-sidebar-group-label">
-								Operasional Lapangan
-							</div>
-							<RouterLink
-								to={getWorkflowHref("", true)}
-								className={`teduh-sidebar-link ${pathname.startsWith("/field") ? "is-active" : ""}`}
-							>
-								<Radio size={16} />
-								<span>Pos Jaga Pecalang</span>
-							</RouterLink>
-							<RouterLink
-								to={getWorkflowHref("/cleanup")}
-								className={`teduh-sidebar-link ${pathname.endsWith("/cleanup") ? "is-active" : ""}`}
-							>
-								<ClipboardCheck size={16} />
-								<span>Kebersihan & Sampah</span>
-							</RouterLink>
-						</div>
+									<div className="teduh-sidebar-group">
+										<div className="teduh-sidebar-group-label">
+											Operasional Pos Jaga
+										</div>
+										<RouterLink
+											to={`/field/events/${activeNavEventId}`}
+											className={`teduh-sidebar-link ${
+												pathname === `/field/events/${activeNavEventId}`
+													? "is-active"
+													: ""
+											}`}
+										>
+											<Radio size={16} />
+											<span>Pos Jaga Lapangan</span>
+										</RouterLink>
+										<RouterLink
+											to={`/field/events/${activeNavEventId}/cleanup`}
+											className={`teduh-sidebar-link ${
+												pathname.endsWith("/cleanup") ? "is-active" : ""
+											}`}
+										>
+											<ClipboardCheck size={16} />
+											<span>Kebersihan &amp; Bukti</span>
+										</RouterLink>
+									</div>
+
+									<div className="teduh-sidebar-group">
+										<div className="teduh-sidebar-group-label">
+											Akses Lapangan
+										</div>
+										<RouterLink
+											to="/field"
+											className={`teduh-sidebar-link ${
+												pathname === "/field" ? "is-active" : ""
+											}`}
+										>
+											<Radio size={16} />
+											<span>Daftar Pos Jaga</span>
+										</RouterLink>
+										<RouterLink
+											to="/settings"
+											className={`teduh-sidebar-link ${
+												pathname === "/settings" ? "is-active" : ""
+											}`}
+										>
+											<Settings size={16} />
+											<span>Pengaturan Akun</span>
+										</RouterLink>
+									</div>
+								</>
+							) : (
+								<>
+									{/* Field Officer Root Navigation */}
+									<div className="teduh-sidebar-group">
+										<div className="teduh-sidebar-group-label">
+											Operasional Lapangan
+										</div>
+										<RouterLink
+											to="/field"
+											className={`teduh-sidebar-link ${
+												pathname === "/field" ? "is-active" : ""
+											}`}
+										>
+											<Radio size={16} />
+											<span>Pos Jaga Lapangan</span>
+										</RouterLink>
+										<RouterLink
+											to="/settings"
+											className={`teduh-sidebar-link ${
+												pathname === "/settings" ? "is-active" : ""
+											}`}
+										>
+											<Settings size={16} />
+											<span>Pengaturan Akun</span>
+										</RouterLink>
+									</div>
+
+									<div className="p-3.5 rounded-xl border border-dashed border-[#D5D3CB] bg-[#FBFBFA] space-y-1">
+										<span className="text-xs font-semibold text-[#181817] block">
+											Pos Jaga Pecalang
+										</span>
+										<p className="text-[12px] text-[#545B67] leading-relaxed m-0">
+											Pantau status jalan dan kirim bukti kebersihan kegiatan yang ditugaskan kepada Anda.
+										</p>
+									</div>
+								</>
+							)
+						) : isCurrentOrgOfficer ? (
+							<>
+								{/* Selected organization is officer role: provide field navigation, no organizer management */}
+								<div className="teduh-sidebar-group">
+									<div className="teduh-sidebar-group-label">
+										Operasional Lapangan
+									</div>
+									<RouterLink
+										to="/field"
+										className={`teduh-sidebar-link ${
+											pathname.startsWith("/field") ? "is-active" : ""
+										}`}
+									>
+										<Radio size={16} />
+										<span>Buka Pos Jaga Lapangan</span>
+									</RouterLink>
+									<RouterLink
+										to="/settings"
+										className={`teduh-sidebar-link ${
+											pathname === "/settings" ? "is-active" : ""
+										}`}
+									>
+										<Building2 size={16} />
+										<span>Pengaturan Akun</span>
+									</RouterLink>
+								</div>
+
+								<div className="p-3.5 rounded-xl border border-dashed border-[#D5D3CB] bg-[#FBFBFA] space-y-1">
+									<span className="text-xs font-semibold text-[#181817] block">
+										Penugasan Petugas Lapangan
+									</span>
+									<p className="text-[12px] text-[#545B67] leading-relaxed m-0">
+										Anda terdaftar sebagai Petugas Lapangan untuk desa adat ini. Buka Pos Jaga Lapangan untuk melaksanakan pembaruan operasional.
+									</p>
+								</div>
+							</>
+						) : activeNavEventId ? (
+							<>
+								{/* Contextual Event Card & Return to List */}
+								<div className="teduh-sidebar-group">
+									<RouterLink
+										to="/dashboard"
+										className="teduh-sidebar-link font-medium text-[#264D3B]"
+									>
+										<ArrowLeft size={16} />
+										<span>Kembali ke Daftar</span>
+									</RouterLink>
+
+									<VStack gap={1.5} className="p-3 mt-1.5 rounded-xl bg-white border border-[#E2E4E8]">
+										<HStack justify="between" align="center" gap={1.5}>
+											<Text type="label" color="secondary" className="uppercase tracking-wider text-xs font-semibold">
+												Kegiatan Terpilih
+											</Text>
+											{activeEvent ? (
+												<EventLifecycleBadge status={activeEvent.status} />
+											) : null}
+										</HStack>
+										<Text type="body" weight="bold" maxLines={2} className="text-sm leading-snug m-0 text-[#181B20]">
+											{activeEvent?.title || "Memuat kegiatan..."}
+										</Text>
+									</VStack>
+								</div>
+
+								<div className="teduh-sidebar-group">
+									<div className="teduh-sidebar-group-label">
+										Alur Kerja Kegiatan
+									</div>
+									<RouterLink
+										to={`/dashboard/events/${activeNavEventId}`}
+										className={`teduh-sidebar-link ${
+											pathname === `/dashboard/events/${activeNavEventId}`
+												? "is-active"
+												: ""
+										}`}
+									>
+										<FileText size={16} />
+										<span>Ringkasan / Detail</span>
+									</RouterLink>
+									<RouterLink
+										to={`/dashboard/events/${activeNavEventId}/document`}
+										className={`teduh-sidebar-link ${
+											pathname.endsWith("/document") ||
+											pathname.endsWith("/review")
+												? "is-active"
+												: ""
+										}`}
+									>
+										<ShieldCheck size={16} />
+										<span>Dokumen &amp; AI</span>
+									</RouterLink>
+									<RouterLink
+										to={`/dashboard/events/${activeNavEventId}/roads`}
+										className={`teduh-sidebar-link ${
+											pathname.endsWith("/roads") ? "is-active" : ""
+										}`}
+									>
+										<MapPinned size={16} />
+										<span>Dampak Jalan</span>
+									</RouterLink>
+									<RouterLink
+										to={`/dashboard/events/${activeNavEventId}/cleanup`}
+										className={`teduh-sidebar-link ${
+											pathname.endsWith("/cleanup") ? "is-active" : ""
+										}`}
+									>
+										<ClipboardCheck size={16} />
+										<span>Kebersihan</span>
+									</RouterLink>
+									<RouterLink
+										to={`/dashboard/events/${activeNavEventId}/team`}
+										className={`teduh-sidebar-link ${
+											pathname.endsWith("/team") ? "is-active" : ""
+										}`}
+									>
+										<Users size={16} />
+										<span>Tim &amp; Petugas</span>
+									</RouterLink>
+								</div>
+
+								<div className="teduh-sidebar-group">
+									<div className="teduh-sidebar-group-label">
+										Manajemen Desa
+									</div>
+									<RouterLink
+										to="/dashboard"
+										className={`teduh-sidebar-link ${
+											pathname === "/dashboard" ||
+											pathname === "/dashboard/events"
+												? "is-active"
+												: ""
+										}`}
+									>
+										<LayoutDashboard size={16} />
+										<span>Ikhtisar Kegiatan</span>
+									</RouterLink>
+									<RouterLink
+										to="/dashboard/events/new"
+										className={`teduh-sidebar-link ${
+											pathname === "/dashboard/events/new" ? "is-active" : ""
+										}`}
+									>
+										<PlusCircle size={16} />
+										<span>Buat Kegiatan</span>
+									</RouterLink>
+									<RouterLink
+										to="/settings"
+										className={`teduh-sidebar-link ${
+											pathname === "/settings" ? "is-active" : ""
+										}`}
+									>
+										<Building2 size={16} />
+										<span>Pengaturan</span>
+									</RouterLink>
+								</div>
+							</>
+						) : (
+							<>
+								{/* Global Organizer Navigation */}
+								<div className="teduh-sidebar-group">
+									<div className="teduh-sidebar-group-label">
+										Manajemen Desa
+									</div>
+									<RouterLink
+										to="/dashboard"
+										className={`teduh-sidebar-link ${
+											pathname === "/dashboard" ||
+											pathname === "/dashboard/events"
+												? "is-active"
+												: ""
+										}`}
+									>
+										<LayoutDashboard size={16} />
+										<span>Ikhtisar Kegiatan</span>
+									</RouterLink>
+									<RouterLink
+										to="/dashboard/events/new"
+										className={`teduh-sidebar-link ${
+											pathname === "/dashboard/events/new" ? "is-active" : ""
+										}`}
+									>
+										<PlusCircle size={16} />
+										<span>Buat Kegiatan</span>
+									</RouterLink>
+									<RouterLink
+										to="/settings"
+										className={`teduh-sidebar-link ${
+											pathname === "/settings" ? "is-active" : ""
+										}`}
+									>
+										<Building2 size={16} />
+										<span>Pengaturan</span>
+									</RouterLink>
+								</div>
+
+								{/* Helpful concise workflow guidance without broken fake links */}
+								<div className="p-3.5 rounded-xl border border-dashed border-[#D5D3CB] bg-[#FBFBFA] space-y-1">
+									<span className="text-xs font-semibold text-[#181817] block">
+										Alur Kerja Kegiatan
+									</span>
+									<p className="text-[12px] text-[#545B67] leading-relaxed m-0">
+										Pilih kegiatan dari daftar untuk mengelola Dokumen &amp; AI,
+										Dampak Jalan, Kebersihan, atau Tim Petugas.
+									</p>
+								</div>
+
+								<div className="teduh-sidebar-group">
+									<div className="teduh-sidebar-group-label">
+										Operasional Lapangan
+									</div>
+									<RouterLink
+										to="/field"
+										className={`teduh-sidebar-link ${
+											pathname.startsWith("/field") ? "is-active" : ""
+										}`}
+									>
+										<Radio size={16} />
+										<span>Pos Jaga Lapangan</span>
+									</RouterLink>
+								</div>
+							</>
+						)}
 					</div>
 
 					<div
 						style={{
+							marginTop: "auto",
 							padding: "12px 14px",
 							borderRadius: 12,
 							background: "#EEECE6",
@@ -697,10 +995,13 @@ export function WorkspaceShellLayout() {
 							color: "#545B67",
 						}}
 					>
-						<strong style={{ color: "#181B20", display: "block", marginBottom: 2 }}>
-							Koordinasi Adat & Sipil
+						<strong
+							style={{ color: "#181B20", display: "block", marginBottom: 2 }}
+						>
+							Koordinasi Adat &amp; Sipil
 						</strong>
-						Setiap publikasi acara wajib melalui verifikasi Prajuru Adat dan ruas jalan terverifikasi.
+						Setiap publikasi acara wajib melalui verifikasi Prajuru Adat dan
+						ruas jalan terverifikasi.
 					</div>
 				</aside>
 
@@ -710,42 +1011,111 @@ export function WorkspaceShellLayout() {
 			</div>
 
 			{/* Mobile Bottom Navigation */}
-			<nav className="teduh-workspace-mobile-nav" aria-label="Navigasi Bawah Ruang Kerja">
-				<RouterLink
-					to="/dashboard"
-					className={`teduh-mobile-nav-item ${pathname === "/dashboard" || pathname === "/dashboard/events" ? "is-active" : ""}`}
-				>
-					<LayoutDashboard size={18} />
-					<span>Kegiatan</span>
-				</RouterLink>
-				<RouterLink
-					to="/dashboard/events/new"
-					className={`teduh-mobile-nav-item ${pathname === "/dashboard/events/new" ? "is-active" : ""}`}
-				>
-					<PlusCircle size={18} />
-					<span>Buat Baru</span>
-				</RouterLink>
-				<RouterLink
-					to={getWorkflowHref("", true)}
-					className={`teduh-mobile-nav-item ${pathname.startsWith("/field") ? "is-active" : ""}`}
-				>
-					<Radio size={18} />
-					<span>Pecalang</span>
-				</RouterLink>
-				<RouterLink
-					to={getWorkflowHref("/cleanup")}
-					className={`teduh-mobile-nav-item ${pathname.endsWith("/cleanup") ? "is-active" : ""}`}
-				>
-					<ClipboardCheck size={18} />
-					<span>Kebersihan</span>
-				</RouterLink>
-				<RouterLink
-					to="/settings"
-					className={`teduh-mobile-nav-item ${pathname === "/settings" ? "is-active" : ""}`}
-				>
-					<Settings size={18} />
-					<span>Akun</span>
-				</RouterLink>
+			<nav
+				className="teduh-workspace-mobile-nav"
+				aria-label="Navigasi Bawah Ruang Kerja"
+			>
+				{pathname.startsWith("/field") ? (
+					<>
+						<RouterLink
+							to="/field"
+							className="teduh-mobile-nav-item is-active"
+						>
+							<ClipboardCheck size={18} />
+							<span>Tugas</span>
+						</RouterLink>
+						<RouterLink to="/settings" className="teduh-mobile-nav-item">
+							<Settings size={18} />
+							<span>Akun</span>
+						</RouterLink>
+					</>
+				) : activeNavEventId ? (
+					<>
+						<RouterLink to="/dashboard" className="teduh-mobile-nav-item">
+							<LayoutDashboard size={18} />
+							<span>Daftar</span>
+						</RouterLink>
+						<RouterLink
+							to={`/dashboard/events/${activeNavEventId}`}
+							className={`teduh-mobile-nav-item ${
+								pathname === `/dashboard/events/${activeNavEventId}`
+									? "is-active"
+									: ""
+							}`}
+						>
+							<FileText size={18} />
+							<span>Detail</span>
+						</RouterLink>
+						<RouterLink
+							to={`/dashboard/events/${activeNavEventId}/roads`}
+							className={`teduh-mobile-nav-item ${
+								pathname.endsWith("/roads") ? "is-active" : ""
+							}`}
+						>
+							<MapPinned size={18} />
+							<span>Jalan</span>
+						</RouterLink>
+						<RouterLink
+							to={`/dashboard/events/${activeNavEventId}/team`}
+							className={`teduh-mobile-nav-item ${
+								pathname.endsWith("/team") ? "is-active" : ""
+							}`}
+						>
+							<Users size={18} />
+							<span>Tim</span>
+						</RouterLink>
+						<RouterLink
+							to={`/dashboard/events/${activeNavEventId}/cleanup`}
+							className={`teduh-mobile-nav-item ${
+								pathname.endsWith("/cleanup") ? "is-active" : ""
+							}`}
+						>
+							<ClipboardCheck size={18} />
+							<span>Kebersihan</span>
+						</RouterLink>
+					</>
+				) : (
+					<>
+						<RouterLink
+							to="/dashboard"
+							className={`teduh-mobile-nav-item ${
+								pathname === "/dashboard" || pathname === "/dashboard/events"
+									? "is-active"
+									: ""
+							}`}
+						>
+							<LayoutDashboard size={18} />
+							<span>Kegiatan</span>
+						</RouterLink>
+						<RouterLink
+							to="/dashboard/events/new"
+							className={`teduh-mobile-nav-item ${
+								pathname === "/dashboard/events/new" ? "is-active" : ""
+							}`}
+						>
+							<PlusCircle size={18} />
+							<span>Buat Baru</span>
+						</RouterLink>
+						<RouterLink
+							to="/field"
+							className={`teduh-mobile-nav-item ${
+								pathname.startsWith("/field") ? "is-active" : ""
+							}`}
+						>
+							<Radio size={18} />
+							<span>Lapangan</span>
+						</RouterLink>
+						<RouterLink
+							to="/settings"
+							className={`teduh-mobile-nav-item ${
+								pathname === "/settings" ? "is-active" : ""
+							}`}
+						>
+							<Settings size={18} />
+							<span>Akun</span>
+						</RouterLink>
+					</>
+				)}
 			</nav>
 		</div>
 	);

@@ -2,13 +2,13 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-@import "@astryxdesign/theme-neutral/fonts.css";
+@import "@astryxdesign/theme-stone/fonts.css";
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/preflight.css" layer(base);
 
 @import "@astryxdesign/core/reset.css";
 @import "@astryxdesign/core/astryx.css";
-@import "@astryxdesign/theme-neutral/theme.css";
+@import "@astryxdesign/theme-stone/theme.css";
 @import "@astryxdesign/core/tailwind-theme.css";
 
 @import "tailwindcss/utilities.css" layer(utilities);
@@ -91,6 +91,128 @@
 		-moz-osx-font-smoothing: grayscale;
 		scrollbar-width: thin;
 		scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+	}
+
+	/* Mobile input font-size floor >= 16px to prevent iOS auto-zoom and conform to project ergonomic standards (STD-02) */
+	@media (max-width: 640px) {
+		input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+		textarea,
+		select {
+			font-size: 16px !important;
+		}
+	}
+
+	/* Interactive control touch targets >= 44px/48px in workflow and panels (STD-02) */
+	.teduh-action-btn,
+	.teduh-btn-primary,
+	.teduh-btn-secondary,
+	.teduh-btn-danger {
+		min-height: 48px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 10px 18px;
+		border-radius: var(--radius-md, 12px);
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+		text-decoration: none;
+	}
+
+	.teduh-btn-primary {
+		background-color: var(--color-primary);
+		color: #ffffff;
+		border: 1px solid transparent;
+	}
+
+	.teduh-btn-primary:hover:not(:disabled) {
+		background-color: var(--color-primary-hover);
+	}
+
+	.teduh-btn-primary:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.teduh-btn-secondary {
+		background-color: #ffffff;
+		border: 1px solid var(--color-border);
+		color: var(--color-text-title);
+	}
+
+	.teduh-btn-secondary:hover:not(:disabled) {
+		background-color: var(--color-surface-subtle);
+	}
+
+	.teduh-btn-danger {
+		background-color: #ffffff;
+		border: 1px solid #FECACA;
+		color: #B91C1C;
+	}
+
+	.teduh-btn-danger:hover:not(:disabled) {
+		background-color: #FEF2F2;
+	}
+
+	.teduh-tab-item {
+		min-height: 48px;
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 16px;
+		border-radius: var(--radius-md, 12px);
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all var(--transition-fast);
+	}
+
+	.teduh-tab-item.is-active {
+		background-color: var(--color-primary);
+		color: #ffffff;
+	}
+
+	.teduh-tab-item:not(.is-active) {
+		background-color: #ffffff;
+		border: 1px solid var(--color-border);
+		color: var(--color-text-body);
+	}
+
+	.teduh-tab-item:not(.is-active):hover {
+		color: var(--color-text-title);
+		background-color: var(--color-surface-subtle);
+	}
+
+	.teduh-form-input,
+	.teduh-form-textarea,
+	.teduh-form-select {
+		width: 100%;
+		border-radius: var(--radius-md, 12px);
+		border: 1px solid var(--color-border);
+		background-color: var(--color-surface, #ffffff);
+		padding: 10px 14px;
+		font-size: 16px !important;
+		color: var(--color-text-title);
+		transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+	}
+
+	.teduh-form-input,
+	.teduh-form-select {
+		min-height: 48px;
+	}
+
+	.teduh-form-textarea {
+		min-height: 96px;
+	}
+
+	.teduh-form-input:focus,
+	.teduh-form-textarea:focus,
+	.teduh-form-select:focus {
+		outline: none;
+		border-color: var(--color-primary);
+		box-shadow: 0 0 0 2px rgba(38, 77, 59, 0.25);
 	}
 
 	/* Global Minimalist Sleek Scrollbars (Discreet & Non-Intrusive Across All Pages) */
@@ -654,8 +776,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.06em;
 		margin-bottom: 16px;
 		background: transparent !important;
 		padding: 0 !important;
@@ -1121,10 +1241,8 @@
 		align-items: center;
 		gap: 8px;
 		font-size: 12.5px;
-		font-weight: 500;
+		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
 		margin-bottom: 16px;
 	}
 
@@ -1598,10 +1716,8 @@
 
 	.schedule-village-label {
 		font-size: 12px;
-		font-weight: 500;
+		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
 	}
 
 	.schedule-card-title {
@@ -2374,7 +2490,7 @@
 	/* Floating Controls: GPS button and clean overview reset tool */
 	.map-floating-controls {
 		position: absolute;
-		bottom: 24px;
+		bottom: 56px;
 		right: 24px;
 		z-index: 450;
 		display: flex;
@@ -2427,7 +2543,7 @@
 	/* Bottom Status Bar */
 	.map-statusbar {
 		position: absolute;
-		bottom: 24px;
+		bottom: 56px;
 		left: 24px;
 		z-index: 400;
 		display: flex;
@@ -2511,8 +2627,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.drawer-title {
@@ -2580,8 +2694,6 @@
 		font-size: 11.5px;
 		font-weight: 600;
 		color: #64748B;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.drawer-info-value {
@@ -2810,8 +2922,6 @@
 		flex: 1;
 		min-width: 0;
 		text-align: right;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.map-popup-title,
@@ -2970,6 +3080,12 @@
 		color: var(--status-unknown);
 	}
 
+	.map-popup-badge.simulation-token {
+		background: var(--status-intermittent-bg);
+		color: var(--status-intermittent);
+		border: 1px solid var(--status-intermittent-border);
+	}
+
 	/* Ceremony Detail Modal Backdrop & Card */
 	.map-detail-modal-backdrop {
 		position: fixed;
@@ -3014,8 +3130,6 @@
 		font-size: 11.5px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 		margin-bottom: 4px;
 	}
 
@@ -3076,12 +3190,10 @@
 	}
 
 	.map-detail-summary-label {
-		font-size: 10.5px;
+		font-size: 11px;
 		font-weight: 600;
 		color: #71717A;
 		line-height: 1.2;
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.map-detail-summary-val {
@@ -3297,7 +3409,7 @@
 		}
 
 		.map-floating-controls {
-			bottom: 24px;
+			bottom: 68px;
 			right: 14px;
 			display: flex;
 			flex-direction: row;
@@ -3306,8 +3418,15 @@
 		}
 
 		.map-statusbar {
-			bottom: 24px;
+			bottom: 68px;
 			left: 12px;
+		}
+
+		.map-status-pill {
+			max-width: calc(100vw - 120px);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
 		}
 
 		.map-onboarding {
@@ -3481,8 +3600,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.teduh-empty-surface {
@@ -3563,8 +3680,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.teduh-detail-title {
@@ -3648,8 +3763,6 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: var(--color-primary);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
 	}
 
 	.teduh-card-body {
@@ -3908,10 +4021,13 @@
 		.schedule-filter-bar {
 			display: flex;
 			flex-wrap: nowrap;
+			justify-content: flex-start;
 			overflow-x: auto;
 			-webkit-overflow-scrolling: touch;
 			scrollbar-width: none;
 			padding-bottom: 4px;
+			padding-left: 4px;
+			padding-right: 4px;
 			max-width: 100%;
 		}
 
@@ -3950,10 +4066,13 @@
 		.teduh-toolbar .schedule-filter-bar {
 			display: flex;
 			flex-wrap: nowrap;
+			justify-content: flex-start;
 			overflow-x: auto;
 			-webkit-overflow-scrolling: touch;
 			scrollbar-width: none;
 			padding-bottom: 4px;
+			padding-left: 4px;
+			padding-right: 4px;
 			margin: 0;
 			width: 100%;
 			max-width: 100%;
@@ -4101,7 +4220,7 @@
 		.teduh-pill-action,
 		.teduh-back-link,
 		.map-guide-reopen-btn {
-			min-height: 44px;
+			min-height: 48px;
 			display: inline-flex;
 			align-items: center;
 		}
@@ -4109,8 +4228,8 @@
 		.drawer-close-btn,
 		.map-gps-btn,
 		.map-zoom-btn {
-			min-width: 44px;
-			min-height: 44px;
+			min-width: 48px;
+			min-height: 48px;
 		}
 	}
 }
@@ -4377,8 +4496,6 @@
 .teduh-sidebar-group-label {
 	font-size: 11px;
 	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.06em;
 	color: #71717A;
 	padding: 0 12px 6px;
 }
@@ -4435,8 +4552,7 @@
 	justify-content: space-between;
 	gap: 16px;
 	flex-wrap: wrap;
-	padding-bottom: 18px;
-	border-bottom: 1px solid #E6E4DF;
+	padding-bottom: 8px;
 }
 
 .teduh-workspace-title {
@@ -4507,8 +4623,6 @@
 	font-size: 12px;
 	font-weight: 600;
 	color: #64748B;
-	text-transform: uppercase;
-	letter-spacing: 0.04em;
 }
 
 .teduh-kpi-value {
@@ -4627,25 +4741,31 @@
 .teduh-map-tool-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 5px;
-	padding: 6px 11px;
-	border-radius: 8px;
-	border: 1px solid #D6D3CD;
-	background: #FFFFFF;
-	font-size: 12px;
+	justify-content: center;
+	gap: 6px;
+	padding: 8px 14px;
+	min-height: 48px;
+	border-radius: var(--radius-md, 12px);
+	border: 1px solid var(--color-border);
+	background: var(--color-surface, #FFFFFF);
+	font-size: 13px;
 	font-weight: 600;
-	color: #181B20;
+	color: var(--color-text-title);
 	cursor: pointer;
 	transition: all 0.15s ease;
 }
 
 .teduh-map-tool-btn:hover {
-	background: #F3F2EE;
+	background: var(--color-surface-subtle);
 }
 
 .teduh-map-tool-btn.is-danger {
-	color: #9E2A2B;
-	border-color: rgba(158, 42, 43, 0.3);
+	color: #B91C1C;
+	border-color: rgba(185, 28, 28, 0.3);
+}
+
+.teduh-map-tool-btn.is-danger:hover {
+	background: #FEF2F2;
 }
 
 .teduh-dashboard-map-hint {
@@ -4744,11 +4864,25 @@
 	}
 
 	.teduh-workspace-topbar {
-		padding: 0 16px;
+		padding: 0 12px;
+		gap: 8px;
+	}
+
+	.teduh-workspace-role-pill {
+		display: none;
 	}
 
 	.teduh-workspace-org-badge {
 		display: none;
+	}
+
+	.teduh-workspace-topbar-right {
+		gap: 6px;
+	}
+
+	.teduh-workspace-topbar-right .teduh-map-tool-btn {
+		padding: 5px 8px;
+		font-size: 11.5px;
 	}
 
 	.teduh-workspace-mobile-nav {

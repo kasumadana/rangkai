@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { Token } from "@astryxdesign/core/Token";
+import { Stack } from "@astryxdesign/core/Stack";
 import {
 	ArrowRight,
 	Calendar,
@@ -9,8 +11,11 @@ import { Link } from "react-router";
 import { BaliLandingSatelliteMap } from "../features/map/BaliLandingSatelliteMap";
 import {
 	fetchPublicEvents,
+	fetchPublicRoadImpacts,
 	formatWitaEventSchedule,
 	mapPublicEventToCeremonyProfile,
+	roadImpactFeatureToRecord,
+	type RoadImpactRecord,
 } from "../lib/events-api";
 import { useGsapLandingScroll } from "../lib/gsap-motion";
 
@@ -22,6 +27,7 @@ interface NormalizedLandingEvent {
 	regency: string;
 	roadName: string;
 	status: "open" | "intermittent" | "closed" | "unknown";
+	isSimulation: boolean;
 	timeLabel: string;
 }
 
@@ -29,11 +35,23 @@ export function LandingPage() {
 	const [selectedRegencyFilter, setSelectedRegencyFilter] = useState("all");
 	const landingRef = useRef<HTMLDivElement>(null);
 
-	// Live API connection for published/active events from backend
+	// Live API connection for published/active events and road impacts from backend
 	const { data: publicEventsData, isLoading: isEventsLoading } = useQuery({
 		queryKey: ["public", "events", { limit: 20 }],
 		queryFn: () => fetchPublicEvents({ limit: 20 }),
-		staleTime: 60_000,
+		staleTime: 30_000,
+		refetchInterval: 30_000,
+	});
+
+	const {
+		data: roadImpactsData,
+		isError: isRoadsError,
+		refetch: refetchRoads,
+	} = useQuery({
+		queryKey: ["public", "road-impacts", { limit: 300 }],
+		queryFn: () => fetchPublicRoadImpacts({ limit: 300 }),
+		staleTime: 30_000,
+		refetchInterval: 30_000,
 	});
 
 	const liveEvents = useMemo(
@@ -41,34 +59,68 @@ export function LandingPage() {
 		[publicEventsData],
 	);
 
+	const impactsByEvent = useMemo(() => {
+		const map = new Map<string, RoadImpactRecord[]>();
+		if (!roadImpactsData?.features) return map;
+		for (const feat of roadImpactsData.features) {
+			const rec = roadImpactFeatureToRecord(feat);
+			const eId = feat.properties.eventId;
+			const eSlug = feat.properties.eventSlug;
+			if (eId) {
+				const existing = map.get(eId) ?? [];
+				existing.push(rec);
+				map.set(eId, existing);
+			}
+			if (eSlug && eSlug !== eId) {
+				const existing = map.get(eSlug) ?? [];
+				existing.push(rec);
+				map.set(eSlug, existing);
+			}
+		}
+		return map;
+	}, [roadImpactsData]);
+
 	const ceremonyProfiles = useMemo(
 		() =>
-			liveEvents.map((evt, idx) =>
-				mapPublicEventToCeremonyProfile(evt, [], idx),
-			),
-		[liveEvents],
+			liveEvents.map((evt, idx) => {
+				const roads =
+					impactsByEvent.get(evt.id) ??
+					(evt.slug ? impactsByEvent.get(evt.slug) : undefined) ??
+					[];
+				return mapPublicEventToCeremonyProfile(evt, roads, idx);
+			}),
+		[liveEvents, impactsByEvent],
 	);
 
 	const displayEvents: NormalizedLandingEvent[] = useMemo(
 		() =>
 			liveEvents.map((e) => {
 				const schedule = formatWitaEventSchedule(e.startsAt, e.endsAt);
+				const roads =
+					impactsByEvent.get(e.id) ??
+					(e.slug ? impactsByEvent.get(e.slug) : undefined) ??
+					[];
+				const primaryRoad = roads[0];
+				let effStatus: "open" | "intermittent" | "closed" | "unknown" = "unknown";
+				if (primaryRoad?.operationalStatus) {
+					const s = primaryRoad.operationalStatus;
+					if (!s.isStale && (s.effectiveStatus === "open" || s.effectiveStatus === "intermittent" || s.effectiveStatus === "closed")) {
+						effStatus = s.effectiveStatus;
+					}
+				}
 				return {
 					id: e.id,
 					slug: e.slug || e.id,
 					title: e.title,
 					village: e.organizationName || e.village || "Desa Adat",
 					regency: e.district || "Bali",
-					roadName: e.venueName || e.village || "Koridor Wilayah Desa",
-					status: (e.status === "active"
-						? "closed"
-						: e.status === "completed"
-							? "open"
-							: "intermittent") as "open" | "intermittent" | "closed" | "unknown",
+					roadName: primaryRoad?.displayName || e.venueName || e.village || "Koridor Wilayah Desa",
+					status: effStatus,
+					isSimulation: e.isSimulation !== false,
 					timeLabel: `${schedule.dateLabel} • ${schedule.windowWita}`,
 				};
 			}),
-		[liveEvents],
+		[liveEvents, impactsByEvent],
 	);
 
 	const filteredEvents = displayEvents.filter((evt: NormalizedLandingEvent) => {
@@ -91,11 +143,6 @@ export function LandingPage() {
 			<section className="hero">
 				<div className="hero-left">
 					<div className="hero-left-inner">
-						<div className="hero-label" data-gsap="hero-item">
-							<span className="hero-label-diamond" aria-hidden="true" />
-							<span>Sistem Koordinasi Upacara Adat Bali</span>
-						</div>
-
 						<h1 className="hero-title" data-gsap="hero-item">
 							Koordinasi Upacara Adat & Jalur Publik Lebih Teratur
 						</h1>
@@ -132,6 +179,29 @@ export function LandingPage() {
 					<h2 className="landing-map-title">
 						Peta Wilayah Upacara & Rekayasa Jalur Bali
 					</h2>
+					{isRoadsError ? (
+						<p style={{ fontSize: 13, color: "#DC2626", marginTop: 4 }}>
+							Sebagian data ruas jalan belum dapat dimuat.{" "}
+							<button
+								type="button"
+								onClick={() => refetchRoads()}
+								style={{
+									textDecoration: "underline",
+									background: "none",
+									border: "none",
+									color: "#DC2626",
+									cursor: "pointer",
+									fontWeight: 600,
+								}}
+							>
+								Muat Ulang
+							</button>
+						</p>
+					) : roadImpactsData?.pagination?.truncated ? (
+						<p style={{ fontSize: 13, color: "#D97706", marginTop: 4 }}>
+							Menampilkan {roadImpactsData.features.length} dari {roadImpactsData.pagination.total} ruas jalan terdampak di Bali.
+						</p>
+					) : null}
 				</div>
 				<div className="landing-map-inner">
 					<BaliLandingSatelliteMap ceremonies={ceremonyProfiles} />
@@ -208,9 +278,14 @@ export function LandingPage() {
 									<div>
 										<div className="schedule-card-header">
 											<span className="schedule-village-label">{evt.village} • {evt.regency}</span>
-											<span className={`road-status-badge ${statusClass}`}>
-												{statusText}
-											</span>
+											<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+												{evt.isSimulation !== false ? (
+													<Token color="orange" size="sm" label="SIMULASI" />
+												) : null}
+												<span className={`road-status-badge ${statusClass}`}>
+													{statusText}
+												</span>
+											</Stack>
 										</div>
 
 										<h3 className="schedule-card-title">{evt.title}</h3>

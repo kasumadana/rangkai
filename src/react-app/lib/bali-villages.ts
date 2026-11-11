@@ -24,6 +24,11 @@ export interface VillageRoadRouteSegment {
 	roleInCeremony: "rute_utama" | "akses_penyangga" | "jalur_pengalihan";
 	roleLabel: string;
 	status: OperationalRoadStatus;
+	plannedFrom?: string | null;
+	plannedTo?: string | null;
+	observedAt?: string | null;
+	expiresAt?: string | null;
+	impactType?: string | null;
 	windowWita: string;
 	pecalangPost: string;
 	lastConfirmedLabel: string;
@@ -65,6 +70,7 @@ export interface VillageCommunityNotice {
 
 export interface BaliVillageCeremonyProfile {
 	id: string;
+	isSimulation?: boolean;
 	slug: string;
 	desaAdatName: string;
 	kabupaten: string;
@@ -97,6 +103,16 @@ export interface BaliVillageCeremonyProfile {
 	parkingLots: VillageParkingLot[];
 	pecalangPosts: VillagePecalangPost[];
 	communityNotices: VillageCommunityNotice[];
+	scheduleIso?: {
+		startsAt?: string | null;
+		endsAt?: string | null;
+	};
+	alternativeRoutes?: Array<{
+		id: string;
+		name: string;
+		description?: string;
+		coordinates: Array<[number, number]>;
+	}>;
 	/** SVG metadata for instant fallback */
 	mapGeometry: {
 		riverPath: string;

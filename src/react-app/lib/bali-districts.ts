@@ -29,6 +29,7 @@ export interface DistrictCeremonySummary {
 	coordinates: [number, number]; // [lng, lat]
 	roadName?: string;
 	detourRoute?: string;
+	isSimulation?: boolean;
 }
 
 export interface BaliDistrictProperties {

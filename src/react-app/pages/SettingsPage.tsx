@@ -1,6 +1,5 @@
 import {
 	ArrowLeft,
-	Building2,
 	CheckCircle2,
 	Clock,
 	Database,
@@ -8,9 +7,7 @@ import {
 	KeyRound,
 	LogOut,
 	PlusCircle,
-	ShieldCheck,
 	Sparkles,
-	UserCheck,
 } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
@@ -24,34 +21,6 @@ import {
 	getSavedOrganizationId,
 	saveOrganizationId,
 } from "../lib/events-api";
-
-const DESA_ADAT_FALLBACK_OPTIONS = [
-	{
-		value: "11111111-1111-4111-8111-111111111111",
-		label: "Banjar Uji Coba / Desa Adat Simulasi (Pangkalan Data Neon)",
-		role: "organizer" as const,
-	},
-	{
-		value: "00000000-0000-4000-8000-000000000001",
-		label: "Desa Adat Ubud (Gianyar)",
-		role: "organizer" as const,
-	},
-	{
-		value: "550e8400-e29b-41d4-a716-446655440000",
-		label: "Desa Adat Padangtegal (Gianyar)",
-		role: "organizer" as const,
-	},
-	{
-		value: "550e8400-e29b-41d4-a716-446655440001",
-		label: "Desa Adat Intaran Sanur (Denpasar)",
-		role: "organizer" as const,
-	},
-	{
-		value: "550e8400-e29b-41d4-a716-446655440002",
-		label: "Desa Adat Kuta (Badung)",
-		role: "organizer" as const,
-	},
-];
 
 export function SettingsPage() {
 	const navigate = useNavigate();
@@ -75,11 +44,11 @@ export function SettingsPage() {
 				role: org.role,
 			}));
 		}
-		return DESA_ADAT_FALLBACK_OPTIONS;
+		return [];
 	}, [myOrganizations]);
 
 	const [selectedOrgIdState, setSelectedOrgId] = useState(() => {
-		return getSavedOrganizationId() || DESA_ADAT_FALLBACK_OPTIONS[0].value;
+		return getSavedOrganizationId() || "";
 	});
 	const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 	const [createError, setCreateError] = useState<string | null>(null);
@@ -89,15 +58,7 @@ export function SettingsPage() {
 	const [newOrgVillage, setNewOrgVillage] = useState("");
 	const [newOrgDistrict, setNewOrgDistrict] = useState("");
 
-	const selectedOrgId = useMemo(() => {
-		if (myOrganizations.length > 0) {
-			const exists = myOrganizations.some((o) => o.id === selectedOrgIdState);
-			if (!exists) {
-				return myOrganizations[0].id;
-			}
-		}
-		return selectedOrgIdState;
-	}, [myOrganizations, selectedOrgIdState]);
+	const selectedOrgId = myOrganizations.some((org) => org.id === selectedOrgIdState) ? selectedOrgIdState : "";
 
 	function handleOrgChange(nextId: string) {
 		setSelectedOrgId(nextId);
@@ -139,7 +100,7 @@ export function SettingsPage() {
 	}
 
 	const activeOrgOption =
-		orgOptions.find((o) => o.value === selectedOrgId) || orgOptions[0];
+		orgOptions.find((o) => o.value === selectedOrgId);
 
 	return (
 		<div>
@@ -147,7 +108,6 @@ export function SettingsPage() {
 			<div className="teduh-workspace-header">
 				<div>
 					<div className="teduh-workspace-eyebrow">
-						<ShieldCheck className="w-3.5 h-3.5" />
 						<span>Konfigurasi Akun, Peran &amp; Desa Adat</span>
 					</div>
 					<h1 className="teduh-workspace-title">
@@ -182,15 +142,12 @@ export function SettingsPage() {
 				<div className="xl:col-span-7 space-y-6">
 					{/* 1. Profil Pengguna */}
 					<div className="teduh-workspace-card space-y-4">
-						<div className="flex items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
-							<div className="flex items-center gap-2">
-								<UserCheck className="w-4 h-4 text-[#264D3B]" />
-								<h2 className="teduh-workspace-card-title">
-									Profil Petugas &amp; Sesi Otentikasi
-								</h2>
-							</div>
+						<div className="flex items-center justify-between gap-2">
+							<h2 className="teduh-workspace-card-title">
+								Profil Petugas &amp; Sesi Otentikasi
+							</h2>
 							<span
-								className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+								className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
 									sessionData?.user
 										? "bg-[#EBF3EE] text-[#264D3B]"
 										: "bg-[#F3F1EC] text-[#585854]"
@@ -203,7 +160,7 @@ export function SettingsPage() {
 						{!isSessionLoading && sessionData?.user ? (
 							<div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
 								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-1">
-									<span className="text-[11px] font-semibold uppercase tracking-wider text-[#585854]">
+									<span className="text-[11px] font-medium text-[#585854]">
 										Nama Lengkap Petugas
 									</span>
 									<p className="text-sm font-bold text-[#181817]">
@@ -211,7 +168,7 @@ export function SettingsPage() {
 									</p>
 								</div>
 								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-1">
-									<span className="text-[11px] font-semibold uppercase tracking-wider text-[#585854]">
+									<span className="text-[11px] font-medium text-[#585854]">
 										Alamat Surel Resmi
 									</span>
 									<p className="text-sm font-bold text-[#181817]">
@@ -219,7 +176,7 @@ export function SettingsPage() {
 									</p>
 								</div>
 								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-1">
-									<span className="text-[11px] font-semibold uppercase tracking-wider text-[#585854]">
+									<span className="text-[11px] font-medium text-[#585854]">
 										ID Akun Sistem
 									</span>
 									<p className="text-xs font-mono text-[#585854] break-all">
@@ -227,13 +184,13 @@ export function SettingsPage() {
 									</p>
 								</div>
 								<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 space-y-1">
-									<span className="text-[11px] font-semibold uppercase tracking-wider text-[#585854]">
+									<span className="text-[11px] font-medium text-[#585854]">
 										Peran Aktif di Desa Terpilih
 									</span>
 									<p className="text-sm font-bold text-[#264D3B]">
 										{activeOrgOption?.role === "officer"
 											? "Petugas Lapangan (Pecalang / Kebersihan)"
-											: "Panitia Penyelenggara (Organizer)"}
+											: activeOrgOption?.role === "organizer" ? "Panitia Penyelenggara (Organizer)" : "Pilih organisasi"}
 									</p>
 								</div>
 							</div>
@@ -291,13 +248,10 @@ export function SettingsPage() {
 
 					{/* 2. Pemilihan & Pendaftaran Desa Adat */}
 					<div className="teduh-workspace-card space-y-4">
-						<div className="flex items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
-							<div className="flex items-center gap-2">
-								<Building2 className="w-4 h-4 text-[#264D3B]" />
-								<h2 className="teduh-workspace-card-title">
-									Desa Adat &amp; Organisasi Kerja
-								</h2>
-							</div>
+						<div className="flex items-center justify-between gap-2">
+							<h2 className="teduh-workspace-card-title">
+								Desa Adat &amp; Organisasi Kerja
+							</h2>
 							<span className="text-xs font-semibold text-[#585854]">
 								{myOrganizations.length} Desa Terhubung
 							</span>
@@ -316,6 +270,7 @@ export function SettingsPage() {
 								onChange={(e) => handleOrgChange(e.target.value)}
 								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs font-medium text-[#181817] focus:outline-none focus:border-[#264D3B]"
 							>
+								<option value="">Pilih organisasi</option>
 								{orgOptions.map((opt) => (
 									<option key={opt.value} value={opt.value}>
 										{opt.label} (
@@ -386,7 +341,7 @@ export function SettingsPage() {
 						{sessionData?.user ? (
 							<form
 								onSubmit={(e) => void handleCreateOrganization(e)}
-								className="pt-4 border-t border-[#F0EFEA] space-y-3"
+								className="pt-2 space-y-3"
 							>
 								<div className="flex items-center gap-1.5">
 									<PlusCircle className="w-3.5 h-3.5 text-[#264D3B]" />

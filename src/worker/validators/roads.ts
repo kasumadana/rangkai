@@ -75,6 +75,33 @@ export const createRoadStatusSchema = z.object({
 	note: z.string().trim().max(500).optional().nullable(),
 });
 
+export const BALI_GEOGRAPHIC_BOUNDS = {
+	minLng: 114.3,
+	maxLng: 115.9,
+	minLat: -8.95,
+	maxLat: -7.95,
+};
+
+export function calculatePathLengthMeters(coords: Array<[number, number]>): number {
+	let total = 0;
+	const R = 6371000;
+	for (let i = 0; i < coords.length - 1; i++) {
+		const [lon1, lat1] = coords[i];
+		const [lon2, lat2] = coords[i + 1];
+		const dLat = ((lat2 - lat1) * Math.PI) / 180;
+		const dLon = ((lon2 - lon1) * Math.PI) / 180;
+		const a =
+			Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+			Math.cos((lat1 * Math.PI) / 180) *
+				Math.cos((lat2 * Math.PI) / 180) *
+				Math.sin(dLon / 2) *
+				Math.sin(dLon / 2);
+		const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+		total += R * c;
+	}
+	return total;
+}
+
 export const createRoadSegmentSchema = z
 	.object({
 		displayName: z
@@ -90,8 +117,12 @@ export const createRoadSegmentSchema = z
 		coordinates: z
 			.array(
 				z.tuple([
-					z.number().min(-180).max(180),
-					z.number().min(-90).max(90),
+					z.number().refine((n) => Number.isFinite(n) && n >= BALI_GEOGRAPHIC_BOUNDS.minLng && n <= BALI_GEOGRAPHIC_BOUNDS.maxLng, {
+						message: `Garis bujur (longitude) harus berada di wilayah Bali (${BALI_GEOGRAPHIC_BOUNDS.minLng} - ${BALI_GEOGRAPHIC_BOUNDS.maxLng}).`,
+					}),
+					z.number().refine((n) => Number.isFinite(n) && n >= BALI_GEOGRAPHIC_BOUNDS.minLat && n <= BALI_GEOGRAPHIC_BOUNDS.maxLat, {
+						message: `Garis lintang (latitude) harus berada di wilayah Bali (${BALI_GEOGRAPHIC_BOUNDS.minLat} - ${BALI_GEOGRAPHIC_BOUNDS.maxLat}).`,
+					}),
 				]),
 			)
 			.min(2, "Tandai minimal 2 titik koordinat di peta untuk membentuk garis ruas jalan.")
@@ -105,12 +136,35 @@ export const createRoadSegmentSchema = z
 			const [firstLng, firstLat] = data.coordinates[0];
 			return data.coordinates.some(
 				([lng, lat]) =>
-					Math.abs(lng - firstLng) > 0.00001 ||
-					Math.abs(lat - firstLat) > 0.00001,
+					Math.abs(lng - firstLng) > 0.00005 ||
+					Math.abs(lat - firstLat) > 0.00005,
 			);
 		},
 		{
-			message: "Titik awal dan titik akhir ruas jalan tidak boleh berada di satu titik yang sama.",
+			message: "Titik awal dan titik akhir ruas jalan tidak boleh berada di satu titik yang sama (minimal 2 titik berbeda).",
+			path: ["coordinates"],
+		},
+	)
+	.refine(
+		(data) => {
+			const lengthMeters = calculatePathLengthMeters(data.coordinates);
+			return lengthMeters >= 5 && lengthMeters <= 50000;
+		},
+		{
+			message: "Panjang garis ruas jalan harus antara 5 meter dan 50 kilometer.",
 			path: ["coordinates"],
 		},
 	);
+
+export const createSimulationRoadImpactSchema = createRoadSegmentSchema.and(
+	z.object({
+		mutationId: uuidParamSchema,
+		plannedFrom: isoDateSchema,
+		plannedTo: isoDateSchema,
+		impactType: z.enum(IMPACT_TYPES),
+		diversionNote: z.string().trim().max(1000).optional().nullable(),
+	}).refine((data) => new Date(data.plannedTo) > new Date(data.plannedFrom), {
+		message: "plannedTo must be strictly after plannedFrom",
+		path: ["plannedTo"],
+	}),
+);

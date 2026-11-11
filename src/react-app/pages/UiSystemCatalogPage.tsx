@@ -148,7 +148,7 @@ export function UiSystemCatalogPage() {
 							<Token
 								color="teal"
 								size="sm"
-								label="Astryx Design System (@astryxdesign/core + theme-neutral)"
+								label="Astryx Design System (@astryxdesign/core + theme-stone)"
 							/>
 						</HStack>
 						<LastUpdatedWita

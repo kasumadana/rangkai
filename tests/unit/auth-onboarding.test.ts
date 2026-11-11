@@ -27,6 +27,7 @@ describe("Rangkai Auth & Onboarding Domain Validations (message (2).txt)", () =>
 	it("validates officer invitation creation payload", () => {
 		const valid = createInvitationSchema.safeParse({
 			eventId: "123e4567-e89b-12d3-a456-426614174000",
+			recipientEmail: "officer@example.com",
 			canUpdateTraffic: true,
 			canUpdateCleanup: false,
 			expiresInDays: 7,
@@ -39,9 +40,39 @@ describe("Rangkai Auth & Onboarding Domain Validations (message (2).txt)", () =>
 		}
 	});
 
+	it("rejects invitations without a recipient email", () => {
+		expect(createInvitationSchema.safeParse({ role: "organizer" }).success).toBe(false);
+	});
+
 	it("rejects invitation creation with invalid eventId format", () => {
 		const invalid = createInvitationSchema.safeParse({
 			eventId: "not-a-uuid",
+			canUpdateTraffic: true,
+		});
+		expect(invalid.success).toBe(false);
+	});
+
+	it("validates organizer invitation with recipient email and no field permissions", () => {
+		const valid = createInvitationSchema.safeParse({
+			organizationId: "123e4567-e89b-12d3-a456-426614174000",
+			recipientEmail: "organizer2@desaadat.id",
+			role: "organizer",
+		});
+		expect(valid.success).toBe(true);
+		if (valid.success) {
+			expect(valid.data.role).toBe("organizer");
+			expect(valid.data.recipientEmail).toBe("organizer2@desaadat.id");
+			expect(valid.data.canUpdateTraffic).toBe(false);
+			expect(valid.data.canUpdateCleanup).toBe(false);
+		}
+	});
+
+	it("rejects invitation with invalid recipient email format", () => {
+		const invalid = createInvitationSchema.safeParse({
+			organizationId: "123e4567-e89b-12d3-a456-426614174000",
+			recipientEmail: "not-an-email",
+			role: "officer",
+			eventId: "123e4567-e89b-12d3-a456-426614174000",
 			canUpdateTraffic: true,
 		});
 		expect(invalid.success).toBe(false);

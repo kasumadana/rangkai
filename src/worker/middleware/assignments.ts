@@ -19,6 +19,7 @@ export interface EventAccessResult {
 		startsAt: Date | null;
 		endsAt: Date | null;
 		status: EventStatus;
+		isSimulation: boolean;
 		publicSlug: string | null;
 		permitReference: string | null;
 		processionDescription: string | null;

@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { Token } from "@astryxdesign/core/Token";
+import { Stack } from "@astryxdesign/core/Stack";
 import {
 	ArrowRight,
 	Clock,
@@ -25,9 +27,13 @@ import type {
 } from "../../lib/bali-villages";
 import {
 	buildDistrictFeaturesFromEvents,
+	fetchPublicAlternativeRoutes,
 	fetchPublicEventRoads,
 	fetchPublicEvents,
+	fetchPublicRoadImpacts,
 	mapPublicEventToCeremonyProfile,
+	roadImpactFeatureToRecord,
+	type RoadImpactRecord,
 } from "../../lib/events-api";
 import { useGsapPageReveal } from "../../lib/gsap-motion";
 import { BaliMapTilerView } from "./BaliMapTilerView";
@@ -118,6 +124,26 @@ export function TeduhSpatialMapConsole() {
 		queryFn: () => fetchPublicEventRoads(activeSlug),
 		enabled: Boolean(activeSlug),
 		staleTime: 30_000,
+		refetchInterval: 30_000,
+	});
+
+	// 2b. Aggregate verified public road impacts across all events for spatial background lines (SPEC-11: limit 300)
+	const {
+		data: allRoadImpactsData,
+		isError: isAllRoadsError,
+	} = useQuery({
+		queryKey: ["public", "road-impacts", { limit: 300 }],
+		queryFn: () => fetchPublicRoadImpacts({ limit: 300 }),
+		staleTime: 30_000,
+		refetchInterval: 30_000,
+	});
+
+	// 2c. Fetch public alternative routes for the active event (SPEC-08)
+	const { data: altRoutesData } = useQuery({
+		queryKey: ["public", "events", activeSlug, "alternative-routes"],
+		queryFn: () => fetchPublicAlternativeRoutes(activeSlug),
+		enabled: Boolean(activeSlug),
+		staleTime: 30_000,
 	});
 
 	const activeEventRoads = useMemo(
@@ -125,19 +151,45 @@ export function TeduhSpatialMapConsole() {
 		[activeRoadsData],
 	);
 
+	const allImpactsByEvent = useMemo(() => {
+		const map = new Map<string, RoadImpactRecord[]>();
+		if (!allRoadImpactsData?.features) return map;
+		for (const feat of allRoadImpactsData.features) {
+			const rec = roadImpactFeatureToRecord(feat);
+			const eId = feat.properties.eventId;
+			const eSlug = feat.properties.eventSlug;
+			if (eId) {
+				const list = map.get(eId) ?? [];
+				list.push(rec);
+				map.set(eId, list);
+			}
+			if (eSlug && eSlug !== eId) {
+				const list = map.get(eSlug) ?? [];
+				list.push(rec);
+				map.set(eSlug, list);
+			}
+		}
+		return map;
+	}, [allRoadImpactsData]);
+
 	// Map all live backend events into spatial profiles for the map
 	const allCeremonyProfiles = useMemo(() => {
 		return liveEvents.map((evt, idx) => {
 			const isCurrent =
 				activeBackendEvent &&
 				(evt.id === activeBackendEvent.id || evt.slug === activeBackendEvent.slug);
+			const roads = isCurrent
+				? (activeEventRoads.length > 0
+						? activeEventRoads
+						: (allImpactsByEvent.get(evt.id) ?? (evt.slug ? allImpactsByEvent.get(evt.slug) : undefined) ?? []))
+				: (allImpactsByEvent.get(evt.id) ?? (evt.slug ? allImpactsByEvent.get(evt.slug) : undefined) ?? []);
 			return mapPublicEventToCeremonyProfile(
 				evt,
-				isCurrent ? activeEventRoads : [],
+				roads,
 				idx,
 			);
 		});
-	}, [liveEvents, activeBackendEvent, activeEventRoads]);
+	}, [liveEvents, activeBackendEvent, activeEventRoads, allImpactsByEvent]);
 
 	const activeVillage = useMemo<BaliVillageCeremonyProfile | null>(() => {
 		if (allCeremonyProfiles.length === 0) return null;
@@ -282,10 +334,8 @@ export function TeduhSpatialMapConsole() {
 							style={{
 								padding: "8px 18px 4px",
 								fontSize: 11,
-								fontWeight: 500,
+								fontWeight: 600,
 								color: "#64748B",
-								textTransform: "uppercase",
-								letterSpacing: "0.05em",
 							}}
 						>
 							Wilayah Kecamatan
@@ -344,10 +394,8 @@ export function TeduhSpatialMapConsole() {
 							style={{
 								padding: "8px 18px 4px",
 								fontSize: 11,
-								fontWeight: 500,
+								fontWeight: 600,
 								color: "#64748B",
-								textTransform: "uppercase",
-								letterSpacing: "0.05em",
 							}}
 						>
 							Upacara Terpublikasi
@@ -363,16 +411,13 @@ export function TeduhSpatialMapConsole() {
 								}}
 							>
 								<div>
-									<div
-										style={{
-											fontSize: 14,
-											fontWeight: 500,
-											color: "#181B20",
-										}}
-									>
-										{c.ceremonyTitle}
-									</div>
-									<div style={{ fontSize: 12, color: "#545B67" }}>
+									<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+										<span className="text-sm font-medium text-stone-900">{c.ceremonyTitle}</span>
+										{c.isSimulation !== false ? (
+											<Token color="orange" size="sm" label="SIMULASI" />
+										) : null}
+									</Stack>
+									<div className="text-xs text-stone-600 mt-0.5">
 										{c.desaAdatName} • {c.kabupaten}
 									</div>
 								</div>
@@ -395,10 +440,8 @@ export function TeduhSpatialMapConsole() {
 							style={{
 								padding: "8px 18px 4px",
 								fontSize: 11,
-								fontWeight: 500,
+								fontWeight: 600,
 								color: "#64748B",
-								textTransform: "uppercase",
-								letterSpacing: "0.05em",
 							}}
 						>
 							Ruas Jalan Terdampak
@@ -901,6 +944,22 @@ export function TeduhSpatialMapConsole() {
 					<span>{cursorCoords}</span>
 					<span>•</span>
 					<span>WITA (UTC+8)</span>
+					{allRoadImpactsData?.pagination?.truncated ? (
+						<>
+							<span>•</span>
+							<span style={{ color: "#D97706" }}>
+								Menampilkan {allRoadImpactsData.features.length} dari {allRoadImpactsData.pagination.total} ruas jalan
+							</span>
+						</>
+					) : null}
+					{isAllRoadsError ? (
+						<>
+							<span>•</span>
+							<span style={{ color: "#EF4444" }}>
+								Sebagian ruas jalan belum dapat dimuat
+							</span>
+						</>
+					) : null}
 				</div>
 			</div>
 
@@ -909,6 +968,7 @@ export function TeduhSpatialMapConsole() {
 				<BaliMapTilerView
 					village={activeVillage}
 					allVillages={allCeremonyProfiles}
+					alternativeRoutes={altRoutesData?.alternativeRoutes ?? []}
 					selectedRegionName={selectedRegionName}
 					onSelectRegion={(regName, district) => {
 						handleSelectDistrict(regName, district);
@@ -955,19 +1015,16 @@ export function TeduhSpatialMapConsole() {
 					<>
 						<div className="drawer-header">
 							<div style={{ flex: 1, minWidth: 0 }}>
-								<div
-									style={{
-										display: "flex",
-										alignItems: "center",
-										gap: 8,
-										marginBottom: 6,
-										flexWrap: "wrap",
-									}}
-								>
-									<span className="drawer-location-tag">
-										{activeVillage.desaAdatName} • {activeVillage.kabupaten}
-									</span>
-									<RoadStatusBadge status={activeVillage.primaryStatus} />
+								<div className="mb-1.5">
+									<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+										<span className="drawer-location-tag">
+											{activeVillage.desaAdatName} • {activeVillage.kabupaten}
+										</span>
+										{activeVillage.isSimulation !== false ? (
+											<Token color="orange" size="sm" label="SIMULASI" />
+										) : null}
+										<RoadStatusBadge status={activeVillage.primaryStatus} />
+									</Stack>
 								</div>
 								<h3 className="drawer-title">
 									{activeVillage.ceremonyTitle}

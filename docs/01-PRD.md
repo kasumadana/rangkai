@@ -228,4 +228,5 @@ MVP may be submitted when:
 
 ## 16. Changelog
 
-0.1.0 — Initial development baseline.
+- 0.1.0 — Initial development baseline.
+- 1.0.0-rc — Completed production readiness batch: safe atomic onboarding (CTE), invitation token hashing (SHA-256) & CAS acceptance, operational authority gate with simulation fallback, field task permission scoping, and full Playwright browser regression.

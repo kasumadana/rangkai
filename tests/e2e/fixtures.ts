@@ -18,19 +18,20 @@ export const test = base.extend<RangkaiFixtures>({
 		const context = await browser.newContext();
 		const page = await context.newPage();
 
-		// Programmatic sign-in via Better Auth API if server is up
-		try {
-			await context.request.post(`${baseURL}/api/auth/sign-in/email`, {
-				data: {
-					email: DEMO_USERS.organizer.email,
-					password: DEMO_USERS.organizer.password,
-				},
-				headers: {
-					"Content-Type": "application/json",
-				},
-			});
-		} catch {
-			// Backend may be running without seed in isolated smoke runs
+		const res = await context.request.post(`${baseURL}/api/auth/sign-in/email`, {
+			data: {
+				email: DEMO_USERS.organizer.email,
+				password: DEMO_USERS.organizer.password,
+			},
+			headers: {
+				"Content-Type": "application/json",
+				Origin: baseURL || "http://localhost:5173",
+			},
+		});
+		if (!res.ok()) {
+			throw new Error(
+				`Failed to sign in organizer fixture: HTTP ${res.status()} ${await res.text()}`,
+			);
 		}
 
 		await use(page);
@@ -42,18 +43,20 @@ export const test = base.extend<RangkaiFixtures>({
 		const context = await browser.newContext();
 		const page = await context.newPage();
 
-		try {
-			await context.request.post(`${baseURL}/api/auth/sign-in/email`, {
-				data: {
-					email: DEMO_USERS.officer.email,
-					password: DEMO_USERS.officer.password,
-				},
-				headers: {
-					"Content-Type": "application/json",
-				},
-			});
-		} catch {
-			// fallback
+		const res = await context.request.post(`${baseURL}/api/auth/sign-in/email`, {
+			data: {
+				email: DEMO_USERS.officer.email,
+				password: DEMO_USERS.officer.password,
+			},
+			headers: {
+				"Content-Type": "application/json",
+				Origin: baseURL || "http://localhost:5173",
+			},
+		});
+		if (!res.ok()) {
+			throw new Error(
+				`Failed to sign in officer fixture: HTTP ${res.status()} ${await res.text()}`,
+			);
 		}
 
 		await use(page);
@@ -65,18 +68,20 @@ export const test = base.extend<RangkaiFixtures>({
 		const context = await browser.newContext();
 		const page = await context.newPage();
 
-		try {
-			await context.request.post(`${baseURL}/api/auth/sign-in/email`, {
-				data: {
-					email: DEMO_USERS.unassignedOfficer.email,
-					password: DEMO_USERS.unassignedOfficer.password,
-				},
-				headers: {
-					"Content-Type": "application/json",
-				},
-			});
-		} catch {
-			// fallback
+		const res = await context.request.post(`${baseURL}/api/auth/sign-in/email`, {
+			data: {
+				email: DEMO_USERS.unassignedOfficer.email,
+				password: DEMO_USERS.unassignedOfficer.password,
+			},
+			headers: {
+				"Content-Type": "application/json",
+				Origin: baseURL || "http://localhost:5173",
+			},
+		});
+		if (!res.ok()) {
+			throw new Error(
+				`Failed to sign in unassigned officer fixture: HTTP ${res.status()} ${await res.text()}`,
+			);
 		}
 
 		await use(page);

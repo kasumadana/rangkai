@@ -296,3 +296,20 @@ Offline officer -> do not pretend update was published.
 - Cache only safe public read responses.
 - Never cache private documents publicly.
 - Measure actual performance before claiming targets met.
+
+## 15. Operational Freshness & Advisory Subsystems (P0 & P1 Additions)
+
+### 15.1 Authoritative Status Freshness Architecture
+- **30-Minute Status TTL:** Operational road statuses are governed by a 30-minute server TTL (`ROAD_STATUS_TTL_MS = 30 * 60 * 1000`). Status updates older than 30 minutes are dynamically rendered as `unconfirmed` across public APIs and maps.
+- **2-Hour Submission Window:** Officer observations cannot exceed 2 hours in the past (`MAX_PAST_OBSERVED_AGE_MS`), and future clock skew is clamped to 5 minutes (`MAX_FUTURE_OBSERVED_SKEW_MS`).
+- **Audit Immutability:** `road_status_updates` remains strictly append-only.
+
+### 15.2 Additive Advisory Architecture
+- **Tables:** `advisory_runs` and `advisory_decisions`.
+- **Integrity Boundary:** Advisory generation computes a SHA-256 `input_snapshot_hash` over all material event inputs (title, category, schedules, road closures, and statuses). If an event or road closure changes, subsequent reads detect that the advisory is stale.
+- **Human Decision Boundary:** Organizer decisions (`approved`, `dismissed`) are recorded as advisory metadata. Advisory decisions NEVER mutate domain operational tables (events, road statuses, cleanup tasks, or user roles) directly.
+
+### 15.3 Reviewed Alternative Routes Subsystem
+- **Table:** `event_alternative_routes` stores manual diversion corridors designed by organizers using PostGIS `geometry(LineString, 4326)`.
+- **Publication Gate:** Alternative routes default to `draft` and are only exposed to the public after explicit organizer approval (`approved`). Revoked routes (`revoked`) are immediately excluded from public view.
+- **Network Routing Fallback:** The network routing candidate endpoint enforces a strict conditional gate: when unconfigured, it returns HTTP 503 pointing to verified manual alternative routes, ensuring citizens are never misled by speculative routes.

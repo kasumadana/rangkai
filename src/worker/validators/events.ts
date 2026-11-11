@@ -28,6 +28,7 @@ export const createEventSchema = z
 		description: z.string().trim().max(2000).optional().nullable(),
 		venueName: z.string().trim().max(255).optional().nullable(),
 		permitReference: z.string().trim().max(100).optional().nullable(),
+		isSimulation: z.boolean().default(true).optional(),
 	})
 	.refine(
 		(data) => {
@@ -51,6 +52,7 @@ export const updateEventSchema = z
 		description: z.string().trim().max(2000).optional().nullable(),
 		venueName: z.string().trim().max(255).optional().nullable(),
 		permitReference: z.string().trim().max(100).optional().nullable(),
+		isSimulation: z.boolean().default(true).optional(),
 	})
 	.refine(
 		(data) => {
