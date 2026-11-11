@@ -223,3 +223,7 @@ Key gates:
 - Strict release validator checking candidate commit pin and pre-deployment backups.
 - No production migrations or deployments without external approval and verified pilot authority.
 
+
+### Public assistant operational limits
+
+The assistant sends questions and at most ten public event titles/IDs to the configured Gemini provider; do not include personal or confidential information in questions. It never loads private documents or arbitrary URLs. The local per-isolate rate limiter is not a distributed quota: configure and verify an edge rate limit before public enablement. Provider output is schema checked, restricted to retrieved identifiers, and never rendered as prose or URLs. Gemini availability and classification quality must be validated before enabling the feature. Location submitted for organizer waste planning remains private and is used only in the scoped request; facility distance is straight-line and does not imply route safety or acceptance.
