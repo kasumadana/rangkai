@@ -26,6 +26,7 @@ import {
 	WorkflowRouteShellPage,
 } from "./pages/RouteViews";
 import { SettingsPage } from "./pages/SettingsPage";
+import { PublicAssistantPage } from "./pages/PublicAssistantPage";
 import { UiSystemCatalogPage } from "./pages/UiSystemCatalogPage";
 
 export function App() {
@@ -46,6 +47,7 @@ export function App() {
 									element={<Navigate to="/events" replace />}
 								/>
 								<Route path="/events" element={<PublicEventsListPage />} />
+								<Route path="/tanya" element={<PublicAssistantPage />} />
 								<Route
 									path="/events/:slug"
 									element={<PublicEventDetailPage />}

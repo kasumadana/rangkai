@@ -157,6 +157,7 @@ export function PublicShellLayout() {
 						<RouterLinkBridge href="/events" className={`navbar-link ${pathname.startsWith("/events") ? "active" : ""}`}>
 							Jadwal Upacara
 						</RouterLinkBridge>
+						<RouterLinkBridge href="/tanya" className={`navbar-link ${pathname === "/tanya" ? "active" : ""}`}>Tanya kegiatan</RouterLinkBridge>
 					</nav>
 
 					<div className="navbar-actions">
@@ -324,6 +325,7 @@ export function PublicShellLayout() {
 						<RouterLinkBridge href="/events" className={`mobile-nav-link ${pathname.startsWith("/events") ? "is-active" : ""}`}>
 							Jadwal Upacara
 						</RouterLinkBridge>
+						<RouterLinkBridge href="/tanya" className={`mobile-nav-link ${pathname === "/tanya" ? "is-active" : ""}`}>Tanya kegiatan</RouterLinkBridge>
 					</div>
 				</div>
 
