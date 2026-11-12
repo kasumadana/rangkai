@@ -62,10 +62,10 @@ describe("assistant public evidence", () => {
  });
 });
 
-it("route help returns available public road evidence with routing uncertainty", async () => {
+it("route help abstains when origin and destination are missing", async () => {
  const response = await ask("route_help");
  const data = await response.json() as { status: string; answer: string; sources: Array<{ status: string }> };
- expect(data.status).toBe("answered");
- expect(data.sources[0].status).toBe("unconfirmed");
- expect(data.answer).toContain("rute");
+ expect(data.status).toBe("abstained");
+ expect(data.sources).toHaveLength(0);
+ expect(data.answer).toContain("asal dan tujuan");
 });

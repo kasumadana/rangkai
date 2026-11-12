@@ -9,6 +9,7 @@ import { rateLimit } from "../middleware/rate-limit";
 import { assistantInputSchema, freshRoadStatus, selectAssistantSources, validateSelection, type AssistantSource } from "../services/public-assistant";
 import type { AppVariables, Env } from "../types";
 import { GEMINI_MODEL_NAME } from "../validators/extractions";
+import { routeEvidence } from "../services/assistant-route-evidence";
 
 export const publicAssistantRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 publicAssistantRouter.use("/questions", rateLimit({ windowMs: 60000, max: 10, keyPrefix: "public-assistant" }));
@@ -34,13 +35,23 @@ publicAssistantRouter.post("/questions", async c => {
  };
  const sources = await retrieve();
  const providerSelection = await selectAssistantSources(question, sources, c.env.GEMINI_API_KEY.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME);
- const selected = validateSelection(providerSelection, sources);
+ const selected = validateSelection(providerSelection, sources, question);
  if (!selected && providerSelection !== null) console.warn("assistant_provider_failure", { reason: "selection_invalid" });
  if (!selected) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten tidak dapat memproses pertanyaan. Gunakan pencarian kegiatan.", 503);
+ if (selected.intent === "route_help") {
+  const abstain = (answer: string) => c.json({ status: "abstained", intent: "route_help", answer, sources: [], searchUrl: "/events", mapUrl: "/peta" });
+  if (!selected.origin || !selected.destination) return abstain("Sebutkan lokasi asal dan tujuan secara jelas, lalu coba lagi.");
+  if (c.env.NETWORK_ROUTING_ENABLED !== "true" || !c.env.ORS_API_KEY?.trim()) return abstain("Pemeriksaan rute belum tersedia. Periksa peta dan konfirmasi kondisi kepada petugas setempat.");
+  const evidence = await routeEvidence(db, selected.origin, selected.destination, c.env.ORS_API_KEY.trim());
+  if (evidence.kind === "ambiguous") return abstain("Lokasi asal atau tujuan tidak ditemukan secara unik. Sebutkan nama dan wilayah yang lebih lengkap, lalu coba lagi.");
+  if (evidence.kind === "unavailable") return abstain("Pemeriksaan rute tidak tersedia. Periksa peta dan konfirmasi kondisi kepada petugas setempat.");
+  const warning = "Ini hanya persilangan geometris pada satu rute mobil dari OpenRouteService, bukan navigasi aman atau penghindaran penutupan; data dapat tidak lengkap dan status kedaluwarsa tidak terkonfirmasi.";
+  return c.json({ status: evidence.rows.length ? "answered" : "abstained", intent: "route_help", answer: `Lokasi yang cocok: ${evidence.originLabel} ke ${evidence.destinationLabel}. Periksa kecocokan lokasi ini. ${evidence.rows.length ? "Berikut ruas publik yang berpotongan dengan rute tersebut." : "Tidak ditemukan persilangan pada data publik yang tersedia; kondisi jalan tidak dapat dipastikan."} ${evidence.truncated ? "Hasil dibatasi dan tidak lengkap. " : ""}${warning}`, sources: evidence.rows, searchUrl: "/events", mapUrl: "/peta" });
+ }
  const current = await retrieve();
  const result = current.filter(source => selected.sourceIds.includes(source.sourceId));
  if (selected.intent === "event_lookup" && result.length) return c.json({ status: "answered", intent: selected.intent, answer: "Berikut data kegiatan yang dipilih. Periksa kesesuaian sumber; status kegiatan bukan status jalan.", sources: result, searchUrl: "/events" });
- if ((selected.intent === "road_status" || selected.intent === "route_help" || selected.intent === "cleanup_summary") && result.length) {
+ if ((selected.intent === "road_status" || selected.intent === "cleanup_summary") && result.length) {
   const internal = new Hono<{ Bindings: Env; Variables: AppVariables }>();
   internal.use("*", async (context, next) => { context.set("db", db); context.set("requestId", c.get("requestId")); await next(); });
   internal.route("/", publicRouter);
@@ -61,7 +72,7 @@ publicAssistantRouter.post("/questions", async c => {
    }
   }
   if (selected.intent !== "cleanup_summary") for (const fact of facts) fact.status = freshRoadStatus(String(fact.status), typeof fact.expiresAt === "string" ? fact.expiresAt : null);
-  if (facts.length) return c.json({ status: "answered", intent: selected.intent, answer: selected.intent === "route_help" ? "Berikut laporan ruas pada kegiatan terkait, bukan hasil pemeriksaan seluruh rute perjalanan. Rute asal-tujuan belum dihitung; tidak dapat dipastikan apakah ruas ini dilalui. Periksa sumber dan peta, termasuk waktu serta label simulasi. Jangan menganggap data yang tidak tersedia sebagai jalan terbuka." : selected.intent === "road_status" ? "Status jalan berikut berasal dari laporan publik; status kedaluwarsa tidak terkonfirmasi dan jalan terbuka belum tentu lancar." : "Berikut ringkasan tugas kebersihan publik. Verifikasi kebersihan tidak membuka jalan secara otomatis.", sources: facts, searchUrl: "/events" });
+  if (facts.length) return c.json({ status: "answered", intent: selected.intent, answer: selected.intent === "road_status" ? "Status jalan berikut berasal dari laporan publik; status kedaluwarsa tidak terkonfirmasi dan jalan terbuka belum tentu lancar." : "Berikut ringkasan tugas kebersihan publik. Verifikasi kebersihan tidak membuka jalan secara otomatis.", sources: facts, searchUrl: "/events" });
  }
  return c.json({ status: "abstained", intent: selected.intent, answer: "Informasi yang diminta belum dapat dijawab. Cari kegiatan atau konfirmasi kepada petugas setempat.", sources: [], searchUrl: "/events" });
 });
