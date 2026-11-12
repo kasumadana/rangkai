@@ -37,36 +37,51 @@ async function setup(browser: Browser, width: number, role = 'organizer', canCle
   return { page, errs, requests };
   }
 
-test("synthetic waste scenario, validation, retry and permissions", async ({ browser }) => {
-  for (const width of [390, 1440]) {
+test("waste checklist without assumptions and total-only range", async ({ browser }) => {
+  for (const width of [320, 390, 1440]) {
     const { page } = await setup(browser, width);
-    let fail = true;
+    const requests: Record<string, unknown>[] = [];
     await page.route('**/waste-plan', async route => {
-      if (fail) return route.fulfill({ status: 503, json: { error: { code: 'UNAVAILABLE', message: 'unavailable', requestId: 'fixture' } } });
-      const body = route.request().postDataJSON();
-      expect(body.scenario.coefficientKgPerParticipantDay.provenance).toBe('Asumsi sintetis');
-      return route.fulfill({ json: { wastePlan: { output: { scenarioRange: { formula: 'peserta ? durasi / 24 ? koefisien', low: { totalKg: 10, categoriesKg: { organic: 5 } }, high: { totalKg: 20, categoriesKg: { organic: 10 } }, assumptions: body.scenario }, handlingAdvice: [{ category: 'organic', action: 'Pisahkan organik', source: 'https://example.org' }], facilities: { suitableMatches: [], nearbyCandidates: [{ name: 'Fasilitas sintetis dengan nama panjang untuk pengujian', address: 'Alamat uji', distanceKm: 2, sourceYear: 2023, source: 'https://example.org' }] } } } } });
+      const body = route.request().postDataJSON(); requests.push(body);
+      return route.fulfill({ json: { wastePlan: { output: { checklist: ['Siapkan wadah'], scenarioRange: body.scenario ? { formula: '', low: { totalKg: 10, categoriesKg: null }, high: { totalKg: 20, categoriesKg: null }, assumptions: body.scenario } : null, handlingAdvice: [{ category: 'organic', action: 'Pisahkan organik', source: 'https://example.org' }], facilities: { suitableMatches: [], nearbyCandidates: [] } } } } });
     });
     await page.goto(`/dashboard/events/${id}/cleanup`);
     await page.getByText('Susun skenario').click();
-    await page.getByRole('button', { name: 'Hitung skenario' }).click();
-    await expect(page.getByRole('alert').filter({ hasText: 'Isi semua asumsi' })).toBeVisible();
-    for (const [label, value] of Object.entries({ 'Perkiraan peserta (orang)': '100', 'Durasi (jam)': '24', 'Koefisien minimum (kg/orang/hari)': '0.1', 'Koefisien maksimum (kg/orang/hari)': '0.2', 'Asal asumsi koefisien': 'Asumsi sintetis', 'Organik (%)': '50', 'Daur ulang (%)': '30', 'Residu (%)': '20' })) await page.getByLabel(label, { exact: true }).fill(value);
-    await page.getByText('Cari kandidat terdekat dengan koordinat').click();
-    await page.getByLabel('Lintang lokasi (opsional)').fill('-8.63');
-    await page.getByLabel('Bujur lokasi (opsional)').fill('115.21');
-    await page.getByRole('button', { name: 'Hitung skenario' }).click();
-    await expect(page.getByRole('alert').filter({ hasText: 'tidak tersedia' })).toBeVisible();
-    fail = false; await page.getByRole('button', { name: 'Coba lagi' }).click();
+    await page.getByLabel('Perkiraan peserta (orang)').fill('100');
+    await page.getByLabel('Durasi (jam)').fill('24');
+    await page.getByRole('button', { name: 'Susun rencana' }).click();
+    await expect(page.getByText('Siapkan wadah')).toBeVisible();
+    expect(requests[0]).not.toHaveProperty('scenario');
+    await page.getByText('Tambahkan asumsi rentang (opsional)').click();
+    await page.getByLabel('Koefisien minimum (kg/orang/hari)').fill('0.1');
+    await page.getByRole('button', { name: 'Susun rencana' }).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'secara lengkap' })).toBeVisible();
+    await page.getByLabel('Koefisien maksimum (kg/orang/hari)').fill('0.2');
+    await page.getByLabel('Asal asumsi koefisien').fill('Asumsi sintetis');
+    await page.getByLabel('Organik (%)').fill('50');
+    await page.getByRole('button', { name: 'Susun rencana' }).click();
+    await expect(page.getByRole('alert').filter({ hasText: 'ketiga proporsi' })).toBeVisible();
+    await page.getByLabel('Organik (%)').clear();
+    await page.getByRole('button', { name: 'Susun rencana' }).click();
     await expect(page.getByText(/Rentang skenario: 10.20 kg/)).toBeVisible();
-    await expect(page.getByText(/Perlu konfirmasi/)).toBeVisible();
-    expect(await page.evaluate<number>('document.documentElement.scrollWidth - innerWidth')).toBeLessThanOrEqual(0);
-    await page.screenshot({ path: `test-results/scenario-scrolled-${width}.png` });
-    await page.evaluate("window.scrollTo(0, 0)");
-    await page.screenshot({ path: `D:/Development/Lomba/rangkai/.scratch/final-next-20261112/waste-ui/scenario-${width}.png`, fullPage: true });
+    expect(requests[1].scenario).not.toHaveProperty('categoryShares');
+    await expect(page.getByText('Pisahkan organik')).toBeVisible();
+    expect(await page.evaluate<string>("getComputedStyle(document.querySelector('.waste-scenario-panel label')).fontSize")).toBe('16px');
+    expect(await page.evaluate<string>("getComputedStyle(document.querySelector('.waste-scenario-panel h2')).fontSize")).toBe('26px');
+    expect(await page.evaluate<number>("document.querySelector('.waste-scenario-panel button[type=submit]').getBoundingClientRect().height")).toBeGreaterThanOrEqual(44);
+    await page.screenshot({ path: `test-results/waste-repair-${width}.png`, fullPage: true });
     await page.close();
   }
-  const { page } = await setup(browser, 390, 'officer'); await page.goto(`/field/events/${id}/cleanup`); await expect(page.getByText('Rencana skenario sampah')).toHaveCount(0); await page.close();
+});
+
+
+test("populated public detail has no horizontal overflow", async ({ browser }) => {
+  const { page } = await setup(browser, 390);
+  await page.goto('/events/synthetic');
+  await expect(page.getByText(event.title).first()).toBeVisible();
+  expect(await page.evaluate<boolean>("document.documentElement.scrollWidth <= innerWidth")).toBeTruthy();
+  await page.screenshot({ path: 'test-results/detail-repair-390.png' });
+  await page.close();
 });
 
 

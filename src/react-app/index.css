@@ -4942,3 +4942,21 @@
 	.teduh-toolbar .schedule-filter-desktop { display: none; }
 	.schedule-filter-mobile { display: block; width: 100%; min-height: 44px; padding: 0.5rem 1rem; border: 1px solid var(--color-border); border-radius: 0.5rem; background: var(--color-surface); color: var(--color-slate); font-size: 1rem; }
 }
+
+/* Type roles for the assistant and waste-planning surfaces. */
+.assistant-panel :is(p, label, input, textarea, button, a, li),
+.waste-scenario-panel :is(p, label, input, button, summary, legend, li, a) {
+  font-size: 1rem;
+}
+.assistant-panel h2,
+.waste-scenario-panel h2 {
+  font-size: 1.625rem;
+}
+.assistant-panel button[type="submit"] {
+  min-height: 2.75rem;
+}
+.assistant-panel :is(label, button) *,
+.assistant-panel [id$="description"],
+.waste-scenario-panel h3 {
+  font-size: 1rem;
+}

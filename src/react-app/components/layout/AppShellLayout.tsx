@@ -58,6 +58,25 @@ export function PublicShellLayout() {
 		pathname === "/" ? shouldPlayPreloader() : false,
 	);
 	const notifRef = useRef<HTMLDivElement>(null);
+	const menuRef = useRef<HTMLElement>(null);
+	const menuTriggerRef = useRef<HTMLButtonElement>(null);
+	useEffect(() => {
+		if (!isMobileMenuOpen) return;
+		const menu = menuRef.current;
+		const trigger = menuTriggerRef.current;
+		const focusable = () => Array.from(menu?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])') ?? []);
+		focusable()[0]?.focus();
+		function onKeyDown(event: KeyboardEvent) {
+			if (event.key === "Escape") { event.preventDefault(); setIsMobileMenuOpen(false); }
+			if (event.key !== "Tab") return;
+			const items = focusable();
+			if (!items.length) { event.preventDefault(); return; }
+			if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
+			else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
+		}
+		document.addEventListener("keydown", onKeyDown);
+		return () => { document.removeEventListener("keydown", onKeyDown); trigger?.focus(); };
+	}, [isMobileMenuOpen]);
 	const mainContentRef = useRef<HTMLElement>(null);
 
 	const { data: sessionData } = useAuthSession();
@@ -135,6 +154,7 @@ export function PublicShellLayout() {
 			)}
 			{/* Floating Capsule Navbar (Teduh Style) */}
 			<header
+				inert={isMobileMenuOpen}
 				className={`navbar ${pathname === "/" ? "navbar-landing" : ""} ${isWindowScrolled ? "navbar-scrolled" : ""}`}
 				style={
 					isPreloaderActive
@@ -285,6 +305,8 @@ export function PublicShellLayout() {
 						<button
 							type="button"
 							className="navbar-hamburger"
+							ref={menuTriggerRef}
+							aria-expanded={isMobileMenuOpen}
 							onClick={() => setIsMobileMenuOpen(true)}
 							aria-label="Buka menu navigasi"
 						>
@@ -295,11 +317,11 @@ export function PublicShellLayout() {
 			</header>
 
 			{/* Mobile Slide-Over Drawer */}
-			<div
+			{isMobileMenuOpen && <><div
 				className={`mobile-nav-overlay ${isMobileMenuOpen ? "is-visible" : ""}`}
 				onClick={() => setIsMobileMenuOpen(false)}
 			/>
-			<aside className={`mobile-nav-menu ${isMobileMenuOpen ? "is-open" : ""}`} aria-label="Menu Ponsel">
+			<aside ref={menuRef} role="dialog" aria-modal="true" className="mobile-nav-menu is-open" aria-label="Menu Ponsel">
 				<div className="mobile-nav-top">
 					<div className="mobile-nav-header">
 						<RouterLinkBridge href="/" className="navbar-brand">
@@ -393,15 +415,15 @@ export function PublicShellLayout() {
 						</RouterLinkBridge>
 					)}
 				</div>
-			</aside>
+			</aside></>}
 
 			{/* Main Content Viewport */}
-			<main ref={mainContentRef} id="main-content" style={{ flex: 1 }}>
+			<main inert={isMobileMenuOpen} ref={mainContentRef} id="main-content" style={{ flex: 1 }}>
 				<Outlet />
 			</main>
 
 			{/* Light Civic Footer (Teduh Footer-New Style) */}
-			<footer className="footer-new">
+			<footer inert={isMobileMenuOpen} className="footer-new">
 				<div className="footer-inner">
 					<div className="footer-row-top">
 						<div className="footer-brand-col">
@@ -481,7 +503,7 @@ export function PublicShellLayout() {
 						<div className="footer-bottom-links">
 							<span>Status Terverifikasi Manusia</span>
 							<span>•</span>
-							<span>Standar WCAG 2.2 AA</span>
+							<span>Target WCAG 2.2 AA</span>
 						</div>
 					</div>
 				</div>

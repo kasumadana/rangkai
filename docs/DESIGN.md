@@ -100,7 +100,7 @@ Sistem visual berada dalam mode **Operate** untuk pengguna lapangan (Pecalang, D
 
 **Key Characteristics:**
 - **Civic Restraint:** Antarmuka tenang, fungsional, dan bersih; warna aksen hanya hadir pada titik aksi atau penanda status krusial.
-- **Outdoor High Contrast:** Memenuhi standar aksesibilitas WCAG 2.2 AA dengan kontras teks tinggi di atas kanvas putih saat dipakai di jalan raya.
+- **Outdoor High Contrast:** Menargetkan standar aksesibilitas WCAG 2.2 AA dengan kontras teks tinggi di atas kanvas putih saat dipakai di jalan raya.
 - **Honest System Signals:** Ketidakpastian data, status kadaluwarsa (*stale*), dan saran AI yang belum diverifikasi memiliki penanda visual yang eksplisit dan tidak ambigu.
 - **Mobile Ergonomics:** Target sentuh besar (minimal 48px), navigasi satu tangan, dan form yang ramah perangkat mobile berspesifikasi menengah ke bawah.
 
