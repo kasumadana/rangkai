@@ -13,7 +13,7 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
 import {
 	CeremonyDetailModal,
 	RoadStatusBadge,
@@ -41,6 +41,9 @@ import { BaliMapTilerView } from "./BaliMapTilerView";
 export function TeduhSpatialMapConsole() {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const mapViewportRef = useRef<HTMLDivElement>(null);
+	const menuRef = useRef<HTMLElement>(null);
+	const menuTriggerRef = useRef<HTMLButtonElement>(null);
+	const location = useLocation();
 
 	const { data: sessionData } = useAuthSession();
 	const signOutMutation = useSignOutMutation();
@@ -80,6 +83,35 @@ export function TeduhSpatialMapConsole() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+	useEffect(() => {
+		if (!isMobileMenuOpen) return;
+		const menu = menuRef.current;
+		const trigger = menuTriggerRef.current;
+		const siblings = Array.from(mapViewportRef.current?.children ?? []).filter((element): element is HTMLElement => element instanceof HTMLElement && element !== menu && !element.classList.contains("mobile-nav-overlay"));
+		const previousInert = siblings.map((element) => element.inert);
+		siblings.forEach((element) => { element.inert = true; });
+		const focusable = () => Array.from(menu?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])') ?? []);
+		focusable()[0]?.focus();
+		function onKeyDown(event: KeyboardEvent) {
+			if (event.key === "Escape") { event.preventDefault(); setIsMobileMenuOpen(false); return; }
+			if (event.key !== "Tab") return;
+			const items = focusable();
+			if (!items.length) { event.preventDefault(); return; }
+			if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
+			else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
+		}
+		document.addEventListener("keydown", onKeyDown);
+		return () => {
+			document.removeEventListener("keydown", onKeyDown);
+			siblings.forEach((element, index) => { element.inert = previousInert[index]; });
+			trigger?.focus();
+		};
+	}, [isMobileMenuOpen]);
+	const [previousLocation, setPreviousLocation] = useState(location);
+	if (previousLocation !== location) {
+		setPreviousLocation(location);
+		setIsMobileMenuOpen(false);
+	}
 	const searchDropdownRef = useRef<HTMLDivElement>(null);
 	const mobileSearchRef = useRef<HTMLDivElement>(null);
 
@@ -694,6 +726,7 @@ export function TeduhSpatialMapConsole() {
 				<button
 					type="button"
 					onClick={() => setIsMobileMenuOpen(true)}
+					ref={menuTriggerRef}
 					style={{
 						background: "none",
 						border: "none",
@@ -715,11 +748,16 @@ export function TeduhSpatialMapConsole() {
 			</div>
 
 			{/* Mobile Slide-Over Menu for Map Console */}
+			{isMobileMenuOpen && <>
 			<div
 				className={`mobile-nav-overlay ${isMobileMenuOpen ? "is-visible" : ""}`}
 				onClick={() => setIsMobileMenuOpen(false)}
 			/>
 			<aside
+				ref={menuRef}
+				role="dialog"
+				aria-modal="true"
+				onClick={(event) => { if ((event.target as HTMLElement).closest("a[href]")) setIsMobileMenuOpen(false); }}
 				className={`mobile-nav-menu ${isMobileMenuOpen ? "is-open" : ""}`}
 				aria-label="Menu Ponsel Peta"
 			>
@@ -829,6 +867,7 @@ export function TeduhSpatialMapConsole() {
 					)}
 				</div>
 			</aside>
+			</>}
 
 			{/* 3. GUIDED 3-STEP EXPLORATION PANEL (Dismisses completely when X is clicked) */}
 			{!isGuideDismissed && (
