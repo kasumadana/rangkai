@@ -24,7 +24,7 @@ publicAssistantRouter.post("/questions", async c => {
  const { question, eventSlug, location, from, to } = parsed.data;
  const db = c.get("db");
  const retrieve = async (): Promise<AssistantSource[]> => {
-  const conditions = [inArray(events.status, ["published", "active"]), sql`(${events.isSimulation} IS DISTINCT FROM FALSE OR EXISTS (SELECT 1 FROM organizations o WHERE o.id = ${events.organizationId} AND o.has_operational_authority = TRUE))`];
+  const conditions = [inArray(events.status, eventSlug ? ["published", "active", "completed"] : ["published", "active"]), sql`(${events.isSimulation} IS DISTINCT FROM FALSE OR EXISTS (SELECT 1 FROM organizations o WHERE o.id = ${events.organizationId} AND o.has_operational_authority = TRUE))`];
   if (eventSlug) conditions.push(eq(events.publicSlug, eventSlug));
   if (location) conditions.push(sql`(lower(${events.venueName}) = lower(${location}) OR lower(${organizations.village}) = lower(${location}) OR lower(${organizations.district}) = lower(${location}))`);
   if (from) conditions.push(gte(events.endsAt, new Date(from)));
