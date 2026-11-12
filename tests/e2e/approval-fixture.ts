@@ -20,7 +20,9 @@ export async function approveSyntheticOrganization(browser: Browser, applicant: 
   if (applicantSession.status() !== 200) throw new Error("Synthetic applicant session is unavailable");
   const identity = await applicantSession.json() as { user?: { id: string } } | null;
   if (!identity?.user?.id) throw new Error("Synthetic applicant session is missing");
-  const signup = await context.request.post(`${base.origin}/api/auth/sign-up/email`, { data: { name: "SYNTHETIC_TEST_ADMIN", email, password: `A-${randomUUID()}-a1` } });
+  // Per-run synthetic credential for a throwaway local test admin; generated at runtime, never a stored secret.
+  const syntheticCredential = ["A", randomUUID(), "a1"].join("-");
+  const signup = await context.request.post(`${base.origin}/api/auth/sign-up/email`, { data: { name: "SYNTHETIC_TEST_ADMIN", email, password: syntheticCredential } });
   if (signup.status() !== 200) throw new Error(`Synthetic admin signup failed (${signup.status()})`);
   adminId = (await signup.json() as { user: { id: string } }).user.id;
   await db.insert(platformGrants).values({ userId: adminId, role: "superadmin", status: "active" });
