@@ -209,6 +209,9 @@ export interface RoadImpactRecord {
 	diversionNote: string | null;
 	displayName?: string;
 	coverageArea?: string;
+	sourceType?: string;
+	reviewStatus?: "pending" | "approved" | "rejected" | "superseded" | null;
+	reviewReason?: string | null;
 	segment?: {
 		id: string;
 		displayName: string;
@@ -793,6 +796,16 @@ export async function deleteRoadImpact(
 		{
 			method: "DELETE",
 		},
+	);
+}
+
+export async function submitRoadImpactForReview(
+	eventId: string,
+	impactId: string,
+): Promise<{ request: { id: string; status: string }; duplicate?: boolean }> {
+	return apiFetch<{ request: { id: string; status: string }; duplicate?: boolean }>(
+		`/api/events/${encodeURIComponent(eventId)}/road-impacts/${encodeURIComponent(impactId)}/review`,
+		{ method: "POST", body: {} },
 	);
 }
 

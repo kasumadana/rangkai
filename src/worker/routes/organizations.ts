@@ -1,7 +1,7 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { memberships, organizations } from "../../db/schema";
+import { memberships, organizations, platformGrants } from "../../db/schema";
 import { sendError } from "../lib/errors";
 import { requireAuth } from "../middleware/auth";
 import type { AppVariables, Env } from "../types";
@@ -59,5 +59,21 @@ organizationsRouter.get("/my", async (c) => {
 		.where(eq(memberships.userId, currentUser.id))
 		.orderBy(desc(organizations.createdAt));
 
-	return c.json({ organizations: rows }, 200);
+	const grants = await db
+		.select({ role: platformGrants.role })
+		.from(platformGrants)
+		.where(
+			and(
+				eq(platformGrants.userId, currentUser.id),
+				eq(platformGrants.status, "active"),
+			),
+		);
+
+	return c.json(
+		{
+			organizations: rows,
+			platformRoles: grants.map((g) => g.role),
+		},
+		200,
+	);
 });

@@ -56,6 +56,7 @@ import {
 	publishVerifiedEvent,
 	saveExtractedFields,
 	saveOrganizationId,
+	submitRoadImpactForReview,
 	toWitaIsoTimestamp,
 	transitionEventToReview,
 	triggerDocumentExtraction,
@@ -263,6 +264,11 @@ export function EventWizardPage() {
 	const [formState, setFormState] = useState<DraftFormState>(() =>
 		loadSessionDraft(),
 	);
+	const effectiveOrgId = useMemo(() => {
+		if (!isCreateMode || myOrganizations.length === 0) return formState.organizationId;
+		if (myOrganizations.some((o) => o.id === formState.organizationId)) return formState.organizationId;
+		return (myOrganizations.find((o) => o.role === "organizer") || myOrganizations[0]).id;
+	}, [isCreateMode, myOrganizations, formState.organizationId]);
 	const [hydratedEventId, setHydratedEventId] = useState<string | null>(null);
 	const [fieldErrors, setFieldErrors] = useState<
 		Partial<Record<keyof DraftFormState, string>>
@@ -429,7 +435,7 @@ export function EventWizardPage() {
 		if (routeEventId && isRealUuidEvent) {
 			return routeEventId;
 		}
-		const orgId = formState.organizationId;
+		const orgId = effectiveOrgId;
 		if (!publishSimulation && !hasOperationalAuthority) throw new Error("Organisasi belum memiliki kewenangan publikasi operasional.");
 		if (!orgId) throw new Error("Pilih Desa Adat terlebih dahulu.");
 		const draftRes = await createEventDraft({
@@ -550,7 +556,7 @@ export function EventWizardPage() {
 			setBannerFeedback(null);
 
 			if (!publishSimulation && !hasOperationalAuthority) throw new Error("Organisasi belum memiliki kewenangan publikasi operasional.");
-			const parsed = wizardFormSchema.safeParse(formState);
+			const parsed = wizardFormSchema.safeParse({ ...formState, organizationId: effectiveOrgId });
 			if (!parsed.success) {
 				const nextErrors: Partial<Record<keyof DraftFormState, string>> = {};
 				for (const issue of parsed.error.issues) {
@@ -654,6 +660,12 @@ export function EventWizardPage() {
 				impactFromWita || formState.startsAtWita,
 			);
 			const endsIso = toWitaIsoTimestamp(impactToWita || formState.endsAtWita);
+			if (!startsIso || !endsIso || Date.parse(endsIso) <= Date.parse(startsIso)) {
+				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
+			}
+			if (!startsIso || !endsIso || Date.parse(endsIso) <= Date.parse(startsIso)) {
+				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
+			}
 
 			const payload = {
 				displayName: newSegmentName.trim(),
@@ -713,6 +725,12 @@ export function EventWizardPage() {
 				impactFromWita || formState.startsAtWita,
 			);
 			const endsIso = toWitaIsoTimestamp(impactToWita || formState.endsAtWita);
+			if (!startsIso || !endsIso || Date.parse(endsIso) <= Date.parse(startsIso)) {
+				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
+			}
+			if (!startsIso || !endsIso || Date.parse(endsIso) <= Date.parse(startsIso)) {
+				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
+			}
 
 			await createRoadImpact(targetEventId, {
 				roadSegmentId,
@@ -776,6 +794,20 @@ export function EventWizardPage() {
 				description:
 					err instanceof Error ? err.message : "Terjadi kendala jaringan.",
 			});
+		},
+	});
+
+	const submitRoadReviewMutation = useMutation({
+		mutationFn: async (impactId: string) => {
+			if (!routeEventId || !isRealUuidEvent) throw new Error("Kegiatan belum tersimpan.");
+			return submitRoadImpactForReview(routeEventId, impactId);
+		},
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({ queryKey: ["events", routeEventId, "road-impacts"] });
+			setBannerFeedback({ status: "success", title: "Pengajuan Tinjauan Terkirim", description: "Ruas jalan telah masuk ke antrean tinjauan Polisi / Reviewer Pemerintah." });
+		},
+		onError: (err) => {
+			setBannerFeedback({ status: "error", title: "Gagal Mengajukan Tinjauan", description: err instanceof Error ? err.message : "Terjadi kendala jaringan." });
 		},
 	});
 
@@ -959,7 +991,19 @@ export function EventWizardPage() {
 				</div>
 			</div>
 
-			{isCreateMode ? <p className="mb-6 text-sm font-semibold">Langkah {activeStep + 1} dari 4: {WIZARD_STEPS[activeStep].label.replace(/^\d\. /, "")}</p> : null}
+			<nav aria-label="Langkah pembuatan kegiatan" className="mb-6 flex flex-wrap gap-2">
+				{WIZARD_STEPS.map((step) => (
+					<button
+						key={step.id}
+						type="button"
+						onClick={() => setActiveStep(step.id)}
+						aria-current={activeStep === step.id ? "step" : undefined}
+						className={`ui-button ${activeStep === step.id ? "ui-button-primary" : ""}`}
+					>
+						{step.label}
+					</button>
+				))}
+			</nav>
 
 			{/* Feedback Banner */}
 			{bannerFeedback ? (
@@ -1025,7 +1069,7 @@ export function EventWizardPage() {
 									<select
 										id="wizard-org-select"
 										disabled={Boolean(createdEventId)}
-										value={formState.organizationId}
+										value={effectiveOrgId}
 										onChange={(e) => {
 											updateField("organizationId", e.target.value);
 											saveOrganizationId(e.target.value);
@@ -1941,7 +1985,21 @@ export function EventWizardPage() {
 															expiresAt={imp.operationalStatus?.expiresAt}
 														/>
 													</div>
-													<div className="flex justify-end shrink-0">
+													<div className="flex justify-end gap-2 shrink-0">
+														{imp.sourceType === "catalog" && (currentLifecycleStatus === "draft" || currentLifecycleStatus === "review") && (!imp.reviewStatus || imp.reviewStatus === "rejected" || imp.reviewStatus === "superseded") ? (
+															<button
+																type="button"
+																disabled={submitRoadReviewMutation.isPending}
+																onClick={() => void submitRoadReviewMutation.mutateAsync(imp.id)}
+																className="ui-button"
+															>
+																<span>Ajukan Tinjauan Reviewer</span>
+															</button>
+														) : imp.reviewStatus ? (
+															<span className="px-2 py-1 rounded bg-stone-100 text-xs font-semibold text-stone-700 self-center">
+																{imp.reviewStatus === "pending" ? "Menunggu Reviewer" : imp.reviewStatus === "approved" ? "Disetujui Reviewer" : imp.reviewStatus === "rejected" ? "Ditolak Reviewer" : "Perlu Pengajuan Ulang"}
+															</span>
+														) : null}
 														<button
 															type="button"
 															disabled={removeRoadImpactMutation.isPending}

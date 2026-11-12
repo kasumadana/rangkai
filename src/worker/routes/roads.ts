@@ -506,6 +506,17 @@ roadsRouter.get("/events/:eventId/road-impacts", async (c) => {
 			ri.created_at AS "createdAt",
 			rs.display_name AS "displayName",
 			rs.coverage_area AS "coverageArea",
+			rs.source_type AS "sourceType",
+			(
+				SELECT q.status FROM road_review_requests q
+				WHERE q.road_impact_id = ri.id
+				ORDER BY q.submitted_at DESC LIMIT 1
+			) AS "reviewStatus",
+			(
+				SELECT q.reason FROM road_review_requests q
+				WHERE q.road_impact_id = ri.id
+				ORDER BY q.submitted_at DESC LIMIT 1
+			) AS "reviewReason",
 			ST_AsGeoJSON(rs.geom)::json AS geometry
 		FROM road_impacts ri
 		INNER JOIN road_segments rs ON ri.road_segment_id = rs.id
@@ -556,6 +567,9 @@ roadsRouter.get("/events/:eventId/road-impacts", async (c) => {
 					roadSegmentId: r.roadSegmentId as string,
 					displayName: r.displayName as string,
 					coverageArea: r.coverageArea as string,
+					sourceType: (r.sourceType as string) ?? "catalog",
+					reviewStatus: (r.reviewStatus ?? null) as string | null,
+					reviewReason: (r.reviewReason ?? null) as string | null,
 					plannedFrom: new Date(r.plannedFrom as string).toISOString(),
 					plannedTo: new Date(r.plannedTo as string).toISOString(),
 					impactType: r.impactType as string,

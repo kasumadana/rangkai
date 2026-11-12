@@ -97,10 +97,13 @@ export interface UserOrganization {
 	hasOperationalAuthority?: boolean;
 }
 
+export type PlatformRole = "superadmin" | "government_reviewer";
+
 export async function fetchMyOrganizations(): Promise<{
 	organizations: UserOrganization[];
+	platformRoles?: PlatformRole[];
 }> {
-	return apiFetch<{ organizations: UserOrganization[] }>(
+	return apiFetch<{ organizations: UserOrganization[]; platformRoles?: PlatformRole[] }>(
 		"/api/organizations/my",
 		{ method: "GET" },
 	);

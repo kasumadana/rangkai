@@ -92,6 +92,7 @@ import {
 	revokeEventAssignment,
 	saveExtractedFields,
 	submitCleanupTask,
+	submitRoadImpactForReview,
 	startCleanupTask,
 	toWitaIsoTimestamp,
 	transitionEventToReview,
@@ -1269,6 +1270,8 @@ export function WorkflowRouteShellPage({
 	const roadAttempt = useRef<{ fingerprint: string; id: string } | null>(null);
 	const [selectedCatalogSegmentId, setSelectedCatalogSegmentId] =
 		useState<string>("");
+	const [roadFromWita, setRoadFromWita] = useState<string>("");
+	const [roadToWita, setRoadToWita] = useState<string>("");
 	const [selectedImpactType, setSelectedImpactType] = useState<
 		"closure" | "intermittent" | "narrowing" | "procession"
 	>("closure");
@@ -1506,6 +1509,12 @@ export function WorkflowRouteShellPage({
 				throw new Error("Centang verifikasi lokasi ruas jalan oleh Prajuru.");
 			}
 
+			const plannedFrom = toWitaIsoTimestamp(roadFromWita) || rawEvent?.startsAt || null;
+			const plannedTo = toWitaIsoTimestamp(roadToWita) || rawEvent?.endsAt || null;
+			if (!plannedFrom || !plannedTo || Date.parse(plannedTo) <= Date.parse(plannedFrom)) {
+				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
+			}
+
 			const payload = {
 				displayName: newSegmentName.trim(),
 				coverageArea:
@@ -1513,8 +1522,8 @@ export function WorkflowRouteShellPage({
 				coordinates: draftCoordinates,
 				humanVerified: true,
 				impactType: selectedImpactType,
-				plannedFrom: rawEvent?.startsAt || null,
-				plannedTo: rawEvent?.endsAt || null,
+				plannedFrom,
+				plannedTo,
 				diversionNote: impactDiversionNote.trim() || null,
 			};
 			const fingerprint = JSON.stringify([eventId, payload]);
@@ -1552,11 +1561,16 @@ export function WorkflowRouteShellPage({
 			if (!isRealUuidEvent) {
 				throw new Error("Simpan kegiatan terlebih dahulu.");
 			}
+			const plannedFrom = toWitaIsoTimestamp(roadFromWita) || rawEvent?.startsAt || null;
+			const plannedTo = toWitaIsoTimestamp(roadToWita) || rawEvent?.endsAt || null;
+			if (!plannedFrom || !plannedTo || Date.parse(plannedTo) <= Date.parse(plannedFrom)) {
+				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
+			}
 			return createRoadImpact(eventId, {
 				roadSegmentId,
 				impactType: selectedImpactType,
-				plannedFrom: rawEvent?.startsAt || null,
-				plannedTo: rawEvent?.endsAt || null,
+				plannedFrom,
+				plannedTo,
 				diversionNote: impactDiversionNote.trim() || null,
 			});
 		},
@@ -1576,6 +1590,17 @@ export function WorkflowRouteShellPage({
 				message:
 					err instanceof Error ? err.message : "Gagal menautkan ruas jalan.",
 			});
+		},
+	});
+
+	const submitRoadReviewOnTabMutation = useMutation({
+		mutationFn: async (impactId: string) => submitRoadImpactForReview(eventId, impactId),
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({ queryKey: ["events", eventId, "road-impacts"] });
+			setStatusFeedback({ type: "success", message: "Ruas jalan diajukan ke antrean tinjauan Polisi / Reviewer Pemerintah." });
+		},
+		onError: (err) => {
+			setStatusFeedback({ type: "error", message: err instanceof Error ? err.message : "Gagal mengajukan tinjauan ruas." });
 		},
 	});
 
@@ -2437,6 +2462,16 @@ export function WorkflowRouteShellPage({
 											className="teduh-form-input text-base text-stone-900 bg-white border-stone-200"
 										/>
 									</div>
+									<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+										<label className="block text-base font-semibold text-stone-900">
+											Mulai Penutupan (WITA) *
+											<input type="datetime-local" value={roadFromWita || (rawEvent?.startsAt ? fromIsoToWitaInput(rawEvent.startsAt) : "")} onChange={(e) => setRoadFromWita(e.target.value)} className="teduh-form-input text-base text-stone-900 bg-white border-stone-200 mt-1" />
+										</label>
+										<label className="block text-base font-semibold text-stone-900">
+											Selesai Penutupan (WITA) *
+											<input type="datetime-local" value={roadToWita || (rawEvent?.endsAt ? fromIsoToWitaInput(rawEvent.endsAt) : "")} onChange={(e) => setRoadToWita(e.target.value)} className="teduh-form-input text-base text-stone-900 bg-white border-stone-200 mt-1" />
+										</label>
+									</div>
 									<label className="flex items-start gap-2 text-base text-stone-900 cursor-pointer">
 										<input
 											type="checkbox"
@@ -2522,6 +2557,16 @@ export function WorkflowRouteShellPage({
 											className="teduh-form-input text-base text-stone-900 bg-white border-stone-200"
 										/>
 									</div>
+									<div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+										<label className="block text-base font-semibold text-stone-900">
+											Mulai Penutupan (WITA) *
+											<input type="datetime-local" value={roadFromWita || (rawEvent?.startsAt ? fromIsoToWitaInput(rawEvent.startsAt) : "")} onChange={(e) => setRoadFromWita(e.target.value)} className="teduh-form-input text-base text-stone-900 bg-white border-stone-200 mt-1" />
+										</label>
+										<label className="block text-base font-semibold text-stone-900">
+											Selesai Penutupan (WITA) *
+											<input type="datetime-local" value={roadToWita || (rawEvent?.endsAt ? fromIsoToWitaInput(rawEvent.endsAt) : "")} onChange={(e) => setRoadToWita(e.target.value)} className="teduh-form-input text-base text-stone-900 bg-white border-stone-200 mt-1" />
+										</label>
+									</div>
 									<button
 										type="button"
 										disabled={
@@ -2583,7 +2628,21 @@ export function WorkflowRouteShellPage({
 														expiresAt={imp.operationalStatus?.expiresAt}
 													/>
 												</div>
-												<div className="flex justify-end shrink-0">
+												<div className="flex justify-end gap-2 shrink-0">
+													{isOrganizer && imp.sourceType === "catalog" && (rawEvent?.status === "draft" || rawEvent?.status === "review") && (!imp.reviewStatus || imp.reviewStatus === "rejected" || imp.reviewStatus === "superseded") ? (
+														<button
+															type="button"
+															disabled={submitRoadReviewOnTabMutation.isPending}
+															onClick={() => void submitRoadReviewOnTabMutation.mutateAsync(imp.id)}
+															className="ui-button"
+														>
+															<span>Ajukan Reviewer</span>
+														</button>
+													) : imp.reviewStatus ? (
+														<span className="px-2 py-1 rounded bg-stone-100 text-xs font-semibold text-stone-700 self-center">
+															{imp.reviewStatus === "pending" ? "Menunggu Reviewer" : imp.reviewStatus === "approved" ? "Disetujui Reviewer" : imp.reviewStatus === "rejected" ? "Ditolak Reviewer" : "Perlu Pengajuan Ulang"}
+														</span>
+													) : null}
 													<button
 														type="button"
 														onClick={() =>
@@ -2886,6 +2945,16 @@ export function WorkflowRouteShellPage({
 													<p className="text-base text-stone-600">
 														{task.description || "Area Utama Upacara"}
 													</p>
+													{task.evidence && task.evidence.length > 0 ? (
+														<div className="mt-2 flex flex-wrap gap-2">
+															{task.evidence.map((ev) => (
+																<a key={ev.id} href={`/api/cleanup-tasks/${encodeURIComponent(task.id)}/evidence/${encodeURIComponent(ev.id)}`} target="_blank" rel="noreferrer" className="block rounded border border-stone-200 overflow-hidden">
+																	<img src={`/api/cleanup-tasks/${encodeURIComponent(task.id)}/evidence/${encodeURIComponent(ev.id)}`} alt={`Bukti ${ev.stage}`} className="w-20 h-16 object-cover" />
+																	<span className="block text-[11px] font-semibold text-center bg-stone-100 text-stone-700 py-0.5">{ev.stage === "before" ? "Before" : "After"}</span>
+																</a>
+															))}
+														</div>
+													) : null}
 												</div>
 												<div className="flex flex-wrap items-center gap-2">
 													<CleanupStatusBadge
