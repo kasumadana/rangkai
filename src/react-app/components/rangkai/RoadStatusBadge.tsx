@@ -1,11 +1,4 @@
-import { Icon } from "@astryxdesign/core/Icon";
-import { HStack } from "@astryxdesign/core/Stack";
-import { Text } from "@astryxdesign/core/Text";
-import { Token } from "@astryxdesign/core/Token";
-import {
-	getRoadStatusPresentation,
-	type OperationalRoadStatus,
-} from "../../lib/road-status";
+import { getRoadStatusPresentation, type OperationalRoadStatus } from "../../lib/road-status";
 import { isTimestampExpired } from "../../lib/wita";
 
 export type { OperationalRoadStatus } from "../../lib/road-status";
@@ -17,36 +10,13 @@ export interface RoadStatusBadgeProps {
 	showCongestionHint?: boolean;
 }
 
-export function RoadStatusBadge({
-	status,
-	expiresAt,
-	now,
-	showCongestionHint = false,
-}: RoadStatusBadgeProps) {
-	const isStale = isTimestampExpired(expiresAt, now);
-	const base = getRoadStatusPresentation(status);
-
-	if (isStale) {
-		return (
-			<HStack gap={2} vAlign="center" wrap="wrap">
-				<Token
-					color="orange"
-					size="sm"
-					icon={<Icon icon="warning" size="xsm" />}
-					label={`BELUM DIKONFIRMASI ULANG • Status terakhir: ${base.code}`}
-				/>
-			</HStack>
-		);
-	}
-
-	return (
-		<HStack gap={1.5} vAlign="center" wrap="wrap">
-			<Token color={base.tokenColor} size="sm" label={base.label} />
-			{showCongestionHint && status === "open" ? (
-				<Text size="xsm" color="secondary">
-					(Tidak menjamin bebas kepadatan)
-				</Text>
-			) : null}
-		</HStack>
-	);
+export function RoadStatusBadge({ status, expiresAt, now, showCongestionHint = false }: RoadStatusBadgeProps) {
+	const stale = isTimestampExpired(expiresAt, now);
+	const presentation = getRoadStatusPresentation(status);
+	return <span className="inline-flex flex-wrap items-center gap-2">
+		<span className={`road-status-badge status-${stale ? "unknown" : status}`} style={{ whiteSpace: "normal" }}>
+			{stale ? "Belum terkonfirmasi" : presentation.label}
+		</span>
+		{!stale && showCongestionHint && status === "open" ? <small>(Tidak menjamin bebas kepadatan)</small> : null}
+	</span>;
 }

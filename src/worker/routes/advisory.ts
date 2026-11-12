@@ -14,6 +14,8 @@ import { requireAuth } from "../middleware/auth";
 import type { AppVariables, Env } from "../types";
 import { uuidParamSchema } from "../validators/events";
 import { evaluateEffectiveRoadStatus } from "./roads";
+import { calculateScenario, scenarioSchema, wasteHandlingAdvice } from "../services/waste-scenario";
+import { locationSchema, nearbyFacilities } from "../services/waste-facilities";
 
 export const advisoryRouter = new Hono<{
 	Bindings: Env;
@@ -1646,7 +1648,13 @@ const wastePlanInputSchema = z.object({
 	recyclableFraction: z.number().min(0).max(1).optional(),
 	residualFraction: z.number().min(0).max(1).optional(),
 	averageKgPerSack: z.number().min(1).max(100).optional(),
-});
+	scenario: scenarioSchema.optional(),
+	facilityLocation: locationSchema.optional(),
+}).refine((v) => {
+ const values = [v.organicFraction, v.recyclableFraction, v.residualFraction];
+ return values.every((x) => x === undefined) ||
+  (values.every((x) => x !== undefined) && Math.abs(values.reduce<number>((sum, x) => sum + (x ?? 0), 0) - 1) < 0.000001);
+}, { message: "Provide all category fractions summing to one." });
 
 export interface WastePlanOutput {
 	status: "insufficient_historical_data";
@@ -1800,11 +1808,18 @@ advisoryRouter.post("/events/:eventId/waste-plan", async (c) => {
 				`Siapkan minimal ${estimatedSackCount} karung sampah terpilah (hijau untuk organik, kuning untuk anorganik).`,
 				...standardChecklist.slice(1),
 			],
-			disclaimer: `Kalkulasi logistik skenario berdasarkan koefisien eksplisit pengguna (${rate} kg/peserta/hari). Bukan hasil timbangan riil atau ramalan AI.`,
+			disclaimer: `Kalkulasi logistik skenario berdasarkan koefisien eksplisit pengguna (${rate} kg/peserta/hari). Bukan hasil timbangan riil atau ramalan AI. Jika tidak disediakan, proporsi 0,65/0,20/0,15 dan kapasitas karung 15 kg adalah asumsi bawaan lama, bukan data terukur.`,
 		};
 	}
 
-	const advisoryRunId = crypto.randomUUID();
+	const extendedOutput = {
+  ...output,
+  disclaimer: parsed.data.scenario ? `${output.disclaimer} Rentang terpisah adalah skenario berdasarkan asumsi yang diberikan, bukan ramalan atau timbangan.` : output.disclaimer,
+  scenarioRange: parsed.data.scenario ? calculateScenario(estimatedParticipants, durationHours, parsed.data.scenario) : null,
+  handlingAdvice: wasteHandlingAdvice,
+  facilities: nearbyFacilities(parsed.data.facilityLocation),
+ };
+ const advisoryRunId = crypto.randomUUID();
 	await db.insert(advisoryRuns).values({
 		id: advisoryRunId,
 		eventId,
@@ -1815,19 +1830,21 @@ advisoryRouter.post("/events/:eventId/waste-plan", async (c) => {
 			estimatedParticipants,
 			durationHours,
 			rateKgPerParticipantPerDay: effectiveRate ?? null,
+			scenario: parsed.data.scenario ?? null,
+			facilityLocation: parsed.data.facilityLocation ?? null,
 		}),
 		modelName: "scenario_assumption_model",
 		promptVersion: "1.0",
 		schemaVersion: "1.0",
 		status: "completed",
-		outputJson: output,
+		outputJson: extendedOutput,
 	});
 
 	return c.json(
 		{
 			wastePlan: {
 				id: advisoryRunId,
-				output,
+				output: extendedOutput,
 				createdAt: new Date().toISOString(),
 			},
 		},

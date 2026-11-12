@@ -18,6 +18,7 @@ import {
 	useAuthSession,
 	useMyOrganizationsQuery,
 	useSignInMutation,
+	fetchMyOrganizations,
 	useSignOutMutation,
 } from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
@@ -82,7 +83,19 @@ export function LoginPage() {
 				email: parsed.data.email,
 				password: parsed.data.password,
 			});
-			navigate(redirectTarget);
+			if (rawFrom) navigate(redirectTarget);
+			else {
+				try {
+					const orgs = await fetchMyOrganizations();
+					const roles = orgs.platformRoles || [];
+					if (roles.includes("superadmin")) navigate("/admin/organizations");
+					else if (roles.includes("government_reviewer")) navigate("/reviewer/road-requests");
+					else if (orgs.organizations.length) navigate("/dashboard");
+					else navigate("/onboarding/status");
+				} catch {
+					navigate("/onboarding/status");
+				}
+			}
 		} catch (err) {
 			if (err instanceof ApiClientError) {
 				setServerErrorMessage(err.message);
@@ -110,11 +123,7 @@ export function LoginPage() {
 			<div style={{ width: "100%", maxWidth: 460 }}>
 				{/* Top back link to Home */}
 				<div style={{ marginBottom: 16 }} data-gsap="reveal">
-					<Link
-						to="/"
-						className="teduh-back-link"
-						style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}
-					>
+					<Link to="/" className="teduh-back-link">
 						<ArrowLeft size={15} />
 						<span>Kembali ke Beranda</span>
 					</Link>
@@ -127,9 +136,9 @@ export function LoginPage() {
 						data-gsap="reveal"
 						style={{
 							background: "#FFFFFF",
-							borderRadius: 20,
-							padding: "36px 32px",
-							boxShadow: "0 10px 30px rgba(0, 0, 0, 0.04)",
+							border: "1px solid var(--color-border)",
+							borderRadius: 4,
+							padding: "28px 24px",
 							display: "flex",
 							flexDirection: "column",
 							gap: 20,
@@ -139,11 +148,12 @@ export function LoginPage() {
 							<span
 								style={{
 									display: "inline-block",
-									padding: "3px 10px",
-									borderRadius: 9999,
-									background: "#ECF3EF",
-									color: "#264D3B",
-									fontSize: 12,
+									padding: "4px 10px",
+									borderRadius: 4,
+									background: "#FFFFFF",
+									border: "1px solid #4D702F",
+									color: "#4D702F",
+									fontSize: "0.875rem",
 									fontWeight: 600,
 									marginBottom: 10,
 								}}
@@ -153,15 +163,15 @@ export function LoginPage() {
 							<h1
 								style={{
 									margin: "0 0 6px 0",
-									fontSize: 24,
-									fontWeight: 400,
+									fontSize: "1.625rem",
+									fontWeight: 600,
 									color: "#181B20",
-									fontFamily: "var(--font-family)",
+									fontFamily: "var(--font-sans)",
 								}}
 							>
 								{sessionData.user.name}
 							</h1>
-							<p style={{ margin: 0, fontSize: 14, color: "#545B67" }}>
+							<p style={{ margin: 0, fontSize: "1rem", color: "#545B67" }}>
 								{sessionData.user.email}
 							</p>
 						</div>
@@ -169,31 +179,45 @@ export function LoginPage() {
 						{activeOrg && (
 							<div
 								style={{
-									background: "#F4F4F3",
-									borderRadius: 14,
+									background: "#FFFFFF",
+									border: "1px solid var(--color-border)",
+									borderRadius: 4,
 									padding: "14px 16px",
 									display: "flex",
 									flexDirection: "column",
 									gap: 4,
 								}}
 							>
-								<span style={{ fontSize: 11.5, color: "#71717A", fontWeight: 500 }}>
+								<span style={{ fontSize: "0.875rem", color: "#545B67", fontWeight: 600 }}>
 									Organisasi Terdaftar
 								</span>
-								<span style={{ fontSize: 14, fontWeight: 600, color: "#181B20" }}>
+								<span style={{ fontSize: "1rem", fontWeight: 600, color: "#181B20" }}>
 									{activeOrg.name}
 								</span>
-								<span style={{ fontSize: 12, color: "#264D3B", fontWeight: 500 }}>
+								<span style={{ fontSize: "0.9375rem", color: "#4D702F", fontWeight: 600 }}>
 									Peran: {activeOrg.role === "organizer" ? "Prajuru / Pengelola Organisasi" : "Petugas Lapangan"}
 								</span>
 							</div>
 						)}
 
 						<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+							{(orgsData?.platformRoles || []).includes("superadmin") && (
+								<Link to="/admin/organizations" className="ui-button ui-button-primary">
+									<LayoutDashboard size={16} />
+									<span>Buka Panel Superadmin</span>
+								</Link>
+							)}
+							{(orgsData?.platformRoles || []).includes("government_reviewer") && (
+								<Link to="/reviewer/road-requests" className="ui-button ui-button-primary">
+									<LayoutDashboard size={16} />
+									<span>Buka Antrean Tinjauan Polisi / Reviewer</span>
+								</Link>
+							)}
+                            <Link to="/onboarding/status">Lihat status pengajuan</Link>
 							<Link
 								to="/dashboard"
-								className="teduh-pill-action"
-								style={{ justifyContent: "center", padding: "12px 18px", fontSize: 14 }}
+								className="ui-button ui-button-primary"
+								style={{ gap: 8 }}
 							>
 								<LayoutDashboard size={16} />
 								<span>Buka Panel Panitia</span>
@@ -201,21 +225,10 @@ export function LoginPage() {
 
 							<Link
 								to="/field"
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									justifyContent: "center",
-									gap: 8,
-									padding: "12px 18px",
-									borderRadius: 9999,
-									background: "#F4F4F3",
-									color: "#181B20",
-									fontSize: 14,
-									fontWeight: 500,
-									textDecoration: "none",
-								}}
+								className="ui-button"
+								style={{ gap: 8 }}
 							>
-								<Radio size={16} color="#264D3B" />
+								<Radio size={16} color="#4D702F" />
 								<span>Buka Tugas Lapangan Pecalang</span>
 							</Link>
 
@@ -223,23 +236,21 @@ export function LoginPage() {
 								type="button"
 								onClick={() => signOutMutation.mutate()}
 								disabled={signOutMutation.isPending}
+								className="ui-button"
 								style={{
-									background: "transparent",
-									border: "none",
-									color: "#9E2A2B",
-									padding: "10px",
-									cursor: "pointer",
-									fontSize: 13.5,
-									fontWeight: 500,
-									display: "inline-flex",
-									alignItems: "center",
-									justifyContent: "center",
+									color: "#B91C1C",
+									borderColor: "var(--color-border)",
 									gap: 6,
 								}}
 							>
 								<LogOut size={15} />
 								<span>{signOutMutation.isPending ? "Keluar..." : "Keluar dari Akun"}</span>
 							</button>
+							{signOutMutation.isError ? (
+								<p role="alert" style={{ color: "#B91C1C", fontSize: "1rem", margin: 0 }}>
+									Tidak dapat keluar. Periksa koneksi dan coba lagi.
+								</p>
+							) : null}
 						</div>
 					</div>
 				) : (
@@ -249,12 +260,12 @@ export function LoginPage() {
 						data-gsap="reveal"
 						style={{
 							background: "#FFFFFF",
-							borderRadius: 20,
-							padding: "36px 32px",
-							boxShadow: "0 10px 30px rgba(0, 0, 0, 0.04)",
+							border: "1px solid var(--color-border)",
+							borderRadius: 4,
+							padding: "28px 24px",
 							display: "flex",
 							flexDirection: "column",
-							gap: 24,
+							gap: 20,
 						}}
 					>
 						{/* Card Header */}
@@ -262,16 +273,16 @@ export function LoginPage() {
 							<h1
 								style={{
 									margin: "0 0 8px 0",
-									fontSize: 26,
-									fontWeight: 400,
+									fontSize: "1.625rem",
+									fontWeight: 600,
 									color: "#181B20",
-									fontFamily: "var(--font-family)",
-									letterSpacing: "-0.02em",
+									fontFamily: "var(--font-sans)",
+									letterSpacing: "-0.015em",
 								}}
 							>
 								Masuk Petugas Desa
 							</h1>
-							<p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "#545B67" }}>
+							<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.6, color: "#545B67" }}>
 								Akses khusus Prajuru Desa Adat dan Petugas Lapangan (Pecalang & Kebersihan).
 							</p>
 						</div>
@@ -279,11 +290,11 @@ export function LoginPage() {
 						{/* Public Note: Citizens do not need account */}
 						<div
 							style={{
-								background: "#F8FAF8",
-								border: "1px solid rgba(38, 77, 59, 0.12)",
-								borderRadius: 14,
+								background: "#FFFFFF",
+								border: "1px solid var(--color-border)",
+								borderRadius: 4,
 								padding: "12px 14px",
-								fontSize: 12.5,
+								fontSize: "1rem",
 								lineHeight: 1.5,
 								color: "#545B67",
 								display: "flex",
@@ -291,10 +302,10 @@ export function LoginPage() {
 								gap: 10,
 							}}
 						>
-							<Compass size={16} color="#264D3B" style={{ flexShrink: 0, marginTop: 2 }} />
+							<Compass size={16} color="#4D702F" style={{ flexShrink: 0, marginTop: 3 }} />
 							<div>
 								Masyarakat umum tidak perlu masuk untuk melihat peta penutupan jalan dan jadwal acara.{" "}
-								<Link to="/peta" style={{ color: "#264D3B", fontWeight: 600, textDecoration: "none" }}>
+								<Link to="/peta" style={{ color: "#4D702F", fontWeight: 600, textDecoration: "none" }}>
 									Buka Peta Kawasan →
 								</Link>
 							</div>
@@ -303,13 +314,14 @@ export function LoginPage() {
 						{/* Server Error Message */}
 						{serverErrorMessage && (
 							<div
+								role="alert"
 								style={{
-									background: "#FDF2F2",
-									border: "1px solid rgba(158, 42, 43, 0.2)",
-									borderRadius: 12,
+									background: "#FFFFFF",
+									border: "1px solid #B91C1C",
+									borderRadius: 4,
 									padding: "12px 14px",
-									fontSize: 13,
-									color: "#9E2A2B",
+									fontSize: "1rem",
+									color: "#B91C1C",
 									lineHeight: 1.5,
 								}}
 							>
@@ -323,7 +335,7 @@ export function LoginPage() {
 							<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 								<label
 									htmlFor="login-email"
-									style={{ fontSize: 13, fontWeight: 500, color: "#181B20" }}
+									style={{ fontSize: "1rem", fontWeight: 600, color: "#181B20" }}
 								>
 									Alamat Email
 								</label>
@@ -331,16 +343,17 @@ export function LoginPage() {
 									style={{
 										display: "flex",
 										alignItems: "center",
-										background: "#F8FAF8",
+										background: "#FFFFFF",
 										border: fieldErrors.email
-											? "1.5px solid #9E2A2B"
-											: "1px solid rgba(228, 231, 229, 0.9)",
-										borderRadius: 12,
-										padding: "10px 14px",
+											? "1.5px solid #B91C1C"
+											: "1px solid var(--color-border)",
+										borderRadius: 4,
+										minHeight: 48,
+										padding: "0 14px",
 										gap: 10,
 									}}
 								>
-									<Mail size={16} color="#64748B" style={{ flexShrink: 0 }} />
+									<Mail size={16} color="#545B67" style={{ flexShrink: 0 }} />
 									<input
 										id="login-email"
 										type="email"
@@ -356,14 +369,14 @@ export function LoginPage() {
 											outline: "none",
 											background: "transparent",
 											width: "100%",
-											fontSize: 14,
+											fontSize: "1rem",
 											color: "#181B20",
-											fontFamily: "var(--font-family)",
+											fontFamily: "var(--font-sans)",
 										}}
 									/>
 								</div>
 								{fieldErrors.email && (
-									<span style={{ fontSize: 12, color: "#9E2A2B" }}>{fieldErrors.email}</span>
+									<span style={{ fontSize: "0.9375rem", color: "#B91C1C" }}>{fieldErrors.email}</span>
 								)}
 							</div>
 
@@ -371,7 +384,7 @@ export function LoginPage() {
 							<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 								<label
 									htmlFor="login-password"
-									style={{ fontSize: 13, fontWeight: 500, color: "#181B20" }}
+									style={{ fontSize: "1rem", fontWeight: 600, color: "#181B20" }}
 								>
 									Kata Sandi
 								</label>
@@ -379,16 +392,17 @@ export function LoginPage() {
 									style={{
 										display: "flex",
 										alignItems: "center",
-										background: "#F8FAF8",
+										background: "#FFFFFF",
 										border: fieldErrors.password
-											? "1.5px solid #9E2A2B"
-											: "1px solid rgba(228, 231, 229, 0.9)",
-										borderRadius: 12,
-										padding: "10px 14px",
+											? "1.5px solid #B91C1C"
+											: "1px solid var(--color-border)",
+										borderRadius: 4,
+										minHeight: 48,
+										padding: "0 14px",
 										gap: 10,
 									}}
 								>
-									<Lock size={16} color="#64748B" style={{ flexShrink: 0 }} />
+									<Lock size={16} color="#545B67" style={{ flexShrink: 0 }} />
 									<input
 										id="login-password"
 										type={showPassword ? "text" : "password"}
@@ -404,22 +418,30 @@ export function LoginPage() {
 											outline: "none",
 											background: "transparent",
 											width: "100%",
-											fontSize: 14,
+											fontSize: "1rem",
 											color: "#181B20",
-											fontFamily: "var(--font-family)",
+											fontFamily: "var(--font-sans)",
 										}}
 									/>
 									<button
 										type="button"
 										onClick={() => setShowPassword(!showPassword)}
-										style={{ background: "none", border: "none", color: "#64748B", cursor: "pointer", padding: 2 }}
+										style={{
+											background: "none",
+											border: "none",
+											color: "#545B67",
+											cursor: "pointer",
+											padding: 4,
+											display: "inline-flex",
+											alignItems: "center",
+										}}
 										aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}
 									>
 										{showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
 									</button>
 								</div>
 								{fieldErrors.password && (
-									<span style={{ fontSize: 12, color: "#9E2A2B" }}>{fieldErrors.password}</span>
+									<span style={{ fontSize: "0.9375rem", color: "#B91C1C" }}>{fieldErrors.password}</span>
 								)}
 							</div>
 
@@ -427,22 +449,12 @@ export function LoginPage() {
 							<button
 								type="submit"
 								disabled={signInMutation.isPending}
+								className="ui-button ui-button-primary"
 								style={{
-									marginTop: 6,
-									background: "#264D3B",
-									color: "#FFFFFF",
-									border: "none",
-									borderRadius: 9999,
-									padding: "12px 20px",
-									fontSize: 14,
-									fontWeight: 500,
-									display: "flex",
-									alignItems: "center",
-									justifyContent: "center",
+									marginTop: 4,
 									gap: 8,
 									cursor: signInMutation.isPending ? "not-allowed" : "pointer",
 									opacity: signInMutation.isPending ? 0.75 : 1,
-									transition: "all var(--transition-fast)",
 								}}
 							>
 								<KeyRound size={16} />
@@ -450,23 +462,23 @@ export function LoginPage() {
 							</button>
 						</form>
 
-						{/* Register & Onboarding Links per message (2).txt */}
+						{/* Register & Onboarding Links */}
 						<div
 							style={{
 								paddingTop: 16,
-								borderTop: "1px solid #F1F2F4",
+								borderTop: "1px solid var(--color-border)",
 								display: "flex",
 								flexDirection: "column",
-								gap: 12,
+								gap: 10,
 								textAlign: "center",
 							}}
 						>
-							<div style={{ fontSize: 13.5, color: "#545B67" }}>
+							<div style={{ fontSize: "1rem", color: "#545B67" }}>
 								Belum memiliki akun petugas?{" "}
 								<Link
 									to="/register"
 									style={{
-										color: "#264D3B",
+										color: "#4D702F",
 										fontWeight: 600,
 										textDecoration: "none",
 									}}
@@ -475,7 +487,7 @@ export function LoginPage() {
 								</Link>
 							</div>
 
-							<div style={{ fontSize: 12.5, color: "#71717A" }}>
+							<div style={{ fontSize: "0.9375rem", color: "#545B67" }}>
 								Menerima tautan undangan dari panitia? Buka tautan langsung untuk bergabung.
 							</div>
 						</div>

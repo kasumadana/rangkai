@@ -57,6 +57,48 @@
       "when": 1794210000000,
       "tag": "0007_fine_quarantine",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794410454915,
+      "tag": "0008_event_venue_location",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794488774401,
+      "tag": "0009_moaning_kabuki",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794488790411,
+      "tag": "0010_wonderful_ricochet",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794492698411,
+      "tag": "0011_activation-invitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794493792296,
+      "tag": "0012_dazzling_cerise",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794494699501,
+      "tag": "0013_sticky_doorman",
+      "breakpoints": true
     }
   ]
 }

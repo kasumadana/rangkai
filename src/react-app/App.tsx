@@ -1,21 +1,23 @@
-import { LinkProvider } from "@astryxdesign/core/Link";
-import { ToastViewport } from "@astryxdesign/core/Toast";
-import { Theme } from "@astryxdesign/core/theme";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router";
-import { defaultThemeSlug, themes } from "../astryx-themes";
+import { useLayoutEffect, useState } from "react";
+import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider, useLocation } from "react-router";
 import {
 	PublicShellLayout,
-	RouterLinkBridge,
 	WorkspaceShellLayout,
 } from "./components/layout/AppShellLayout";
 import { createAppQueryClient } from "./lib/query-client";
 import { EventWizardPage } from "./pages/EventWizardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { AdminOrganizationsPage } from "./pages/AdminOrganizationsPage";
+import { AdminUsersPage } from "./pages/AdminUsersPage";
+import { AdminReviewersPage } from "./pages/AdminReviewersPage";
+import { ReviewerQueuePage } from "./pages/ReviewerQueuePage";
+import { ActivationPage } from "./pages/ActivationPage";
+import { AdminTerritoriesPage } from "./pages/AdminTerritoriesPage";
 import { OrganizationOnboardingPage } from "./pages/OrganizationOnboardingPage";
 import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
+import { OrganizerOverviewPage } from "./pages/OrganizerOverviewPage";
 import { OrganizerDashboardPage } from "./pages/OrganizerDashboardPage";
 import { FieldTaskListPage } from "./pages/FieldTaskListPage";
 import {
@@ -26,17 +28,24 @@ import {
 	WorkflowRouteShellPage,
 } from "./pages/RouteViews";
 import { SettingsPage } from "./pages/SettingsPage";
-import { UiSystemCatalogPage } from "./pages/UiSystemCatalogPage";
+import { AssistantWidget } from "./features/assistant/AssistantWidget";
+import { PublicAssistantPage } from "./pages/PublicAssistantPage";
+import { RequireSession } from "./components/layout/RequireSession";
 
-export function App() {
-	const [queryClient] = useState(() => createAppQueryClient());
+function RouteScrollReset() {
+	const { pathname, hash } = useLocation();
+	useLayoutEffect(() => {
+		if (!hash) window.scrollTo(0, 0);
+	}, [pathname, hash]);
+	return null;
+}
 
-	return (
-		<Theme theme={themes[defaultThemeSlug]} mode="light">
-			<LinkProvider component={RouterLinkBridge}>
-				<QueryClientProvider client={queryClient}>
-					<BrowserRouter>
-						<Routes>
+function RootLayout() {
+	return <><RouteScrollReset /><AssistantWidget /><Outlet /></>;
+}
+
+const router = createBrowserRouter(createRoutesFromElements(
+	<Route element={<RootLayout />}>
 							{/* Public Information Architecture */}
 							<Route element={<PublicShellLayout />}>
 								<Route path="/" element={<PublicHomePage />} />
@@ -46,6 +55,7 @@ export function App() {
 									element={<Navigate to="/events" replace />}
 								/>
 								<Route path="/events" element={<PublicEventsListPage />} />
+								<Route path="/tanya" element={<PublicAssistantPage />} />
 								<Route
 									path="/events/:slug"
 									element={<PublicEventDetailPage />}
@@ -56,21 +66,26 @@ export function App() {
 								/>
 								<Route path="/login" element={<LoginPage />} />
 								<Route path="/register" element={<RegisterPage />} />
-								<Route
-									path="/onboarding/organization"
-									element={<OrganizationOnboardingPage />}
-								/>
-								<Route
+								<Route element={<RequireSession />}>
+									<Route path="/onboarding/organization" element={<OrganizationOnboardingPage />} />
+								</Route>
+								<Route path="/onboarding/status" element={<OrganizationOnboardingPage />} />
+								<Route path="/admin/organizations" element={<AdminOrganizationsPage />} />
+								<Route path="/admin/users" element={<AdminUsersPage />} />
+								<Route path="/admin/reviewers" element={<AdminReviewersPage />} />
+								<Route path="/reviewer/road-requests" element={<ReviewerQueuePage />} />
+								<Route path="/admin/territories" element={<AdminTerritoriesPage />} />
+								<Route path="/activate/:token" element={<ActivationPage />} />								<Route
 									path="/invite/:token"
 									element={<AcceptInvitationPage />}
 								/>
 							</Route>
 
 							{/* Authenticated Organizer & Field Officer Workspace */}
-							<Route element={<WorkspaceShellLayout />}>
+							<Route element={<RequireSession />}><Route element={<WorkspaceShellLayout />}>
 								<Route
 									path="/dashboard"
-									element={<OrganizerDashboardPage />}
+									element={<OrganizerOverviewPage />}
 								/>
 								<Route
 									path="/dashboard/events"
@@ -158,17 +173,16 @@ export function App() {
 									<Route key={path} path={path} element={<WorkflowRouteShellPage stepCode="Tugas Lapangan" title="Tugas Lapangan" subtitle="Perbarui tugas yang ditugaskan kepada Anda." requirementRef="Petugas Lapangan" />} />
 								))}
 								<Route path="/settings" element={<SettingsPage />} />
-								<Route path="/ui-system" element={<UiSystemCatalogPage />} />
-							</Route>
+								<Route path="/ui-system" element={<Navigate to="/events" replace />} />
+							</Route></Route>
 
 							<Route path="*" element={<Navigate to="/" replace />} />
-						</Routes>
-					</BrowserRouter>
-					<ToastViewport position="bottomEnd" />
-				</QueryClientProvider>
-			</LinkProvider>
-		</Theme>
-	);
+	</Route>
+));
+
+export function App() {
+	const [queryClient] = useState(() => createAppQueryClient());
+	return <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>;
 }
 
 export default App;

@@ -27,6 +27,7 @@ export interface DistrictCeremonySummary {
 	windowWita: string;
 	sacredCenterName: string;
 	coordinates: [number, number]; // [lng, lat]
+	hasVenueLocation?: boolean;
 	roadName?: string;
 	detourRoute?: string;
 	isSimulation?: boolean;
@@ -52,14 +53,14 @@ export type BaliDistrictFeatureCollection = GeoJsonFeatureCollection<
 >;
 
 /**
- * 14 Territorial Sub-districts and Regional Zones of Bali
- * Each area has distinct territorial polygon boundaries, individual vibrant colors,
- * and associated cultural ceremonies with exact location coordinates, road corridors, and detour routes.
+ * 14 Territorial Sub-districts and Regional Zones of Bali.
+ * Static ceremonies are empty by default — all ceremony records are populated
+ * strictly from the backend API via `buildDistrictFeaturesFromEvents`.
  */
 export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 	type: "FeatureCollection",
 	features: [
-		// 1. KECAMATAN UBUD (KABUPATEN GIANYAR) — Balinese Terracotta Crimson
+		// 1. KECAMATAN UBUD (KABUPATEN GIANYAR)
 		{
 			type: "Feature",
 			id: "kec-ubud",
@@ -68,41 +69,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kecamatan Ubud",
 				kabupaten: "Kabupaten Gianyar",
 				center: [115.2625, -8.5069],
-				hasCeremony: true,
-				ceremonyCount: 2,
-				borderColor: "#9E2A2B",
+				hasCeremony: false,
+				ceremonyCount: 0,
+				borderColor: "#B91C1C",
 				fillColor: "rgba(158, 42, 43, 0.28)",
 				colorName: "Merah Terakota",
 				description:
 					"Pusat kebudayaan Bali dengan prosesi adat sakral di koridor Jl. Raya Ubud dan Hutan Monyet Padangtegal.",
-				ceremonies: [
-					{
-						id: "desa-adat-ubud",
-						title: "Karya Pujawali & Prosesi Melasti Pura Dalem Ubud",
-						desaAdatName: "Desa Adat Ubud",
-						slug: "pujawali-melasti-desa-adat-ubud",
-						status: "closed",
-						dateLabel: "Sabtu, 14 November 2026",
-						windowWita: "08.00–13.30 WITA",
-						sacredCenterName: "Pura Dalem Ubud",
-						roadName: "Jl. Raya Ubud - Catus Pata",
-						detourRoute: "Jl. Suweta & Jl. Bisma",
-						coordinates: [115.2625, -8.5069],
-					},
-					{
-						id: "desa-adat-padangtegal",
-						title: "Upacara Ngaben Massal & Atma Wedana",
-						desaAdatName: "Desa Adat Padangtegal",
-						slug: "ngaben-massal-desa-adat-padangtegal",
-						status: "intermittent",
-						dateLabel: "Minggu, 15 November 2026",
-						windowWita: "09.00–15.00 WITA",
-						sacredCenterName: "Pura Dalem Padangtegal",
-						roadName: "Jl. Monkey Forest Ubud",
-						detourRoute: "Jl. Raya Pengosekan",
-						coordinates: [115.2605, -8.5186],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -119,7 +93,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 2. KECAMATAN DENPASAR SELATAN / SANUR (KOTA DENPASAR) — Teal Coastal
+		// 2. KECAMATAN DENPASAR SELATAN / SANUR (KOTA DENPASAR)
 		{
 			type: "Feature",
 			id: "kec-denpasar-selatan",
@@ -128,28 +102,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kecamatan Denpasar Selatan",
 				kabupaten: "Kota Denpasar",
 				center: [115.252, -8.695],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#0D9488",
 				fillColor: "rgba(13, 148, 136, 0.28)",
 				colorName: "Toska Pesisir",
 				description:
 					"Kawasan pesisir Sanur tempat prosesi penyucian Melasti Segara menuju Pantai Mertasari.",
-				ceremonies: [
-					{
-						id: "desa-adat-intaran-sanur",
-						title: "Upacara Melasti Segara Sanur Pantai Mertasari",
-						desaAdatName: "Desa Adat Intaran Sanur",
-						slug: "upacara-melasti-segara-sanur-pantai-mertasari",
-						status: "closed",
-						dateLabel: "Selasa, 17 November 2026",
-						windowWita: "06.00–11.30 WITA",
-						sacredCenterName: "Pura Dalem Mimba Sanur",
-						roadName: "Jl. Danau Tamblingan - Pantai Mertasari",
-						detourRoute: "Jl. Bypass Ngurah Rai Sanur",
-						coordinates: [115.258, -8.705],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -166,7 +126,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 3. KECAMATAN KUTA (KABUPATEN BADUNG) — Sunset Coral
+		// 3. KECAMATAN KUTA (KABUPATEN BADUNG)
 		{
 			type: "Feature",
 			id: "kec-kuta",
@@ -175,28 +135,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kecamatan Kuta",
 				kabupaten: "Kabupaten Badung",
 				center: [115.1746, -8.7224],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#EA580C",
 				fillColor: "rgba(234, 88, 12, 0.28)",
 				colorName: "Koral Jingga",
 				description:
 					"Kawasan pariwisata utama dengan pawai Ogoh-Ogoh dan ritual Tawur Kesanga di Catus Pata Kuta.",
-				ceremonies: [
-					{
-						id: "desa-adat-kuta",
-						title: "Tawur Kesanga & Pawai Ogoh-Ogoh Desa Adat Kuta",
-						desaAdatName: "Desa Adat Kuta",
-						slug: "tawur-kesanga-pawai-ogoh-ogoh-kuta",
-						status: "closed",
-						dateLabel: "Rabu, 18 November 2026",
-						windowWita: "16.00–23.30 WITA",
-						sacredCenterName: "Pura Desa & Puseh Kuta",
-						roadName: "Jl. Pantai Kuta & Jl. Bakung Sari",
-						detourRoute: "Jl. Raya Kuta - Jl. Majapahit",
-						coordinates: [115.1746, -8.7224],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -213,7 +159,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 4. KECAMATAN BATURITI (KABUPATEN TABANAN) — Highland Forest Emerald
+		// 4. KECAMATAN BATURITI (KABUPATEN TABANAN)
 		{
 			type: "Feature",
 			id: "kec-baturiti",
@@ -222,28 +168,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kecamatan Baturiti",
 				kabupaten: "Kabupaten Tabanan",
 				center: [115.175, -8.285],
-				hasCeremony: true,
-				ceremonyCount: 1,
-				borderColor: "#059669",
-				fillColor: "rgba(5, 150, 105, 0.28)",
+				hasCeremony: false,
+				ceremonyCount: 0,
+				borderColor: "#4D702F",
+				fillColor: "rgba(92, 132, 55, 0.28)",
 				colorName: "Zamrud Pegunungan",
 				description:
 					"Kawasan dataran tinggi Bedugul dengan ritual Piodalan Danu Beratan & Labuh Gentuh.",
-				ceremonies: [
-					{
-						id: "desa-adat-baturiti",
-						title: "Piodalan Danu Beratan & Labuh Gentuh Danau Beratan",
-						desaAdatName: "Desa Adat Baturiti",
-						slug: "piodalan-danu-beratan-desa-adat-baturiti",
-						status: "intermittent",
-						dateLabel: "Kamis, 19 November 2026",
-						windowWita: "08.00–14.00 WITA",
-						sacredCenterName: "Pura Ulun Danu Beratan",
-						roadName: "Jl. Raya Denpasar-Singaraja Km 52",
-						detourRoute: "Jalur Alternatif Lingkar Danau",
-						coordinates: [115.1667, -8.275],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -259,7 +191,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 5. KECAMATAN RENDANG (KABUPATEN KARANGASEM) — Royal Besakih Fuchsia
+		// 5. KECAMATAN RENDANG (KABUPATEN KARANGASEM)
 		{
 			type: "Feature",
 			id: "kec-rendang",
@@ -268,28 +200,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kecamatan Rendang",
 				kabupaten: "Kabupaten Karangasem",
 				center: [115.445, -8.385],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#C026D3",
 				fillColor: "rgba(192, 38, 211, 0.28)",
 				colorName: "Ungu Sakral",
 				description:
 					"Lereng Gunung Agung tempat berdirinya Pura Agung Besakih dengan karya tahunan Ida Bhatara Turun Kabeh.",
-				ceremonies: [
-					{
-						id: "desa-adat-besakih",
-						title: "Karya Ida Bhatara Turun Kabeh Pura Agung Besakih",
-						desaAdatName: "Desa Adat Besakih",
-						slug: "karya-ida-bhatara-turun-kabeh-besakih",
-						status: "closed",
-						dateLabel: "Jumat, 20 November 2026",
-						windowWita: "07.00–18.00 WITA",
-						sacredCenterName: "Pura Penataran Agung Besakih",
-						roadName: "Jl. Raya Besakih - Manik Sawangan",
-						detourRoute: "Jalur Kedundung - Batusesa",
-						coordinates: [115.4508, -8.3739],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -305,7 +223,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 6. KECAMATAN SUKAWATI & BLAHBATUH (GIANYAR SELATAN) — Warm Amber Gold
+		// 6. KECAMATAN SUKAWATI & BLAHBATUH (GIANYAR SELATAN)
 		{
 			type: "Feature",
 			id: "kec-sukawati",
@@ -314,28 +232,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kecamatan Sukawati & Blahbatuh",
 				kabupaten: "Kabupaten Gianyar",
 				center: [115.285, -8.585],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#D97706",
 				fillColor: "rgba(217, 119, 6, 0.28)",
 				colorName: "Kuning Kunyit",
 				description:
 					"Kawasan penyangga jalur seni & budaya pesisir selatan Gianyar penghubung Denpasar dan Ubud.",
-				ceremonies: [
-					{
-						id: "desa-adat-batuan",
-						title: "Pujawali & Sasih Kapat Pura Puseh Batuan",
-						desaAdatName: "Desa Adat Batuan",
-						slug: "pujawali-pura-puseh-batuan",
-						status: "intermittent",
-						dateLabel: "Senin, 16 November 2026",
-						windowWita: "08.30–14.00 WITA",
-						sacredCenterName: "Pura Puseh Batuan Sukawati",
-						roadName: "Jl. Raya Batuan - Simpang Seni Sukawati",
-						detourRoute: "Jl. Bypass Ida Bagus Mantra",
-						coordinates: [115.275, -8.583],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -351,7 +255,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 7. KECAMATAN MENGWI & ABIANSEMAL (BADUNG TENGAH) — Vibrant Tangerine
+		// 7. KECAMATAN MENGWI & ABIANSEMAL (BADUNG TENGAH)
 		{
 			type: "Feature",
 			id: "kec-mengwi",
@@ -360,28 +264,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kecamatan Mengwi & Abiansemal",
 				kabupaten: "Kabupaten Badung",
 				center: [115.175, -8.54],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#F97316",
 				fillColor: "rgba(249, 115, 22, 0.28)",
 				colorName: "Oranye Badung",
 				description:
 					"Kawasan penyangga utama penghubung Badung Tengah, Tabanan, dan koridor barat menuju Ubud.",
-				ceremonies: [
-					{
-						id: "desa-adat-mengwi",
-						title: "Piodalan Agung Pura Ayun & Taman Kerajaan Mengwi",
-						desaAdatName: "Desa Adat Mengwi",
-						slug: "piodalan-pura-taman-ayun-mengwi",
-						status: "intermittent",
-						dateLabel: "Rabu, 18 November 2026",
-						windowWita: "09.00–16.00 WITA",
-						sacredCenterName: "Pura Taman Ayun Mengwi",
-						roadName: "Jl. I Gusti Ngurah Rai Mengwi",
-						detourRoute: "Jalur Bypass Mengwitani - Beringkit",
-						coordinates: [115.172, -8.543],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -398,7 +288,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 8. KECAMATAN KUTA SELATAN (SEMENANJUNG BUKIT BADUNG) — Deep Indigo
+		// 8. KECAMATAN KUTA SELATAN (SEMENANJUNG BUKIT BADUNG)
 		{
 			type: "Feature",
 			id: "kec-kuta-selatan",
@@ -407,28 +297,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kecamatan Kuta Selatan",
 				kabupaten: "Kabupaten Badung",
 				center: [115.165, -8.81],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#4F46E5",
 				fillColor: "rgba(79, 70, 229, 0.28)",
 				colorName: "Nila Samudera",
 				description:
 					"Kawasan perbukitan dan tebing pesisir Jimbaran, Nusa Dua, dan Pura Luhur Uluwatu di semenanjung selatan.",
-				ceremonies: [
-					{
-						id: "desa-adat-pecatu",
-						title: "Piodalan Pujawali Pura Luhur Uluwatu Pecatu",
-						desaAdatName: "Desa Adat Pecatu",
-						slug: "piodalan-pura-luhur-uluwatu",
-						status: "closed",
-						dateLabel: "Selasa, 17 November 2026",
-						windowWita: "14.00–21.00 WITA",
-						sacredCenterName: "Pura Luhur Uluwatu",
-						roadName: "Jl. Raya Uluwatu Pecatu",
-						detourRoute: "Jalur Lingkar Labuan Sait - Padang Padang",
-						coordinates: [115.084, -8.829],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -446,7 +322,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 9. KOTA DENPASAR UTARA, BARAT & TIMUR — Cerulean Blue
+		// 9. KOTA DENPASAR UTARA, BARAT & TIMUR
 		{
 			type: "Feature",
 			id: "kec-denpasar-kota",
@@ -455,28 +331,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Denpasar Utara, Barat & Timur",
 				kabupaten: "Kota Denpasar",
 				center: [115.225, -8.635],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#0284C7",
 				fillColor: "rgba(2, 132, 199, 0.28)",
 				colorName: "Biru Ibukota",
 				description:
 					"Pusat pemerintahan dan perniagaan Kota Denpasar meliputi Lapangan Puputan dan koridor Catur Muka.",
-				ceremonies: [
-					{
-						id: "desa-adat-denpasar-caturmuka",
-						title: "Prosesi Tawur Kasanga & Pengelukatan Catur Muka",
-						desaAdatName: "Desa Adat Denpasar",
-						slug: "upacara-melasti-segara-sanur-pantai-mertasari",
-						status: "intermittent",
-						dateLabel: "Selasa, 17 November 2026",
-						windowWita: "07.00–12.00 WITA",
-						sacredCenterName: "Catur Muka & Pura Jagatnatha",
-						roadName: "Jl. Surapati & Titik Nol Catur Muka",
-						detourRoute: "Jl. Udayana & Jl. Veteran Denpasar",
-						coordinates: [115.2185, -8.6575],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -492,7 +354,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 10. KABUPATEN TABANAN SELATAN & KEDIRI — Forest Grass
+		// 10. KABUPATEN TABANAN SELATAN & KEDIRI
 		{
 			type: "Feature",
 			id: "kab-tabanan-selatan",
@@ -501,28 +363,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Tabanan Selatan & Kediri",
 				kabupaten: "Kabupaten Tabanan",
 				center: [115.115, -8.555],
-				hasCeremony: true,
-				ceremonyCount: 1,
-				borderColor: "#16A34A",
-				fillColor: "rgba(22, 163, 74, 0.28)",
+				hasCeremony: false,
+				ceremonyCount: 0,
+				borderColor: "#4D702F",
+				fillColor: "rgba(92, 132, 55, 0.28)",
 				colorName: "Hijau Lumbung",
 				description:
 					"Lumbung beras Bali dengan persawahan subak abadi dan pesisir Pura Tanah Lot.",
-				ceremonies: [
-					{
-						id: "desa-adat-beraban",
-						title: "Pujawali Luhur Pura Tanah Lot Beraban",
-						desaAdatName: "Desa Adat Beraban",
-						slug: "pujawali-pura-tanah-lot-beraban",
-						status: "intermittent",
-						dateLabel: "Rabu, 18 November 2026",
-						windowWita: "10.00–18.00 WITA",
-						sacredCenterName: "Pura Luhur Tanah Lot",
-						roadName: "Jl. Raya Tanah Lot Beraban Kediri",
-						detourRoute: "Jalur Nyanyi - Pandak Bandung",
-						coordinates: [115.0864, -8.6212],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -538,7 +386,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 11. KABUPATEN BANGLI & KINTAMANI — Volcanic Purple
+		// 11. KABUPATEN BANGLI & KINTAMANI
 		{
 			type: "Feature",
 			id: "kab-bangli-kintamani",
@@ -547,28 +395,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kawasan Bangli & Kintamani",
 				kabupaten: "Kabupaten Bangli",
 				center: [115.345, -8.31],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#7C3AED",
 				fillColor: "rgba(124, 58, 237, 0.28)",
 				colorName: "Ungu Kaldera",
 				description:
 					"Kawasan dataran tinggi Gunung & Danau Batur serta Pura Ulun Danu Batur di kaldera Kintamani.",
-				ceremonies: [
-					{
-						id: "desa-adat-batur",
-						title: "Pujawali Ngusaba Kedasa Pura Ulun Danu Batur",
-						desaAdatName: "Desa Adat Batur",
-						slug: "ngusaba-kedasa-pura-ulun-danu-batur",
-						status: "closed",
-						dateLabel: "Sabtu, 21 November 2026",
-						windowWita: "07.00–17.00 WITA",
-						sacredCenterName: "Pura Ulun Danu Batur Kaldera",
-						roadName: "Jl. Raya Kintamani - Penelokan",
-						detourRoute: "Jalur Manikliyu - Sekardadi",
-						coordinates: [115.353, -8.256],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -584,7 +418,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 12. KABUPATEN KLUNGKUNG & NUSA PENIDA — Ocean Cyan
+		// 12. KABUPATEN KLUNGKUNG & NUSA PENIDA
 		{
 			type: "Feature",
 			id: "kab-klungkung",
@@ -593,28 +427,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kabupaten Klungkung & Nusa Penida",
 				kabupaten: "Kabupaten Klungkung",
 				center: [115.415, -8.545],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#0891B2",
 				fillColor: "rgba(8, 145, 178, 0.28)",
 				colorName: "Sian Selat",
 				description:
 					"Kota pusaka Kertagosa, pesisir Kusamba, serta gugusan kepulauan sakral Nusa Penida.",
-				ceremonies: [
-					{
-						id: "desa-adat-pesinggahan",
-						title: "Piodalan Agung Pura Goa Lawah & Segara Kusamba",
-						desaAdatName: "Desa Adat Pesinggahan",
-						slug: "piodalan-pura-goa-lawah-klungkung",
-						status: "intermittent",
-						dateLabel: "Kamis, 19 November 2026",
-						windowWita: "08.00–14.30 WITA",
-						sacredCenterName: "Pura Goa Lawah",
-						roadName: "Jl. Raya Pesinggahan - Kusamba",
-						detourRoute: "Jl. Bypass Ida Bagus Mantra Klungkung",
-						coordinates: [115.467, -8.551],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -630,7 +450,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 13. KABUPATEN BULELENG (BALI UTARA) — Bronze Gold
+		// 13. KABUPATEN BULELENG (BALI UTARA)
 		{
 			type: "Feature",
 			id: "kab-buleleng",
@@ -639,28 +459,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kabupaten Buleleng (Singaraja)",
 				kabupaten: "Kabupaten Buleleng",
 				center: [115.08, -8.15],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#CA8A04",
 				fillColor: "rgba(202, 138, 4, 0.28)",
 				colorName: "Perunggu Utara",
 				description:
 					"Pesisir panjang Bali Utara membentang dari Lovina hingga Tejakula berhadapan langsung dengan Laut Bali.",
-				ceremonies: [
-					{
-						id: "desa-adat-kubutambahan",
-						title: "Pujawali Agung Pura Meduwe Karang",
-						desaAdatName: "Desa Adat Kubutambahan",
-						slug: "pujawali-pura-meduwe-karang-buleleng",
-						status: "intermittent",
-						dateLabel: "Jumat, 20 November 2026",
-						windowWita: "09.00–15.00 WITA",
-						sacredCenterName: "Pura Meduwe Karang",
-						roadName: "Jl. Raya Kubutambahan Singaraja",
-						detourRoute: "Jalur Alternatif Lingkar Pantai Utara",
-						coordinates: [115.176, -8.081],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",
@@ -676,7 +482,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 			},
 		},
 
-		// 14. KABUPATEN JEMBRANA (BALI BARAT) — Lime Chartreuse
+		// 14. KABUPATEN JEMBRANA (BALI BARAT)
 		{
 			type: "Feature",
 			id: "kab-jembrana",
@@ -685,28 +491,14 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				name: "Kabupaten Jembrana (Bali Barat)",
 				kabupaten: "Kabupaten Jembrana",
 				center: [114.65, -8.32],
-				hasCeremony: true,
-				ceremonyCount: 1,
+				hasCeremony: false,
+				ceremonyCount: 0,
 				borderColor: "#65A30D",
 				fillColor: "rgba(101, 163, 13, 0.28)",
 				colorName: "Hijau Barat",
 				description:
 					"Pintu gerbang barat Pulau Bali meliputi pelabuhan Gilimanuk, Negara, dan kawasan Hutan Lindung Bali Barat.",
-				ceremonies: [
-					{
-						id: "desa-adat-yehembang",
-						title: "Pujawali Piodalan Pura Luhur Rambut Siwi",
-						desaAdatName: "Desa Adat Yeh Embang",
-						slug: "pujawali-pura-rambut-siwi-jembrana",
-						status: "intermittent",
-						dateLabel: "Minggu, 22 November 2026",
-						windowWita: "08.00–16.00 WITA",
-						sacredCenterName: "Pura Luhur Rambut Siwi",
-						roadName: "Jl. Raya Denpasar-Gilimanuk Km 82",
-						detourRoute: "Jalur Lingkar Pesisir Yeh Embang Kangin",
-						coordinates: [114.764, -8.405],
-					},
-				],
+				ceremonies: [],
 			},
 			geometry: {
 				type: "Polygon",

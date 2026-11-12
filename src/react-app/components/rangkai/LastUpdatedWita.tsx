@@ -1,13 +1,6 @@
-import { Icon } from "@astryxdesign/core/Icon";
-import { HStack } from "@astryxdesign/core/Stack";
-import { Text } from "@astryxdesign/core/Text";
-import { Timestamp } from "@astryxdesign/core/Timestamp";
-import {
-	WITA_TIMEZONE,
-	formatRelativeAgeId,
-	formatWitaDateTime,
-	parseDate,
-} from "../../lib/wita";
+import { Clock } from "lucide-react";
+import { useState } from "react";
+import { formatRelativeAgeId, formatWitaDateTime, parseDate } from "../../lib/wita";
 
 export interface LastUpdatedWitaProps {
 	timestamp: string | number | Date | null | undefined;
@@ -15,54 +8,22 @@ export interface LastUpdatedWitaProps {
 	showRelative?: boolean;
 }
 
-/**
- * Displays an authoritative UTC timestamp formatted in Asia/Makassar (WITA)
- * alongside Astryx `Timestamp` for hover multi-timezone verification (SRS FR-016, FR-039, NFR-015).
- */
-export function LastUpdatedWita({
-	timestamp,
-	labelPrefix = "Pembaruan terakhir",
-	showRelative = true,
-}: LastUpdatedWitaProps) {
+export function LastUpdatedWita({ timestamp, labelPrefix = "Pembaruan terakhir", showRelative = true }: LastUpdatedWitaProps) {
+	const [copyMessage, setCopyMessage] = useState("");
 	const parsed = parseDate(timestamp);
-	if (!parsed) {
-		return (
-			<HStack gap={1.5} vAlign="center">
-				<Icon icon="clock" size="xsm" color="secondary" />
-				<Text size="xsm" color="secondary">
-					{labelPrefix}: Belum ada catatan waktu
-				</Text>
-			</HStack>
-		);
+	if (!parsed) return <p className="inline-flex items-center gap-1.5 text-xs text-stone-600"><Clock size={14} aria-hidden="true" />{labelPrefix}: Belum ada catatan waktu</p>;
+	const wita = formatWitaDateTime(parsed);
+	const utc = parsed.toISOString();
+	async function copy(value: string) {
+		try { await navigator.clipboard.writeText(value); setCopyMessage("Waktu disalin."); }
+		catch { setCopyMessage("Tidak dapat menyalin. Pilih dan salin waktu secara manual."); }
 	}
-
-	const formatted = formatWitaDateTime(parsed);
-	const relative = formatRelativeAgeId(parsed);
-
-	return (
-		<HStack gap={1.5} vAlign="center" wrap="wrap">
-			<Icon icon="clock" size="xsm" color="secondary" />
-			<Text size="xsm" color="secondary">
-				{labelPrefix}: {formatted}
-				{showRelative ? ` (${relative})` : null}
-			</Text>
-			<Timestamp
-				value={parsed.toISOString()}
-				format="relative_short"
-				size="xsm"
-				tooltipEntries={[
-					{
-						timezoneID: WITA_TIMEZONE,
-						label: "WITA (Bali)",
-						isCopyable: true,
-					},
-					{
-						timezoneID: "UTC",
-						label: "UTC (Server)",
-						isCopyable: true,
-					},
-				]}
-			/>
-		</HStack>
-	);
+	return <div className="text-xs text-stone-600">
+		<p className="inline-flex flex-wrap items-center gap-1.5"><Clock size={14} aria-hidden="true" />{labelPrefix}: <time dateTime={utc}>{wita}</time>{showRelative ? ` (${formatRelativeAgeId(parsed)})` : null}</p>
+		<details className="mt-1"><summary className="cursor-pointer">Lihat zona waktu</summary>
+			<p>WITA: {wita} <button type="button" className="underline" onClick={() => void copy(wita)}>Salin WITA</button></p>
+			<p>UTC: <time dateTime={utc}>{utc}</time> <button type="button" className="underline" onClick={() => void copy(utc)}>Salin UTC</button></p>
+			<p role="status">{copyMessage}</p>
+		</details>
+	</div>;
 }

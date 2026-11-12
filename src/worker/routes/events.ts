@@ -38,6 +38,7 @@ function mapEventRow(row: Record<string, unknown>) {
 		category: (row.category ?? null) as string | null,
 		description: (row.description ?? null) as string | null,
 		venueName: (row.venueName ?? null) as string | null,
+		venueLocation: row.venueLocation ?? null,
 		startsAt: row.startsAt ? new Date(row.startsAt as string) : null,
 		endsAt: row.endsAt ? new Date(row.endsAt as string) : null,
 		status: row.status as string,
@@ -180,14 +181,26 @@ eventsRouter.post("/", async (c) => {
 		WITH inserted AS (
 			INSERT INTO events (
 				id, organization_id, created_by, title, category, description,
-				venue_name, starts_at, ends_at, permit_reference, status, is_simulation, created_at, updated_at
+				venue_name, venue_location, starts_at, ends_at, permit_reference, status, is_simulation, created_at, updated_at
 			)
 			VALUES (
 				${eventId}, ${data.organizationId}, ${currentUser.id}, ${data.title},
-				${data.category ?? null}, ${data.description ?? null}, ${data.venueName ?? null},
+				${data.category ?? null}, ${data.description ?? null}, ${data.venueName ?? null}, ${data.venueLocation ? sql`ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(data.venueLocation)}), 4326)` : sql`NULL`},
 				${startsAtDate}, ${endsAtDate}, ${data.permitReference ?? null}, 'draft', ${isSimulation}, ${now}, ${now}
 			)
 			RETURNING *
+		),
+		stale_reviews AS (
+			UPDATE road_review_requests q SET status='superseded',reason='Event time or simulation mode changed after reviewer submission.'
+			FROM inserted e
+			WHERE q.event_id=e.id AND q.status IN ('pending','approved')
+				AND (q.event_starts_at IS DISTINCT FROM e.starts_at OR q.event_ends_at IS DISTINCT FROM e.ends_at OR q.is_simulation IS DISTINCT FROM e.is_simulation)
+			RETURNING q.id
+		),
+		stale_review_audit AS (
+			INSERT INTO platform_audit(actor_id,action,entity_type,entity_id,reason,request_id)
+			SELECT ${currentUser.id},'road_review.superseded','road_review_request',id::text,'Event time or simulation mode changed after reviewer submission.',${c.get("requestId")}
+			FROM stale_reviews RETURNING id
 		),
 		logged AS (
 			INSERT INTO audit_logs (
@@ -199,6 +212,7 @@ eventsRouter.post("/", async (c) => {
 					'title', title,
 					'status', status,
 					'isSimulation', is_simulation,
+					'venueLocation', ST_AsGeoJSON(venue_location)::json,
 					'startsAt', starts_at,
 					'endsAt', ends_at
 				),
@@ -214,6 +228,7 @@ eventsRouter.post("/", async (c) => {
 			category,
 			description,
 			venue_name AS "venueName",
+			ST_AsGeoJSON(venue_location)::json AS "venueLocation",
 			starts_at AS "startsAt",
 			ends_at AS "endsAt",
 			status,
@@ -408,12 +423,14 @@ eventsRouter.get("/:eventId", async (c) => {
 		);
 	}
 
+	const venueRows = await db.select({ venueLocation: sql<unknown>`ST_AsGeoJSON(${events.venueLocation})::json` }).from(events).where(eq(events.id, eventId)).limit(1);
+	const venueLocation = venueRows[0]?.venueLocation ?? null;
 	if (!accessResult.isOrganizer) {
 		const officerSafe = { ...accessResult.event };
 		delete (officerSafe as { contactInformation?: unknown }).contactInformation;
-		return c.json({ event: officerSafe }, 200);
+		return c.json({ event: { ...officerSafe, venueLocation } }, 200);
 	}
-	return c.json({ event: accessResult.event }, 200);
+	return c.json({ event: { ...accessResult.event, venueLocation } }, 200);
 });
 
 // PATCH /api/events/:eventId - Edit event details (Organizer only)
@@ -475,6 +492,8 @@ eventsRouter.patch("/:eventId", async (c) => {
 	}
 
 	const data = parseResult.data;
+	const venueRows = await c.get("db").select({ venueLocation: sql<unknown>`ST_AsGeoJSON(${events.venueLocation})::json` }).from(events).where(eq(events.id, eventId)).limit(1);
+	const previousVenue = venueRows[0]?.venueLocation ?? null;
 
 	const startsAtDate =
 		data.startsAt !== undefined
@@ -511,6 +530,7 @@ eventsRouter.patch("/:eventId", async (c) => {
 			(data.category !== undefined && data.category !== existingEvent.category) ||
 			(data.description !== undefined && data.description !== existingEvent.description) ||
 			(data.venueName !== undefined && data.venueName !== existingEvent.venueName) ||
+			(data.venueLocation !== undefined && JSON.stringify(data.venueLocation) !== JSON.stringify(previousVenue)) ||
 			(data.permitReference !== undefined && data.permitReference !== existingEvent.permitReference) ||
 			(data.startsAt !== undefined && startsAtDate?.getTime() !== existingEvent.startsAt?.getTime()) ||
 			(data.endsAt !== undefined && endsAtDate?.getTime() !== existingEvent.endsAt?.getTime());
@@ -555,6 +575,7 @@ eventsRouter.patch("/:eventId", async (c) => {
 				category = ${data.category !== undefined ? newCategory : existingEvent.category},
 				description = ${data.description !== undefined ? newDescription : existingEvent.description},
 				venue_name = ${data.venueName !== undefined ? newVenueName : existingEvent.venueName},
+				venue_location = ${data.venueLocation === undefined ? sql`venue_location` : data.venueLocation === null ? sql`NULL` : sql`ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(data.venueLocation)}), 4326)`},
 				starts_at = ${data.startsAt !== undefined ? startsAtDate : existingEvent.startsAt},
 				ends_at = ${data.endsAt !== undefined ? endsAtDate : existingEvent.endsAt},
 				permit_reference = ${data.permitReference !== undefined ? newPermitReference : existingEvent.permitReference},
@@ -571,10 +592,23 @@ eventsRouter.patch("/:eventId", async (c) => {
 				AND category IS NOT DISTINCT FROM ${existingEvent.category}
 				AND description IS NOT DISTINCT FROM ${existingEvent.description}
 				AND venue_name IS NOT DISTINCT FROM ${existingEvent.venueName}
+				AND venue_location IS NOT DISTINCT FROM ${existingEvent.venueLocation}::geometry
 				AND (starts_at IS NOT DISTINCT FROM ${existingEvent.startsAt} OR abs(extract(epoch from (starts_at - ${existingEvent.startsAt}::timestamptz))) < 0.005)
 				AND (ends_at IS NOT DISTINCT FROM ${existingEvent.endsAt} OR abs(extract(epoch from (ends_at - ${existingEvent.endsAt}::timestamptz))) < 0.005)
 				AND permit_reference IS NOT DISTINCT FROM ${existingEvent.permitReference}
 			RETURNING *
+		),
+		stale_reviews AS (
+			UPDATE road_review_requests q SET status='superseded',reason='Event time or simulation mode changed after reviewer submission.'
+			FROM updated e
+			WHERE q.event_id=e.id AND q.status IN ('pending','approved')
+				AND (q.event_starts_at IS DISTINCT FROM e.starts_at OR q.event_ends_at IS DISTINCT FROM e.ends_at OR q.is_simulation IS DISTINCT FROM e.is_simulation)
+			RETURNING q.id
+		),
+		stale_review_audit AS (
+			INSERT INTO platform_audit(actor_id,action,entity_type,entity_id,reason,request_id)
+			SELECT ${currentUser.id},'road_review.superseded','road_review_request',id::text,'Event time or simulation mode changed after reviewer submission.',${c.get("requestId")}
+			FROM stale_reviews RETURNING id
 		),
 		logged AS (
 			INSERT INTO audit_logs (
@@ -593,6 +627,7 @@ eventsRouter.patch("/:eventId", async (c) => {
 					category: existingEvent.category,
 					description: existingEvent.description,
 					venueName: existingEvent.venueName,
+					venueLocation: previousVenue,
 					startsAt: existingEvent.startsAt?.toISOString() ?? null,
 					endsAt: existingEvent.endsAt?.toISOString() ?? null,
 					permitReference: existingEvent.permitReference,
@@ -603,6 +638,7 @@ eventsRouter.patch("/:eventId", async (c) => {
 					'category', category,
 					'description', description,
 					'venueName', venue_name,
+					'venueLocation', ST_AsGeoJSON(venue_location)::json,
 					'startsAt', starts_at,
 					'endsAt', ends_at,
 					'permitReference', permit_reference,
@@ -620,6 +656,7 @@ eventsRouter.patch("/:eventId", async (c) => {
 			category,
 			description,
 			venue_name AS "venueName",
+			ST_AsGeoJSON(venue_location)::json AS "venueLocation",
 			starts_at AS "startsAt",
 			ends_at AS "endsAt",
 			status,
@@ -631,6 +668,7 @@ eventsRouter.patch("/:eventId", async (c) => {
 			published_at AS "publishedAt",
 			created_at AS "createdAt",
 			updated_at AS "updatedAt"
+			,(SELECT count(*)::int FROM stale_reviews) AS "invalidatedReviewCount"
 		FROM updated;
 	`;
 
@@ -704,6 +742,7 @@ eventsRouter.post("/:eventId/review", async (c) => {
 				AND category IS NOT DISTINCT FROM ${event.category}
 				AND description IS NOT DISTINCT FROM ${event.description}
 				AND venue_name IS NOT DISTINCT FROM ${event.venueName}
+				AND venue_location IS NOT DISTINCT FROM ${event.venueLocation}::geometry
 				AND (starts_at IS NOT DISTINCT FROM ${event.startsAt} OR abs(extract(epoch from (starts_at - ${event.startsAt}::timestamptz))) < 0.005)
 				AND (ends_at IS NOT DISTINCT FROM ${event.endsAt} OR abs(extract(epoch from (ends_at - ${event.endsAt}::timestamptz))) < 0.005)
 				AND permit_reference IS NOT DISTINCT FROM ${event.permitReference}
@@ -872,7 +911,6 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 			);
 		}
 	}
-
 
 	// 4. Verified road impacts prerequisite: join with road_segments and verify both existence and segment verification
 	const impactRows = await db

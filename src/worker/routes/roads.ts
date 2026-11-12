@@ -296,7 +296,7 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 
 	const query = sql`
 		WITH target_event AS (
-			SELECT e.id, e.organization_id, e.status, e.verified_by
+			SELECT e.id, e.organization_id, e.status, e.verified_by, e.is_simulation
 			FROM events e
 			INNER JOIN memberships m
 				ON m.organization_id = e.organization_id
@@ -305,10 +305,22 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 			WHERE e.id = ${eventId}
 			FOR UPDATE OF e
 		),
-		target_segment AS (
-			SELECT rs.id, rs.display_name, rs.verified_by, rs.verified_at, rs.source_type, rs.quarantined_at
+			target_segment AS (
+			SELECT rs.id, rs.display_name, rs.geom, rs.verified_by, rs.verified_at, rs.source_type, rs.quarantined_at
 			FROM road_segments rs
 			WHERE rs.id = ${data.roadSegmentId}
+		),
+		territory_check AS MATERIALIZED (
+			SELECT
+				(te.is_simulation AND NOT EXISTS (
+					SELECT 1 FROM organization_territory_versions tv
+					WHERE tv.organization_id=te.organization_id AND tv.status='verified'
+				)) OR EXISTS (
+					SELECT 1 FROM (SELECT tv.geom FROM organization_territory_versions tv WHERE tv.organization_id=te.organization_id AND tv.status='verified' ORDER BY tv.version DESC LIMIT 1) current_territory
+					WHERE ST_CoveredBy(ts.geom,current_territory.geom)
+				) AS covered,
+				EXISTS (SELECT 1 FROM organization_territory_versions tv WHERE tv.organization_id=te.organization_id AND tv.status='verified') AS territory_exists
+			FROM target_event te CROSS JOIN target_segment ts
 		),
 		inserted AS (
 			INSERT INTO road_impacts (
@@ -324,7 +336,8 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 				AND ts.verified_at IS NOT NULL
 				AND ts.source_type = 'catalog'
 				AND ts.quarantined_at IS NULL
-			WHERE te.status IN ('draft', 'review')
+			CROSS JOIN territory_check tc
+			WHERE te.status IN ('draft', 'review') AND tc.covered
 			RETURNING *
 		),
 		updated_event AS (
@@ -374,6 +387,8 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 			(SELECT status FROM target_event) AS "eventStatus",
 			(SELECT count(*)::int FROM target_segment) AS "segmentFound",
 			(SELECT (verified_by IS NOT NULL AND verified_at IS NOT NULL AND source_type = 'catalog') FROM target_segment) AS "segmentVerified",
+			(SELECT covered FROM territory_check) AS "territoryCovered",
+			(SELECT territory_exists FROM territory_check) AS "territoryExists",
 			(SELECT row_to_json(r) FROM (
 				SELECT
 					id,
@@ -395,6 +410,8 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 				eventStatus: string | null;
 				segmentFound: number;
 				segmentVerified: boolean | null;
+				territoryCovered: boolean | null;
+				territoryExists: boolean | null;
 				createdImpact: Record<string, unknown> | null;
 		  }
 		| undefined;
@@ -422,6 +439,9 @@ roadsRouter.post("/events/:eventId/road-impacts", async (c) => {
 	}
 
 	if (!row.segmentVerified || !row.createdImpact) {
+		if (row.territoryCovered === false) {
+			return sendError(c, "VALIDATION_FAILED", row.territoryExists ? "Seluruh geometri ruas harus berada di dalam wilayah terverifikasi. Ruas lintas wilayah memerlukan tinjauan manual." : "Organisasi belum memiliki wilayah terverifikasi untuk pengajuan penutupan operasional.", 422);
+		}
 		return sendError(
 			c,
 			"VALIDATION_FAILED",
@@ -486,6 +506,17 @@ roadsRouter.get("/events/:eventId/road-impacts", async (c) => {
 			ri.created_at AS "createdAt",
 			rs.display_name AS "displayName",
 			rs.coverage_area AS "coverageArea",
+			rs.source_type AS "sourceType",
+			(
+				SELECT q.status FROM road_review_requests q
+				WHERE q.road_impact_id = ri.id
+				ORDER BY q.submitted_at DESC LIMIT 1
+			) AS "reviewStatus",
+			(
+				SELECT q.reason FROM road_review_requests q
+				WHERE q.road_impact_id = ri.id
+				ORDER BY q.submitted_at DESC LIMIT 1
+			) AS "reviewReason",
 			ST_AsGeoJSON(rs.geom)::json AS geometry
 		FROM road_impacts ri
 		INNER JOIN road_segments rs ON ri.road_segment_id = rs.id
@@ -536,6 +567,9 @@ roadsRouter.get("/events/:eventId/road-impacts", async (c) => {
 					roadSegmentId: r.roadSegmentId as string,
 					displayName: r.displayName as string,
 					coverageArea: r.coverageArea as string,
+					sourceType: (r.sourceType as string) ?? "catalog",
+					reviewStatus: (r.reviewStatus ?? null) as string | null,
+					reviewReason: (r.reviewReason ?? null) as string | null,
 					plannedFrom: new Date(r.plannedFrom as string).toISOString(),
 					plannedTo: new Date(r.plannedTo as string).toISOString(),
 					impactType: r.impactType as string,
@@ -869,7 +903,8 @@ roadsRouter.patch("/events/:eventId/road-impacts/:impactId", async (c) => {
 				ri.*,
 				e.organization_id,
 				e.status AS event_status,
-				e.verified_by AS event_verified_by
+				e.verified_by AS event_verified_by,
+				e.is_simulation AS event_is_simulation
 			FROM road_impacts ri
 			INNER JOIN events e ON e.id = ri.event_id
 			INNER JOIN memberships m
@@ -895,7 +930,10 @@ roadsRouter.patch("/events/:eventId/road-impacts/:impactId", async (c) => {
 			SELECT
 				m.*,
 				rs.id AS found_segment_id,
+				rs.geom AS segment_geom,
 				(rs.verified_by IS NOT NULL AND rs.verified_at IS NOT NULL) AS is_segment_verified,
+				((m.event_is_simulation AND NOT EXISTS (SELECT 1 FROM organization_territory_versions tv WHERE tv.organization_id=m.organization_id AND tv.status='verified')) OR EXISTS (SELECT 1 FROM (SELECT tv.geom FROM organization_territory_versions tv WHERE tv.organization_id=m.organization_id AND tv.status='verified' ORDER BY tv.version DESC LIMIT 1) current_territory WHERE ST_CoveredBy(rs.geom,current_territory.geom))) AS is_territory_covered,
+				EXISTS (SELECT 1 FROM organization_territory_versions tv WHERE tv.organization_id=m.organization_id AND tv.status='verified') AS territory_exists,
 				(
 					m.next_road_segment_id IS DISTINCT FROM m.road_segment_id OR
 					m.next_planned_from IS DISTINCT FROM m.planned_from OR
@@ -918,8 +956,21 @@ roadsRouter.patch("/events/:eventId/road-impacts/:impactId", async (c) => {
 			WHERE ri.id = vt.id
 				AND vt.found_segment_id IS NOT NULL
 				AND vt.is_segment_verified = true
+				AND vt.is_territory_covered = true
 				AND vt.next_planned_to > vt.next_planned_from
 			RETURNING ri.*
+		),
+		invalidated_reviews AS (
+			UPDATE road_review_requests q SET status='superseded',reason='Road impact changed after reviewer submission.'
+			FROM verified_target vt
+			WHERE q.road_impact_id=vt.id AND vt.is_modified AND q.status IN ('pending','approved')
+				AND EXISTS (SELECT 1 FROM updated_impact ui WHERE ui.id=vt.id)
+			RETURNING q.id
+		),
+		invalidated_review_audit AS (
+			INSERT INTO platform_audit(actor_id,action,entity_type,entity_id,reason,request_id)
+			SELECT ${currentUser.id},'road_review.superseded','road_review_request',id::text,'Road impact changed after reviewer submission.',${c.get("requestId")}
+			FROM invalidated_reviews RETURNING id
 		),
 		updated_event AS (
 			UPDATE events e
@@ -976,6 +1027,9 @@ roadsRouter.patch("/events/:eventId/road-impacts/:impactId", async (c) => {
 			(SELECT event_status FROM current_impact) AS "eventStatus",
 			(SELECT found_segment_id FROM verified_target) AS "foundSegmentId",
 			(SELECT is_segment_verified FROM verified_target) AS "isSegmentVerified",
+			(SELECT is_territory_covered FROM verified_target) AS "isTerritoryCovered",
+			(SELECT territory_exists FROM verified_target) AS "territoryExists",
+			(SELECT count(*)::int FROM invalidated_reviews) AS "invalidatedReviewCount",
 			(SELECT (next_planned_to > next_planned_from) FROM verified_target) AS "datesValid",
 			(SELECT row_to_json(r) FROM (
 				SELECT
@@ -998,6 +1052,8 @@ roadsRouter.patch("/events/:eventId/road-impacts/:impactId", async (c) => {
 				eventStatus: string | null;
 				foundSegmentId: string | null;
 				isSegmentVerified: boolean | null;
+				isTerritoryCovered: boolean | null;
+				territoryExists: boolean | null;
 				datesValid: boolean | null;
 				updatedImpact: Record<string, unknown> | null;
 		  }
@@ -1032,6 +1088,10 @@ roadsRouter.patch("/events/:eventId/road-impacts/:impactId", async (c) => {
 			"Selected road segment has not been verified by a human reviewer.",
 			422,
 		);
+	}
+
+	if (!row.isTerritoryCovered) {
+		return sendError(c, "VALIDATION_FAILED", row.territoryExists ? "Seluruh geometri ruas harus berada di dalam wilayah terverifikasi. Ruas lintas wilayah memerlukan tinjauan manual." : "Organisasi belum memiliki wilayah terverifikasi untuk pengajuan penutupan operasional.", 422);
 	}
 
 	if (!row.datesValid || !row.updatedImpact) {
@@ -1109,6 +1169,8 @@ roadsRouter.delete("/events/:eventId/road-impacts/:impactId", async (c) => {
 				EXISTS (
 					SELECT 1 FROM road_status_updates rsu WHERE rsu.road_impact_id = ri.id
 				) AS has_status_history
+				,
+				EXISTS (SELECT 1 FROM road_review_requests rr WHERE rr.road_impact_id=ri.id) AS has_review_history
 			FROM road_impacts ri
 			INNER JOIN events e ON e.id = ri.event_id
 			INNER JOIN memberships m
@@ -1125,6 +1187,7 @@ roadsRouter.delete("/events/:eventId/road-impacts/:impactId", async (c) => {
 			WHERE ri.id = ci.id
 				AND ci.event_status IN ('draft', 'review')
 				AND ci.has_status_history = false
+				AND ci.has_review_history = false
 			RETURNING ri.*, ci.organization_id, ci.event_status
 		),
 		updated_event AS (
@@ -1171,6 +1234,7 @@ roadsRouter.delete("/events/:eventId/road-impacts/:impactId", async (c) => {
 			(SELECT count(*)::int FROM current_impact) AS "impactFound",
 			(SELECT event_status FROM current_impact) AS "eventStatus",
 			(SELECT has_status_history FROM current_impact) AS "hasStatusHistory",
+			(SELECT has_review_history FROM current_impact) AS "hasReviewHistory",
 			(SELECT id FROM deleted) AS "deletedId";
 	`;
 
@@ -1180,6 +1244,7 @@ roadsRouter.delete("/events/:eventId/road-impacts/:impactId", async (c) => {
 				impactFound: number;
 				eventStatus: string | null;
 				hasStatusHistory: boolean | null;
+				hasReviewHistory: boolean | null;
 				deletedId: string | null;
 		  }
 		| undefined;
@@ -1202,11 +1267,11 @@ roadsRouter.delete("/events/:eventId/road-impacts/:impactId", async (c) => {
 		);
 	}
 
-	if (row.hasStatusHistory || !row.deletedId) {
+	if (row.hasStatusHistory || row.hasReviewHistory || !row.deletedId) {
 		return sendError(
 			c,
 			"STATE_CONFLICT",
-			"Cannot delete road impact because append-only operational status history already exists.",
+			row.hasReviewHistory ? "Ruas sudah memiliki riwayat tinjauan. Ubah datanya untuk membuat tinjauan lama superseded; riwayatnya tidak dapat dihapus." : "Cannot delete road impact because append-only operational status history already exists.",
 			409,
 		);
 	}
@@ -1274,6 +1339,15 @@ roadsRouter.post("/road-impacts/:impactId/status", async (c) => {
 	}
 	if (!impact.isSimulation && !impact.hasOperationalAuthority) {
 		return sendError(c, "FORBIDDEN", "Wewenang operasional organisasi tidak lagi aktif.", 403);
+	}
+
+	// Review gate (ticket 06): after authorization (existence → RBAC → authority),
+	// real operational events require an approved, non-stale reviewer decision bound
+	// to the current geometry/schedule/territory. SIMULASI events are exempt: they
+	// never represent operational closures and may exist without a verified territory.
+	if (!impact.isSimulation) {
+		const reviewed = await db.execute(sql`SELECT q.id FROM road_review_requests q JOIN road_segments rs ON rs.id=q.road_segment_id JOIN organization_territory_versions tv ON tv.id=q.territory_version_id JOIN events e ON e.id=q.event_id WHERE q.road_impact_id=${impactId} AND q.status='approved' AND q.geometry_wkb=encode(ST_AsEWKB(rs.geom),'hex') AND q.road_segment_id=${impact.roadSegmentId} AND q.planned_from=(SELECT planned_from FROM road_impacts WHERE id=${impactId}) AND q.planned_to=(SELECT planned_to FROM road_impacts WHERE id=${impactId}) AND q.impact_type=(SELECT impact_type FROM road_impacts WHERE id=${impactId}) AND q.is_simulation=e.is_simulation AND q.event_starts_at IS NOT DISTINCT FROM e.starts_at AND q.event_ends_at IS NOT DISTINCT FROM e.ends_at AND q.territory_content_hash=tv.content_hash AND tv.status='verified' AND q.territory_version_id=(SELECT latest.id FROM organization_territory_versions latest WHERE latest.organization_id=e.organization_id AND latest.status='verified' ORDER BY latest.version DESC LIMIT 1) AND ST_CoveredBy(rs.geom,tv.geom) LIMIT 1`);
+		if (!reviewed.rows.length) return sendError(c, "STATE_CONFLICT", "Pembaruan operasional menunggu persetujuan reviewer yang masih sesuai dengan ruas, jadwal, dan wilayah saat ini.", 409);
 	}
 
 	if (

@@ -14,6 +14,9 @@ import {
 	invitations,
 	memberships,
 	organizations,
+	organizationApplications,
+	platformAudit,
+	platformGrants,
 	roadImpacts,
 	roadSegments,
 } from "../../src/db/schema";
@@ -237,91 +240,49 @@ describe("Production Readiness Integration Suite (Tickets 01 - 04)", () => {
 	// =========================================================================
 	// TICKET 01: Safe Onboarding & Atomic Creation
 	// =========================================================================
-	describe("Ticket 01: Safe Onboarding & Atomic Organization Creation", () => {
-		it("creates organization + membership + audit log atomically in single CTE", async () => {
-			const orgName = `Desa Baru Atomik (${runKey})`;
-			const res = await app.request("http://localhost:5173/api/organizations", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: organizerCookie,
-				},
-				body: JSON.stringify({
-					name: orgName,
-					village: "Desa Baru",
-					district: "Kecamatan Baru",
-				}),
-			});
-
-			expect(res.status).toBe(201);
-			const data = (await res.json()) as {
-				organization: { id: string; name: string; hasOperationalAuthority: boolean };
-				membership: { id: string; role: string };
-			};
-			expect(data.organization.name).toBe(orgName);
-			expect(data.organization.hasOperationalAuthority).toBe(false);
-			expect(data.membership.role).toBe("organizer");
-
-			// Verify in DB that audit log was created atomically
-			const auditRow = await db
-				.select()
-				.from(auditLogs)
-				.where(
-					and(
-						eq(auditLogs.organizationId, data.organization.id),
-						eq(auditLogs.action, "organization.created"),
-					),
-				);
-			expect(auditRow.length).toBe(1);
-
-			// Clean up this created org
-			await db.delete(auditLogs).where(eq(auditLogs.organizationId, data.organization.id));
-			await db.delete(memberships).where(eq(memberships.organizationId, data.organization.id));
-			await db.delete(organizations).where(eq(organizations.id, data.organization.id));
-		});
-
-		it("is idempotent when same organizer creates organization with identical name", async () => {
-			const res = await app.request("http://localhost:5173/api/organizations", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: organizerCookie,
-				},
-				body: JSON.stringify({
-					name: simOrg.name,
-					village: simOrg.village,
-					district: simOrg.district,
-				}),
-			});
-
-			expect(res.status).toBe(200);
-			const data = (await res.json()) as { organization: { id: string } };
-			expect(data.organization.id).toBe(simOrg.id);
-		});
-
-		it("sanitizes database errors into standard error envelope without leaking SQL details", async () => {
-			// Trigger validation error on organization creation with invalid name length
-			const res = await app.request("http://localhost:5173/api/organizations", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					Cookie: organizerCookie,
-				},
-				body: JSON.stringify({
-					name: "", // Invalid empty name
-				}),
-			});
-
-			expect(res.status).toBe(422);
-			const data = (await res.json()) as {
-				error: { code: string; message: string; requestId: string };
-			};
-			expect(data.error.code).toBe("VALIDATION_FAILED");
-			expect(data.error.requestId).toBeDefined();
-			expect(data.error.message).not.toContain("SQL");
-			expect(data.error.message).not.toContain("SELECT");
-		});
-	});
+	describe("Ticket 01: Reviewed Organization Applications", () => {
+        const orgName = `Desa Baru Atomik (${runKey})`;
+        let applicationId = "";
+        let createdOrgId = "";
+        const headers = (cookie: string) => ({ "Content-Type": "application/json", Cookie: cookie });
+        beforeAll(async () => { await db.insert(platformGrants).values({ userId: officerUserB.id, role: "superadmin", status: "active" }); });
+        afterAll(async () => {
+            const applications = await db.select().from(organizationApplications).where(and(eq(organizationApplications.applicantId, organizerUser.id), eq(organizationApplications.name, orgName)));
+            for (const application of applications) {
+                await db.delete(platformAudit).where(eq(platformAudit.applicationId, application.id));
+                await db.delete(organizationApplications).where(eq(organizationApplications.id, application.id));
+                if (application.organizationId) { await db.delete(memberships).where(eq(memberships.organizationId, application.organizationId)); await db.delete(organizations).where(eq(organizations.id, application.organizationId)); }
+            }
+            await db.delete(platformGrants).where(eq(platformGrants.userId, officerUserB.id));
+        });
+        it("requires approval and atomically creates organization, membership and audit", async () => {
+            const data = { name: orgName, village: "Desa Baru", district: "Kecamatan Baru" };
+            const legacy = await app.request("http://localhost:5173/api/organizations", { method: "POST", headers: headers(organizerCookie), body: JSON.stringify(data) });
+            expect(legacy.status).toBe(403);
+            const submitted = await app.request("http://localhost:5173/api/me/organization-applications", { method: "POST", headers: headers(organizerCookie), body: JSON.stringify(data) });
+            expect(submitted.status).toBe(201);
+            applicationId = ((await submitted.json()) as { application: { id: string } }).application.id;
+            const denied = await app.request(`http://localhost:5173/api/admin/organization-applications/${applicationId}/decision`, { method: "POST", headers: headers(organizerCookie), body: JSON.stringify({ decision: "approve" }) });
+            expect(denied.status).toBe(403);
+            const approved = await app.request(`http://localhost:5173/api/admin/organization-applications/${applicationId}/decision`, { method: "POST", headers: headers(officerBCookie), body: JSON.stringify({ decision: "approve" }) });
+            expect(approved.status).toBe(200);
+            createdOrgId = ((await approved.json()) as { application: { organizationId: string } }).application.organizationId;
+            const org = await db.select().from(organizations).where(eq(organizations.id, createdOrgId));
+            const member = await db.select().from(memberships).where(and(eq(memberships.organizationId, createdOrgId), eq(memberships.userId, organizerUser.id)));
+            const audit = await db.select().from(platformAudit).where(and(eq(platformAudit.applicationId, applicationId), eq(platformAudit.action, "organization_application.approved")));
+            expect(org[0].hasOperationalAuthority).toBe(false); expect(member[0].role).toBe("organizer"); expect(audit).toHaveLength(1);
+        });
+        it("returns the existing decision on repeated approval", async () => {
+            const res = await app.request(`http://localhost:5173/api/admin/organization-applications/${applicationId}/decision`, { method: "POST", headers: headers(officerBCookie), body: JSON.stringify({ decision: "approve" }) });
+            expect(res.status).toBe(200); expect(((await res.json()) as { application: { organizationId: string } }).application.organizationId).toBe(createdOrgId);
+            const audit = await db.select().from(platformAudit).where(and(eq(platformAudit.applicationId, applicationId), eq(platformAudit.action, "organization_application.approved"))); expect(audit).toHaveLength(1);
+        });
+        it("returns a sanitized validation error for invalid application data", async () => {
+            const res = await app.request("http://localhost:5173/api/me/organization-applications", { method: "POST", headers: headers(organizerCookie), body: JSON.stringify({ name: "" }) });
+            expect(res.status).toBe(422); const data = await res.json() as { error: { code: string; message: string; requestId: string } };
+            expect(data.error.code).toBe("VALIDATION_FAILED"); expect(data.error.requestId).toBeDefined(); expect(data.error.message).not.toContain("SQL"); expect(data.error.message).not.toContain("SELECT");
+        });
+    });
 
 	// =========================================================================
 	// TICKET 02: Secure Token Hashing, Atomic CAS Acceptance, Recipient Binding

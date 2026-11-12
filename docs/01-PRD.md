@@ -230,3 +230,11 @@ MVP may be submitted when:
 
 - 0.1.0 — Initial development baseline.
 - 1.0.0-rc — Completed production readiness batch: safe atomic onboarding (CTE), invitation token hashing (SHA-256) & CAS acceptance, operational authority gate with simulation fallback, field task permission scoping, and full Playwright browser regression.
+
+## Organization governance (approved 2026-11-12)
+
+Identity registration grants no organizer role. Applicants submit an organization for superadmin review and can see their own pending or rejected history. Approval grants organizer membership only; it does not establish operational authority, grant an official permit, or approve a road closure. Existing memberships are preserved without mass approval. Platform privileges are distinct from organization roles.
+
+## Changelog
+
+- 2026-11-12: Approved organization application review and separate platform grants; preserved existing memberships and the independent operational authority gate.

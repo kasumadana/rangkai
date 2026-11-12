@@ -69,6 +69,7 @@ publicRouter.get("/events", async (c) => {
 				FROM road_impacts ri
 				INNER JOIN road_segments rs ON ri.road_segment_id = rs.id
 				WHERE ri.event_id = ${events.id}
+					AND (${events.isSimulation} OR EXISTS (SELECT 1 FROM road_review_requests q JOIN organization_territory_versions tv ON tv.id=q.territory_version_id WHERE q.road_impact_id=ri.id AND q.status='approved' AND q.geometry_wkb=encode(ST_AsEWKB(rs.geom),'hex') AND q.planned_from=ri.planned_from AND q.planned_to=ri.planned_to AND q.impact_type=ri.impact_type AND q.is_simulation=events.is_simulation AND q.event_starts_at IS NOT DISTINCT FROM events.starts_at AND q.event_ends_at IS NOT DISTINCT FROM events.ends_at AND q.territory_content_hash=tv.content_hash AND tv.status='verified' AND q.territory_version_id=(SELECT latest.id FROM organization_territory_versions latest WHERE latest.organization_id=events.organization_id AND latest.status='verified' ORDER BY latest.version DESC LIMIT 1)))
 					AND ((rs.source_type = 'catalog' AND rs.verified_by IS NOT NULL AND rs.verified_at IS NOT NULL)
 						OR (${events.isSimulation} AND rs.source_type = 'simulation_draft' AND rs.organization_id = ${events.organizationId}))
 					AND ST_Intersects(
@@ -99,6 +100,7 @@ publicRouter.get("/events", async (c) => {
 			category: events.category,
 			description: events.description,
 			venueName: events.venueName,
+			venueLocation: sql<unknown>`ST_AsGeoJSON(${events.venueLocation})::json`,
 			startsAt: events.startsAt,
 			endsAt: events.endsAt,
 			status: events.status,
@@ -115,6 +117,56 @@ publicRouter.get("/events", async (c) => {
 		.limit(limit)
 		.offset(offset);
 
+	const altRoutesByEventId = new Map<
+		string,
+		Array<{
+			id: string;
+			name: string;
+			description: string | null;
+			approvedAt: string;
+			geometry: Record<string, unknown>;
+		}>
+	>();
+
+	if (rows.length > 0) {
+		const eventIdsSql = sql.join(
+			rows.map((r) => sql`${r.id}::uuid`),
+			sql`, `,
+		);
+		const altRes = await db.execute(sql`
+			SELECT
+				id,
+				event_id AS "eventId",
+				name,
+				description,
+				approved_at AS "approvedAt",
+				ST_AsGeoJSON(geom)::json AS geometry
+			FROM event_alternative_routes
+			WHERE event_id IN (${eventIdsSql})
+				AND status = 'approved'
+				AND (expires_at IS NULL OR expires_at > NOW())
+			ORDER BY approved_at ASC;
+		`);
+		for (const row of altRes.rows as Array<{
+			id: string;
+			eventId: string;
+			name: string;
+			description: string | null;
+			approvedAt: string | Date;
+			geometry: Record<string, unknown>;
+		}>) {
+			const list = altRoutesByEventId.get(row.eventId) ?? [];
+			list.push({
+				id: row.id,
+				name: row.name,
+				description: row.description,
+				approvedAt: new Date(row.approvedAt).toISOString(),
+				geometry: row.geometry,
+			});
+			altRoutesByEventId.set(row.eventId, list);
+		}
+	}
+
 	return c.json(
 		{
 			events: rows.map((r) => ({
@@ -125,11 +177,13 @@ publicRouter.get("/events", async (c) => {
 				category: r.category,
 				description: r.description,
 				venueName: r.venueName,
+				venueLocation: r.venueLocation,
 				startsAt: r.startsAt ? r.startsAt.toISOString() : null,
 				endsAt: r.endsAt ? r.endsAt.toISOString() : null,
 				status: r.status,
 				isSimulation: r.isSimulation !== false,
 				publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+				alternativeRoutes: altRoutesByEventId.get(r.id) ?? [],
 				organization: {
 					name: r.organizationName,
 					village: r.village,
@@ -167,6 +221,7 @@ publicRouter.get("/events/:slug", async (c) => {
 			category: events.category,
 			description: events.description,
 			venueName: events.venueName,
+			venueLocation: sql<unknown>`ST_AsGeoJSON(${events.venueLocation})::json`,
 			processionDescription: events.processionDescription,
 			trafficImpactDescription: events.trafficImpactDescription,
 			organizerName: events.organizerName,
@@ -206,6 +261,7 @@ publicRouter.get("/events/:slug", async (c) => {
 				category: event.category,
 				description: event.description,
 				venueName: event.venueName,
+				venueLocation: event.venueLocation,
 				processionDescription: event.processionDescription,
 				trafficImpactDescription: event.trafficImpactDescription,
 				organizerName: event.organizerName,
@@ -279,7 +335,9 @@ publicRouter.get("/events/:slug/roads", async (c) => {
 			ST_AsGeoJSON(rs.geom)::json AS geometry
 		FROM road_impacts ri
 		INNER JOIN road_segments rs ON ri.road_segment_id = rs.id
+		INNER JOIN events e ON e.id=ri.event_id
 		WHERE ri.event_id = ${event.id}
+			AND (e.is_simulation OR EXISTS (SELECT 1 FROM road_review_requests q JOIN organization_territory_versions tv ON tv.id=q.territory_version_id WHERE q.road_impact_id=ri.id AND q.status='approved' AND q.geometry_wkb=encode(ST_AsEWKB(rs.geom),'hex') AND q.planned_from=ri.planned_from AND q.planned_to=ri.planned_to AND q.impact_type=ri.impact_type AND q.is_simulation=e.is_simulation AND q.event_starts_at IS NOT DISTINCT FROM e.starts_at AND q.event_ends_at IS NOT DISTINCT FROM e.ends_at AND q.territory_content_hash=tv.content_hash AND tv.status='verified' AND q.territory_version_id=(SELECT latest.id FROM organization_territory_versions latest WHERE latest.organization_id=e.organization_id AND latest.status='verified' ORDER BY latest.version DESC LIMIT 1)))
 			AND ((rs.source_type = 'catalog' AND rs.verified_by IS NOT NULL AND rs.verified_at IS NOT NULL)
 				OR (${event.isSimulation} AND rs.source_type = 'simulation_draft' AND rs.organization_id = ${event.organizationId}))
 		ORDER BY ri.planned_from ASC;
@@ -394,6 +452,7 @@ publicRouter.get("/road-impacts", async (c) => {
 			: sql`${events.status} IN ('published', 'active')`,
 		sql`((rs.source_type = 'catalog' AND rs.verified_by IS NOT NULL AND rs.verified_at IS NOT NULL)
 			OR (${events.isSimulation} AND rs.source_type = 'simulation_draft' AND rs.organization_id = ${events.organizationId}))`,
+		sql`(${events.isSimulation} OR EXISTS (SELECT 1 FROM road_review_requests q JOIN organization_territory_versions tv ON tv.id=q.territory_version_id WHERE q.road_impact_id=ri.id AND q.status='approved' AND q.geometry_wkb=encode(ST_AsEWKB(rs.geom),'hex') AND q.planned_from=ri.planned_from AND q.planned_to=ri.planned_to AND q.impact_type=ri.impact_type AND q.is_simulation=events.is_simulation AND q.event_starts_at IS NOT DISTINCT FROM events.starts_at AND q.event_ends_at IS NOT DISTINCT FROM events.ends_at AND q.territory_content_hash=tv.content_hash AND tv.status='verified' AND q.territory_version_id=(SELECT latest.id FROM organization_territory_versions latest WHERE latest.organization_id=events.organization_id AND latest.status='verified' ORDER BY latest.version DESC LIMIT 1)))`,
 	];
 
 	if (roadStatusFilter === "unconfirmed") {
@@ -771,10 +830,13 @@ publicRouter.get("/events/:slug/alternative-routes", async (c) => {
 
 	// Material road impacts freshness & snapshot comparison (SPEC-07)
 	const impactsQuery = sql`
-		SELECT id, planned_from AS "plannedFrom", planned_to AS "plannedTo", impact_type AS "impactType"
-		FROM road_impacts
-		WHERE event_id = ${event.id}
-		ORDER BY planned_from ASC;
+		SELECT ri.id, ri.planned_from AS "plannedFrom", ri.planned_to AS "plannedTo", ri.impact_type AS "impactType"
+		FROM road_impacts ri
+		JOIN road_segments rs ON rs.id=ri.road_segment_id
+		JOIN events e ON e.id=ri.event_id
+		WHERE ri.event_id = ${event.id}
+			AND (e.is_simulation OR EXISTS (SELECT 1 FROM road_review_requests q JOIN organization_territory_versions tv ON tv.id=q.territory_version_id WHERE q.road_impact_id=ri.id AND q.status='approved' AND q.geometry_wkb=encode(ST_AsEWKB(rs.geom),'hex') AND q.planned_from=ri.planned_from AND q.planned_to=ri.planned_to AND q.impact_type=ri.impact_type AND q.is_simulation=e.is_simulation AND q.event_starts_at IS NOT DISTINCT FROM e.starts_at AND q.event_ends_at IS NOT DISTINCT FROM e.ends_at AND q.territory_content_hash=tv.content_hash AND tv.status='verified' AND q.territory_version_id=(SELECT latest.id FROM organization_territory_versions latest WHERE latest.organization_id=e.organization_id AND latest.status='verified' ORDER BY latest.version DESC LIMIT 1)))
+		ORDER BY ri.planned_from ASC;
 	`;
 	const impactsRes = await db.execute(impactsQuery);
 	const impacts = impactsRes.rows as Array<{

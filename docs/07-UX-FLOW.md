@@ -34,6 +34,14 @@ Authenticated:
 - /field/events/:id
 - /settings
 
+Platform administration (active superadmin only):
+
+- /admin/organizations — review organization applications.
+- /admin/users — create one-use activation links and revoke pending links.
+- /activate/:token — review invitation scope, register or sign in with the invited email, then accept.
+
+Reviewer activation displays that jurisdiction assignment is still pending. Do not present reviewer access as an official road permit or a completed government approval. Invitation delivery is manual; the admin copies the link and sends it through an approved channel.
+
 ## 3. Main Screens
 
 ### A. Public Event List
@@ -67,6 +75,7 @@ Top section:
 Middle:
 
 - Road-impact map
+- Organizer-selected event point when available; otherwise state that the point has not been set.
 - List of affected segments
 - Current status for each segment
 
@@ -90,16 +99,31 @@ Show:
 
 Primary CTA: Create Event.
 
+Ringkasan menampilkan kegiatan yang perlu ditindaklanjuti dan kegiatan terdekat
+dalam kartu dengan aksi langsung ke route kerja terkait. Pada layar kecil, aksi
+utama mengambil lebar penuh.
+
+### C1. Field Task Flow
+
+Daftar tugas menampilkan setiap penugasan sebagai kartu dengan tombol `Buka tugas`.
+Pada route tugas, tautan `Kembali ke daftar tugas` tetap tersedia.
+Petugas yang berizin pada tahap lalu lintas dan kebersihan dapat berpindah tahap
+dari kontrol di dalam konten; aksi simpan status jalan dan catatan sampah tetap
+menggunakan tombol simpan yang sudah ada dan memberi konfirmasi server.
+
 ### D. Create Event Wizard (4 Steps)
 
 Step 1: Surat Edaran & AI (Unggah berkas edaran dan ekstraksi Gemini multimodal).
 Step 2: Detail Upacara & Jadwal WITA (Periksa, lengkapi, dan konfirmasi rincian acara).
+An optional venue point can be chosen on the map or entered as longitude and latitude; it can be moved or removed. Changing it during review requires a new review.
 Step 3: Input Peta & Ruas Jalan Terdampak (Katalog resmi jalan terverifikasi dan preview spasial).
 Step 4: Verifikasi Prajuru & Penerbitan Resmi (Tinjauan akhir human-in-the-loop dan publikasi).
 
 *Catatan: Modul penugasan petugas lapangan (`team`) dan pencatatan kebersihan pasca-acara (`cleanup`) dikelola melalui dasbor operasional kegiatan setelah draf disimpan.*
 
-Allow save as draft at every step.
+Allow save as draft once the organization and event name are valid. Keep the
+Back and Next controls below each applicable step; on the first step, Back
+returns to the dashboard and Next opens event details.
 
 ### E. AI Review Screen
 
@@ -309,3 +333,12 @@ The frontend is standardized on Astryx (`@astryxdesign/core`, `@astryxdesign/the
 5. **Waste Logistics & Scenario Planner (`/dashboard/events/:id/cleanup`):**
    - Calculates sack count, drop-point recommendations, and waste breakdown (~0.35 kg/person/day).
    - Honest disclosure: `forecastKg: null` avoids unverified AI claims without historical labeled scale data.
+
+
+### Event creation and saved sections
+
+The four-step creation flow stays at `/dashboard/events/new` after a draft is created. Saving is server-confirmed; a locally retained draft supports recovery and is not an autosave. Existing events use the summary route and contextual sidebar links for document upload, review, roads, cleanup, and team. Unsaved changes trigger a confirmation before in-app navigation or browser Back, and a browser warning before a reload or tab close. AI document processing requires consent and manual entry remains available when extraction fails.
+
+## Organization governance (approved 2026-11-12)
+
+After signup, applicants submit organization details, see their own status and rejection reason, and may submit a revised application after rejection. Pending status refreshes every 60 seconds only while visible; a manual refresh is available. Login without a membership routes to status. Administrators use the paginated organization queue to approve or reject with a reason. Approval creates organizer access only; simulation is labeled as such and real operational authority requires separate verification. Loading, failure, empty and retry states remain visible.

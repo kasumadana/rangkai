@@ -38,6 +38,7 @@ function mapUpdatedEventRow(row: Record<string, unknown>) {
 		category: (row.category ?? null) as string | null,
 		description: (row.description ?? null) as string | null,
 		venueName: (row.venueName ?? null) as string | null,
+		venueLocation: row.venueLocation ?? null,
 		startsAt: row.startsAt ? new Date(row.startsAt as string).toISOString() : null,
 		endsAt: row.endsAt ? new Date(row.endsAt as string).toISOString() : null,
 		status: row.status as string,
@@ -662,6 +663,7 @@ extractionsRouter.patch("/events/:eventId/extracted-fields", async (c) => {
 	const hasCategory = data.category !== undefined;
 	const hasDescription = data.description !== undefined;
 	const hasVenueName = data.venueName !== undefined;
+	const hasVenueLocation = data.venueLocation !== undefined;
 	const hasStartsAt = data.startsAt !== undefined;
 	const hasEndsAt = data.endsAt !== undefined;
 	const hasPermitReference = data.permitReference !== undefined;
@@ -697,6 +699,7 @@ extractionsRouter.patch("/events/:eventId/extracted-fields", async (c) => {
 				CASE WHEN ${hasCategory} THEN ${data.category ?? null}::text ELSE ce.category END AS next_category,
 				CASE WHEN ${hasDescription} THEN ${data.description ?? null}::text ELSE ce.description END AS next_description,
 				CASE WHEN ${hasVenueName} THEN ${data.venueName ?? null}::text ELSE ce.venue_name END AS next_venue_name,
+				CASE WHEN ${hasVenueLocation} THEN ${data.venueLocation ? sql`ST_SetSRID(ST_GeomFromGeoJSON(${JSON.stringify(data.venueLocation)}), 4326)` : sql`NULL::geometry`} ELSE ce.venue_location END AS next_venue_location,
 				CASE WHEN ${hasStartsAt} THEN ${newStartsAt}::timestamptz ELSE ce.starts_at END AS next_starts_at,
 				CASE WHEN ${hasEndsAt} THEN ${newEndsAt}::timestamptz ELSE ce.ends_at END AS next_ends_at,
 				CASE WHEN ${hasPermitReference} THEN ${data.permitReference ?? null}::text ELSE ce.permit_reference END AS next_permit_reference,
@@ -716,6 +719,7 @@ extractionsRouter.patch("/events/:eventId/extracted-fields", async (c) => {
 					m.next_category IS DISTINCT FROM ce.category OR
 					m.next_description IS DISTINCT FROM ce.description OR
 					m.next_venue_name IS DISTINCT FROM ce.venue_name OR
+					m.next_venue_location IS DISTINCT FROM ce.venue_location OR
 					m.next_starts_at IS DISTINCT FROM ce.starts_at OR
 					m.next_ends_at IS DISTINCT FROM ce.ends_at OR
 					m.next_permit_reference IS DISTINCT FROM ce.permit_reference OR
@@ -738,6 +742,7 @@ extractionsRouter.patch("/events/:eventId/extracted-fields", async (c) => {
 				category = vm.next_category,
 				description = vm.next_description,
 				venue_name = vm.next_venue_name,
+				venue_location = vm.next_venue_location,
 				starts_at = vm.next_starts_at,
 				ends_at = vm.next_ends_at,
 				permit_reference = vm.next_permit_reference,
@@ -781,6 +786,7 @@ extractionsRouter.patch("/events/:eventId/extracted-fields", async (c) => {
 					'category', ce.category,
 					'description', ce.description,
 					'venueName', ce.venue_name,
+					'venueLocation', ST_AsGeoJSON(ce.venue_location)::json,
 					'startsAt', ce.starts_at,
 					'endsAt', ce.ends_at,
 					'permitReference', ce.permit_reference,
@@ -798,6 +804,7 @@ extractionsRouter.patch("/events/:eventId/extracted-fields", async (c) => {
 					'category', u.category,
 					'description', u.description,
 					'venueName', u.venue_name,
+					'venueLocation', ST_AsGeoJSON(u.venue_location)::json,
 					'startsAt', u.starts_at,
 					'endsAt', u.ends_at,
 					'permitReference', u.permit_reference,
@@ -829,6 +836,7 @@ extractionsRouter.patch("/events/:eventId/extracted-fields", async (c) => {
 					category,
 					description,
 					venue_name AS "venueName",
+					ST_AsGeoJSON(venue_location)::json AS "venueLocation",
 					starts_at AS "startsAt",
 					ends_at AS "endsAt",
 					status,

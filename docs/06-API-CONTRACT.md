@@ -1,4 +1,4 @@
-# REST API Contract — Rangkai
+﻿# REST API Contract — Rangkai
 
 Version: v1
 Base URL: /api
@@ -57,38 +57,33 @@ Public endpoints never require a session.
 
 ## 4. Organizations & Onboarding
 
-### POST /api/organizations
-Permission: authenticated user  
-Requires: `Content-Type: application/json`
+### Organization applications and platform administration
 
-Request:
-```json
-{
-  "name": "Banjar Kaja Sesetan",
-  "village": "Sesetan",
-  "district": "Denpasar Selatan"
-}
-```
+`POST /api/organizations` now returns 403 for authenticated users; this is a breaking change to the former direct-create contract. Signup creates identity only. Authenticated applicants use `POST /api/me/organization-applications` with strict `{name, village, district}` (3-150, 2-100 and 2-100 characters after trimming); a second pending application returns 409. `GET /api/me/organization-applications` returns only the caller's own history, including rejection reason and approved organization ID. Rejected applicants may submit a new application.
 
-Behavior:
-- Atomically creates organization, assigns caller as `organizer` member, and writes initial audit log in a single CTE.
-- Idempotent: If caller already created an organization with identical name, returns existing organization (200 OK) without error or duplicates.
-- Default authority: `hasOperationalAuthority` defaults to `false`. Operational authority can only be granted by external authority.
-- Sanitized errors: Database constraint errors are mapped into standardized error envelopes without exposing internal table or SQL details.
+`GET /api/admin/organization-applications?page=1` requires an active superadmin platform grant and returns up to 50 applications, applicant identity, `page` and `hasMore`. `POST /api/admin/organization-applications/:id/decision` accepts strict `{decision: "approve" | "reject", reason?: string}`; rejection requires a nonempty reason, maximum 1000 characters. An authorized approval atomically creates an organization, organizer membership, decision and platform audit; a repeated identical decision returns the existing result and a conflicting decision returns 409. Rejection retains history and audit. Organization approval sets `hasOperationalAuthority=false`; it is not a road approval, official authority or permit. Invalid input yields 422, unauthenticated access 401, missing/suspended/revoked platform grants 403, and dependency failures a sanitized error. Organization and platform roles remain distinct.
 
-Response: 201 Created (or 200 OK if existing):
-```json
-{
-  "organization": {
-    "id": "uuid",
-    "name": "Banjar Kaja Sesetan",
-    "village": "Sesetan",
-    "district": "Denpasar Selatan",
-    "hasOperationalAuthority": false,
-    "createdAt": "2026-11-08T10:00:00Z"
-  }
-}
-```
+### Superadmin account activation
+
+The following routes require an active superadmin platform grant. Registration never grants platform access, and organizers cannot use these routes to grant platform roles.
+
+- GET /api/admin/users/organizations lists up to 500 organizations for scoped invitation forms.
+- GET /api/admin/users/events?organizationId=<uuid> lists up to 200 events in the selected organization.
+- GET /api/admin/users/activation-invitations lists the latest 100 invitations with recipient, scope, state and expiry. Token hashes and previously issued plaintext tokens are never returned.
+- POST /api/admin/users/activation-invitations accepts strict {recipientEmail, role, organizationId?, eventId?, canUpdateTraffic?, canUpdateCleanup?, expiresInDays?}. Roles are organizer, officer, or government_reviewer; expiry is 1-30 days (default 7). Organizer invitations require an organization and no event permissions. Officer invitations require an organization, an event in that organization and at least one event permission. Reviewer invitations have no organization/event scope at creation; reviewer jurisdiction is a separate assignment flow. Success returns a one-time inviteUrl; the service does not send email or WhatsApp. The URL origin comes from configured BETTER_AUTH_URL, never the incoming Host header. Missing or invalid canonical URL fails closed with 503.
+- DELETE /api/admin/users/activation-invitations/:id revokes a pending, unexpired invitation and records an audit entry; used, expired, revoked or missing invitations return 409.
+
+GET /api/activation-invitations/:token is public and reveals only invitation purpose, recipient email, scope, permissions and expiry for a valid 64-hex token. It sets Cache-Control: no-store and Referrer-Policy: no-referrer. Invalid, expired, revoked, or used links return 404. POST /api/activation-invitations/:token/accept requires a session whose normalized email matches the recipient; a new user can register from /activate/:token, then accept. Acceptance atomically grants the scoped organization membership/event assignment or a government_reviewer platform grant, consumes the token once and writes an audit entry. Conflicting existing organization role returns 409; wrong identity returns 403; expiry, revocation, or reuse returns 410. A concurrent double acceptance permits exactly one successful consumption. The flow never sets or resets an existing user's password. Reviewer activation does not assign jurisdiction or grant official authority.
+
+### Organization territory versions
+
+All territory administration routes require an active superadmin platform grant.
+
+- GET /api/admin/territories?organizationId=<uuid> returns up to 200 recorded territory versions and provenance fields for the selected organization. It does not expose the stored PostGIS geometry separately from its GeoJSON representation.
+- POST /api/admin/organizations/:organizationId/territories accepts strict {geojson, sourceType, sourceLabel, sourceUrl?, isSimulation?}. GeoJSON may be a Polygon/MultiPolygon geometry, one Feature, or a FeatureCollection containing exactly one feature. It must use 2D WGS84 lon/lat positions, contain 4-10,000 coordinate positions, omit legacy CRS metadata, remain within 512 KiB, and pass PostGIS topology validation. Unsupported, non-finite, out-of-range and invalid geometry returns 422. sourceType is imported, manual, or synthetic; synthetic geometry must set isSimulation=true. sourceUrl, when supplied, must use HTTPS and is recorded as provenance only; the server never fetches it. The content hash is SHA-256 over canonical geometry JSON. Each submission creates a new version in pending_verification, leaving prior verified history intact.
+- POST /api/admin/organizations/:organizationId/territories/:territoryId/verify accepts strict {reason} (3-1,000 characters). It verifies only a pending, valid version, records actor/time/reason and an audit row, and cannot establish legal authority or a road permit. Repeated verification returns 409.
+
+Road impact create/update checks the entire stored LineString against the latest verified territory version with PostGIS ST_CoveredBy. A real operational event cannot add or update a road impact without a verified territory containing the full geometry. A crossing or outside segment returns 422 and requires manual handling. Simulated drafts without any verified territory can still be edited; once a verified territory exists, its full geometry is checked too. A pending new version does not replace the prior verified version until reviewed. No version is publicly represented as an official administrative or customary boundary solely from its source label.
 
 ### GET /api/organizations/my
 Permission: authenticated user  
@@ -195,6 +190,7 @@ Request:
   "startsAt": "2026-11-10T08:00:00Z",
   "endsAt": "2026-11-10T14:00:00Z",
   "venueName": "Balai Banjar",
+  "venueLocation": { "type": "Point", "coordinates": [115.21, -8.65] },
   "category": "upacara",
   "description": "Deskripsi opsional",
   "permitReference": "SURAT/2026/01"
@@ -202,6 +198,8 @@ Request:
 ```
 
 Response: 201 Created with event object in status "draft". Atomic audit log recorded.
+
+`venueLocation` is optional and nullable. When present it must be a GeoJSON Point in `[longitude, latitude]` order within the configured Bali bounds. It is chosen and reviewed by the organizer; it is never inferred from a road or district. Existing events can remain without a point.
 
 GET /api/events
 Permission: authenticated organization member
@@ -245,13 +243,14 @@ Response: 200 OK
 GET /api/events/:eventId
 Permission: authorized organization member (organizer or assigned field officer)
 Response: 200 OK with event detail. Returns 403/404 if caller is unassigned or outside the organization.
+The detail includes `venueLocation` as a GeoJSON Point or `null`.
 
 PATCH /api/events/:eventId
 Permission: organizer
 Constraints:
 - Terminal states (`completed`, `cancelled`) cannot be modified (409 Conflict).
 - Published and active events cannot be edited via PATCH (409 Conflict); edits must occur prior to publication while in `draft` or `review` status (FR-011).
-- In `review` status, modifying any organizer-editable field (`title`, `category`, `description`, `venueName`, `startsAt`, `endsAt`, `permitReference`) invalidates previous human review verification and resets status to `draft`.
+- In `review` status, modifying any organizer-editable field (`title`, `category`, `description`, `venueName`, `venueLocation`, `startsAt`, `endsAt`, `permitReference`) invalidates previous human review verification and resets status to `draft`.
 Response: 200 OK with updated event. Atomic audit log recorded. Zero-row concurrent conflicts return 409 Conflict without creating false audit records.
 
 POST /api/events/:eventId/review
@@ -269,7 +268,7 @@ Prerequisites:
 - Event must have explicit human review verification (`verifiedBy` and `verifiedAt` non-null).
 - Confirmed core fields (`title`, `startsAt`, `endsAt`, `venueName`).
 - At least one road impact referencing a verified road segment (`road_segments.verified_by` and `verified_at` non-null) with `plannedTo > plannedFrom`.
-- Operational Authority Gate (AGENTS §1): If publishing an operational event (`isSimulation: false`), the host organization must have `hasOperationalAuthority: true`. Otherwise, returns 403 Forbidden (`OPERATIONAL_AUTHORITY_REQUIRED`). Simulation events (`isSimulation: true`) may be published by any verified organization and are publicly tagged with `[SIMULATED]`.
+- Operational Authority Gate (AGENTS §1): If publishing an operational event (`isSimulation: false`), the host organization must have `hasOperationalAuthority: true`. Otherwise, returns 403 Forbidden (`OPERATIONAL_AUTHORITY_REQUIRED`). Simulation events (`isSimulation: true`) may be published by an authorized organizer and are publicly tagged with `[SIMULATED]`; an organization application approval is not proof of external operational authority.
 Idempotency:
 - If event is already published, returns 200 OK immediately without generating duplicate slugs or audit rows.
 Response: 200 OK with publicSlug, publishedAt, isSimulation, status "published". Atomic audit log recorded.
@@ -356,7 +355,7 @@ Request (accepts flat fields or `{ "corrections": { ... } }` wrapper):
   "contactInformation": "I Made Surya (0812-0000-0101)"
 }
 ```
-Persists all 12 reviewed/corrected fields on `events` atomically under `FOR UPDATE OF e`, resets `review` status to `draft` (clearing `verifiedBy`/`verifiedAt`) when any field changes, and records `before_json` and `after_json` from the locked row (`hasContactInformation` boolean is logged in audit JSON rather than raw private contact strings; `contactInformation` is returned only to organizers and stripped from officer and public responses).
+Persists reviewed/corrected fields, including optional `venueLocation`, on `events` atomically under `FOR UPDATE OF e`, resets `review` status to `draft` (clearing `verifiedBy`/`verifiedAt`) when any field changes, and records `before_json` and `after_json` from the locked row (`hasContactInformation` boolean is logged in audit JSON rather than raw private contact strings; `contactInformation` is returned only to organizers and stripped from officer and public responses).
 
 ## 6. Road Segments
 
@@ -419,6 +418,8 @@ Permission: organizer
 
 POST /api/road-impacts/:impactId/status
 Permission: assigned traffic officer or organizer
+
+Reviewer gate: for a real (non-SIMULASI) event, a current reviewer approval bound to the road geometry, schedule, event and verified territory is required; stale or missing approval returns 409. SIMULASI events skip this approval gate. Both paths still require the actor's event-scoped traffic permission and record an observation timestamp, server receipt time, expiry and audit history. SIMULASI status is never represented as real operational authority.
 
 Request:
 
@@ -541,7 +542,7 @@ Query: from, to, optional bbox
 Returns only published/active public information.
 
 GET /api/public/events/:slug
-Returns public event summary.
+Returns public event summary including organizer-selected `venueLocation` as a GeoJSON Point or `null`; the same field is included in the public event list. Normal publication and authority filters apply.
 
 GET /api/public/events/:slug/roads
 Returns planned road impacts and effective status.
@@ -641,6 +642,7 @@ Every endpoint needs:
 
 ### GET /api/public/road-impacts
 Read-only anonymous list of operational road impacts across all published events.
+Unapproved REAL-event road impacts are excluded from public road/map/assistant data; SIMULASI road impacts remain visible with their SIMULASI label. Publishing an event retains the existing 403 response when required operational authority is inactive.
 - **Query parameters:**
   - `status` or `operationalStatus`: Optional filter (`open`, `intermittent`, `closed`, `unknown`, `unconfirmed`).
   - `eventStatus`: Optional filter for event lifecycle status (`published`, `active`, `completed`). Defaults to published or active events.
@@ -766,3 +768,24 @@ Advisory decisions NEVER directly mutate domain operational state (events, road 
 - `GET /api/events/:eventId/public-notice-draft/latest`: Retrieves latest notice draft and approval status.
 - `POST /api/events/:eventId/public-notice-draft/:runId/decision`: Records approval/rejection or validated human correction. Validates length limits, rejects unsupported safety/authority claims (e.g., "dijamin aman", "resmi oleh polisi") or unlisted road names, and forces simulation tag.
 - `POST /api/events/:eventId/waste-plan`: Calculates scenario waste logistics. Supports user-specified generation rates (`wastePerPersonDayKg`) and fractions (`organicFraction`, `recyclableFraction`, `residualFraction`). If omitted or 0, returns `forecastKg: null`, `method: "operational_checklist"`, and checklist only without fabricated numeric assumptions.
+
+### Public assistant and waste scenarios (candidate implementation)
+
+`POST /api/public/assistant/questions` is anonymous and enabled only when `PUBLIC_ASSISTANT_ENABLED=true` and Gemini is configured. It accepts `question` (1-500 characters), optional exact `eventSlug`, `location` (venue, village or district), and optional ISO `from`/`to`. A request body is limited to 4096 bytes and the existing isolate-local rate limiter applies (10/minute per IP; distributed edge protection remains an operations requirement). Retrieval includes published and active events; an exact `eventSlug` also permits completed public events, subject to the same operational-authority or simulation filter. Gemini receives the question, up to ten publicly visible event titles and IDs, and reviewed help topic titles and IDs; it selects an intent and IDs under a structured schema. The server validates identifiers and produces all returned text, URLs and facts itself. It reuses public road and cleanup handlers, preserves simulation labels and marks expired road observations unconfirmed. Route-help extracts origin and destination from text actually present in the question; missing, invented or non-unique locations do not yield a route claim. When `NETWORK_ROUTING_ENABLED=true` and `ORS_API_KEY` is configured, the server sends the extracted names to the fixed OpenRouteService geocoder, restricts candidates to Bali, requires a unique match, and requests one driving route. The full validated route is checked with PostGIS `ST_Intersects` against eligible public road geometry; at most 100 matching roads are returned with event links, schedules, simulation labels and observation timestamps, with truncation disclosed. A `/peta` link is returned. No intersection does not mean clear roads; route geometry is not a verified navigation or closure-avoidance recommendation. Provider, configuration, ambiguous location or database failure abstains. This operation sends user-supplied place names and coordinates to OpenRouteService; no private documents or internal accounts are sent. For the help intent, the server returns at most three reviewed help sources (`sourceId`, `kind`, `title`, `url`, `answer`); the model cannot author their text or links. Missing data and out-of-scope requests abstain. Disabled/unconfigured/provider failure returns 503 and the existing error envelope; invalid input returns 422. This feature is not a safety guarantee and cannot provide closure-bypass directions.
+`POST /api/events/:eventId/waste-plan` retains its organizer-only authorization, `forecastKg:null`, and `insufficient_historical_data`. Optional `scenario` contains `coefficientKgPerParticipantDay:{min,max,provenance}` and optional complete `categoryShares:{organic,recyclable,residual}` summing to one. `scenarioRange` reports low/high estimated weights and assumptions, not measured weight. Totals are rounded to tenths of a kilogram. Category shares are normalized within the accepted sum tolerance; the rounded low total and the difference between rounded totals are allocated separately by largest remainder in tenths, with ties resolved organic, recyclable, residual. This preserves category ordering and endpoint totals, but a category can differ from independently rounded shares by a tenth or more. Optional `facilityLocation:{latitude,longitude}` produces straight-line distances to historical directory candidates; `suitableMatches` is empty until acceptance and service restrictions are supported. Candidates have unknown current operation and acceptance and require confirmation. Legacy exact scenario values remain available; legacy implicit fractions and sack capacity are labeled assumptions. Supplying only some legacy category fractions, or fractions not summing to one, now returns 422.
+
+### Private cleanup photo-quality assessment
+
+`POST /api/cleanup-tasks/:taskId/photo-quality` accepts JSON `{ "beforeEvidenceId": "uuid", "afterEvidenceId": "uuid" }`. Both private evidence records must belong to the task and match their respective stages. Access requires an organizer in the owning organization or the task-assigned officer with event cleanup permission. Cancelled events cannot be assessed. The feature is disabled unless `AI_PHOTO_ASSESSMENT_ENABLED` is exactly `true` and a Gemini key and private R2 binding are configured.
+
+On success, `data` contains `beforeReadable`, `afterReadable`, `sameAreaLikely` (`yes`, `no`, or `uncertain`), `issues`, `observations`, `taskId`, `wasteWeightKg: null`, `automaticallyVerified: false`, `requiresOrganizerReview: true`, `model`, `promptVersion`, and `schemaVersion`. It changes no cleanup or road state. Error envelopes include request IDs: 401 unauthenticated, 403 forbidden, 404 missing or inaccessible task/pair, 409 cancelled event, 413 oversized request, 422 invalid input, 429 rate limited, and 503 unavailable storage, disabled feature, invalid photo, or provider failure.
+
+## Authenticated read-only assistant
+
+`POST /api/assistant/questions` requires a Better Auth session and accepts a JSON object with `question` (1–500 characters), optional UUID `organizationId` and `eventId`, or a separate `helpTopic` (`event`, `traffic`, `cleanup`). Help cannot be combined with selected context. Without both context IDs the response asks for selection and searches no events; if an organization was supplied its membership is checked. The server checks membership, event ownership and officer assignment and category permissions. The provider selects only the selected event ID and receives only its title and the user's question. The server checks the session and permissions again after the provider, retrieves bounded facts, checks permissions again before returning them, and recomputes road expiry. No mutations are available. Questions and event titles are processed externally when the provider is called.
+
+Successful responses contain `status` (`answered`, `abstained`, `selection_required`), `scope` (`internal`, `help`), `intent`, `answer`, `sources`, and `searchUrl`. Each source has `sourceId`, server-authored `url`, `kind`, `title`, and typed `facts`: event `{status, startsAt, endsAt, isSimulation}`; road `{status, observedAt, expiresAt, isSimulation}`; cleanup `{status, dueAt, isSimulation}`; waste `{category, measurementMethod, quantityKg, sackCount, isSimulation}`; help `{}`. Quantity is a decimal string or null, sack count an integer or null, and timestamps ISO strings or null. Help is labeled `Panduan penggunaan` and is reviewed application text. Status values are stored lowercase; expired or absent road observations are `unconfirmed`.
+
+Errors use the existing request-ID envelope: 401 session absent, 403 organization or assignment/permission denied, 404 missing or foreign event, 422 invalid body, 429 isolate-local rate limit, and 503 disabled, missing provider configuration, changed context, or invalid/provider failure. `PUBLIC_ASSISTANT_ENABLED=true` and a configured Gemini key are required for provider-backed requests; help and context selection do not call the provider. This flag does not provide distributed cost protection or prove production readiness.
+
+

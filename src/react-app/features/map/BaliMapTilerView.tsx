@@ -12,15 +12,24 @@ import {
 } from "../../lib/bali-villages";
 import { buildDistrictFeaturesFromEvents } from "../../lib/events-api";
 import type { OperationalRoadStatus } from "../../lib/road-status";
-import {
-	BALI_DISTRICTS_DATA,
-	type BaliDistrictProperties,
-} from "../../lib/bali-districts";
+import type { BaliDistrictProperties } from "../../lib/bali-districts";
 import {
 	MapFallbackRoadList,
 	type CeremonyDetailItem,
 	type RoadSegmentFallbackItem,
 } from "../../components/rangkai";
+import {
+	doesPathIntersectCorridor,
+	getRoadCoordinateParts,
+	isActiveRoadClosure,
+	isWithinBaliBounds,
+	type UserGuidanceRoute,
+} from "../../lib/routing-engine";
+import { useGpsTracking } from "./useGpsTracking";
+import { showGpsAccuracy } from "./gpsAccuracy";
+import { GpsControls } from "./GpsControls";
+
+export type MapBasemapStyle = "satellite" | "osm";
 
 interface BaliMapTilerViewProps {
 	village?: BaliVillageCeremonyProfile | null;
@@ -46,26 +55,16 @@ interface BaliMapTilerViewProps {
 	onSelectRegion?: (regionName: string, district?: BaliDistrictProperties) => void;
 	onOpenCeremonyDetail?: (ceremony: CeremonyDetailItem) => void;
 	minimalControls?: boolean;
-}
-
-type MapLayerType = "maptiler" | "satellite" | "osm";
-
-function calculateDistance(
-	coord1: [number, number],
-	coord2: [number, number],
-): number {
-	const [lon1, lat1] = coord1;
-	const [lon2, lat2] = coord2;
-	const dLat = (lat2 - lat1) * (Math.PI / 180);
-	const dLon = (lon2 - lon1) * (Math.PI / 180);
-	const a =
-		Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-		Math.cos(lat1 * (Math.PI / 180)) *
-			Math.cos(lat2 * (Math.PI / 180)) *
-			Math.sin(dLon / 2) *
-			Math.sin(dLon / 2);
-	const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-	return 6371 * c; // in kilometers
+	cooperativeGestures?: boolean;
+	fitDataReady?: boolean;
+	showDistrictBoundaries?: boolean;
+	showAlternativeRoutes?: boolean;
+	basemapStyle?: MapBasemapStyle;
+	onBasemapStyleChange?: (style: MapBasemapStyle) => void;
+	userLocation?: [number, number] | null;
+	userGuidanceRoute?: UserGuidanceRoute | null;
+	isPickingUserOrigin?: boolean;
+	onPickUserOrigin?: (coord: [number, number]) => void;
 }
 
 function getStatusColor(status: OperationalRoadStatus): string {
@@ -75,7 +74,7 @@ function getStatusColor(status: OperationalRoadStatus): string {
 		case "intermittent":
 			return "#D97706";
 		case "open":
-			return "#15803D";
+			return "#4D702F";
 		default:
 			return "#78716C";
 	}
@@ -95,12 +94,12 @@ function getStatusBadgeConfig(status: OperationalRoadStatus) {
 			};
 		case "open":
 			return {
-				label: "Jalur Normal",
+				label: "Dibuka",
 				className: "status-open",
 			};
 		default:
 			return {
-				label: "Konfirmasi",
+				label: "Belum terkonfirmasi",
 				className: "status-unknown",
 			};
 	}
@@ -136,6 +135,27 @@ const SATELLITE_STYLE: maplibregl.StyleSpecification = {
 	],
 };
 
+const OSM_STYLE: maplibregl.StyleSpecification = {
+	version: 8,
+	sources: {
+		"osm-tiles": {
+			type: "raster",
+			tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+			tileSize: 256,
+			attribution: "© OpenStreetMap contributors • Rangkai Bali",
+		},
+	},
+	layers: [
+		{
+			id: "osm-layer",
+			type: "raster",
+			source: "osm-tiles",
+			minzoom: 0,
+			maxzoom: 19,
+		},
+	],
+};
+
 export function BaliMapTilerView({
 	village = null,
 	allVillages = [],
@@ -146,17 +166,46 @@ export function BaliMapTilerView({
 	height = "100%",
 	showAllVillagesMarkers = true,
 	selectedRegionName = null,
-	onSelectRegion,
 	onOpenCeremonyDetail,
 	minimalControls = false,
+	cooperativeGestures = true,
+	fitDataReady = true,
+	showAlternativeRoutes = true,
+	basemapStyle: controlledBasemapStyle,
+	onBasemapStyleChange,
+	userLocation: controlledUserLocation,
+	userGuidanceRoute: controlledUserGuidanceRoute,
+	isPickingUserOrigin = false,
+	onPickUserOrigin,
 }: BaliMapTilerViewProps) {
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
 	const mapRef = useRef<maplibregl.Map | null>(null);
 	const allVillagesMarkersRef = useRef<maplibregl.Marker[]>([]);
-	const districtPillsRef = useRef<maplibregl.Marker[]>([]);
+	const userMarkerRef = useRef<maplibregl.Marker | null>(null);
 	const activePopupRef = useRef<maplibregl.Popup | null>(null);
-	const onSelectRegionRef = useRef(onSelectRegion);
+	const fittedEventRef = useRef<string | null>(null);
+	const focusedSegmentRef = useRef<string | null>(null);
 	const onOpenCeremonyDetailRef = useRef(onOpenCeremonyDetail);
+	const appliedBasemapRef = useRef<MapBasemapStyle>("satellite");
+
+	const [internalBasemapStyle, setInternalBasemapStyle] =
+		useState<MapBasemapStyle>("satellite");
+	const effectiveBasemapStyle = controlledBasemapStyle ?? internalBasemapStyle;
+
+	const handleBasemapChange = useCallback(
+		(nextStyle: MapBasemapStyle) => {
+			if (onBasemapStyleChange) {
+				onBasemapStyleChange(nextStyle);
+			} else {
+				setInternalBasemapStyle(nextStyle);
+			}
+		},
+		[onBasemapStyleChange],
+	);
+
+	const gps = useGpsTracking();
+	const effectiveUserLocation = controlledUserLocation !== undefined ? controlledUserLocation : gps.position?.coordinates ?? null;
+	const effectiveGuidanceRoute = controlledUserGuidanceRoute ?? null;
 
 	const districtFeaturesData = useMemo(
 		() => buildDistrictFeaturesFromEvents(allVillages),
@@ -164,17 +213,19 @@ export function BaliMapTilerView({
 	);
 
 	useEffect(() => {
-		onSelectRegionRef.current = onSelectRegion;
-	}, [onSelectRegion]);
-
-	useEffect(() => {
 		onOpenCeremonyDetailRef.current = onOpenCeremonyDetail;
 	}, [onOpenCeremonyDetail]);
 
-	const [activeLayer, setActiveLayer] = useState<MapLayerType>("satellite");
 	const [isMapLoaded, setIsMapLoaded] = useState(false);
+	const [styleEpoch, setStyleEpoch] = useState(0);
 	const [mapError, setMapError] = useState<string | null>(null);
+	const [mapAttempt, setMapAttempt] = useState(0);
 	const [isBaliOverview, setIsBaliOverview] = useState(false);
+
+	const venueLng = village?.venueLocation?.[0];
+	const venueLat = village?.venueLocation?.[1];
+	const sacredCenterName = village?.sacredCenterName;
+	const isVillageSimulation = Boolean(village?.isSimulation);
 
 	const minHeightValue = typeof height === "number" ? height : 500;
 
@@ -183,18 +234,25 @@ export function BaliMapTilerView({
 		if (!mapContainerRef.current) return;
 
 		let mapInstance: maplibregl.Map | null = null;
-		let fallbackTimer: NodeJS.Timeout | null = null;
+		let loadTimer: ReturnType<typeof setTimeout> | undefined;
+		let active = true;
 
 		try {
+			appliedBasemapRef.current = effectiveBasemapStyle;
 			mapInstance = new maplibregl.Map({
 				container: mapContainerRef.current,
-				style: SATELLITE_STYLE,
+				style: effectiveBasemapStyle === "osm" ? OSM_STYLE : SATELLITE_STYLE,
 				center: village ? village.mapCenter : BALI_ISLAND_CENTER,
 				zoom: village ? village.mapZoom : BALI_ISLAND_ZOOM,
 				maxBounds: BALI_MAP_BOUNDS,
 				minZoom: BALI_MAP_MIN_ZOOM,
 				maxZoom: BALI_MAP_MAX_ZOOM,
 				attributionControl: false,
+				dragPan: true,
+				dragRotate: false,
+				touchZoomRotate: true,
+				touchPitch: false,
+				cooperativeGestures,
 			});
 
 			if (!minimalControls) {
@@ -209,78 +267,50 @@ export function BaliMapTilerView({
 					compact: true,
 					customAttribution: "MapTiler • OpenStreetMap • Rangkai Bali",
 				}),
-				"bottom-right",
+				"bottom-left",
 			);
 
 			mapInstance.on("load", () => {
-				if (fallbackTimer) clearTimeout(fallbackTimer);
+				if (loadTimer) clearTimeout(loadTimer);
 				setIsMapLoaded(true);
-				setMapError(null);
 				mapInstance?.resize();
 			});
+			mapInstance.on("style.load", () => setStyleEpoch((epoch) => epoch + 1));
 
-			// Auto-toggle visibility between district overview pills and ceremony pins based on zoom
-			mapInstance.on("zoom", () => {
-				if (!mapInstance) return;
-				const zoom = mapInstance.getZoom();
-				const isZoomedOut = zoom < 11.2;
-
-				if (isZoomedOut) {
-					if (activePopupRef.current) {
-						activePopupRef.current.remove();
-						activePopupRef.current = null;
+			mapInstance.on(
+				"error",
+				(e: { error?: { message?: string }; sourceId?: string }) => {
+					const msg = e.error?.message || "";
+					if (msg.includes("Failed to initialize WebGL")) {
+						setMapError(
+							"Peramban Anda memerlukan akselerasi WebGL untuk memuat peta.",
+						);
+					} else if (
+						msg.includes("Worker failed to load") ||
+						e.sourceId === "satellite-tiles"
+					) {
+						setMapError(
+							"Peta tidak dapat dimuat. Periksa koneksi lalu coba lagi.",
+						);
 					}
-					allVillagesMarkersRef.current.forEach((m) => {
-						m.getElement().style.display = "none";
-					});
-					districtPillsRef.current.forEach((m) => {
-						m.getElement().style.display = "inline-flex";
-					});
-				} else {
-					districtPillsRef.current.forEach((m) => {
-						m.getElement().style.display = "none";
-					});
-					allVillagesMarkersRef.current.forEach((m) => {
-						m.getElement().style.display = "block";
-					});
-				}
-			});
-
-			mapInstance.on("error", (e: { error?: { message?: string } }) => {
-				const msg = e.error?.message || "";
-				if (msg.includes("Failed to initialize WebGL")) {
-					setMapError("Peramban Anda memerlukan akselerasi WebGL untuk memuat peta.");
-				} else {
-					// Fallback to ultra-reliable OpenStreetMap raster tiles
-					try {
-						mapInstance?.setStyle(SATELLITE_STYLE);
-						setActiveLayer("satellite");
-					} catch {
-						// ignore style switch errors
-					}
-				}
-			});
-
-			// If MapTiler is slow to respond or blocked by browser extensions, fallback to OSM after 1800ms
-			fallbackTimer = setTimeout(() => {
-				if (!mapInstance?.isStyleLoaded()) {
-					try {
-						mapInstance?.setStyle(SATELLITE_STYLE);
-						setActiveLayer("satellite");
-					} catch {
-						// ignore
-					}
-				}
-			}, 1800);
+				},
+			);
 
 			mapRef.current = mapInstance;
+			loadTimer = setTimeout(() => {
+				if (!mapInstance?.loaded()) {
+					setMapError(
+						"Peta belum selesai dimuat. Periksa koneksi lalu coba lagi.",
+					);
+				}
+			}, 12000);
 		} catch (err) {
 			const errMsg =
 				err instanceof Error
 					? err.message
 					: "Peta belum dapat ditampilkan pada peramban ini.";
 			queueMicrotask(() => {
-				setMapError(errMsg);
+				if (active) setMapError(errMsg);
 			});
 		}
 
@@ -294,7 +324,10 @@ export function BaliMapTilerView({
 		}
 
 		let intersectionObserver: IntersectionObserver | null = null;
-		if (mapContainerRef.current && typeof IntersectionObserver !== "undefined") {
+		if (
+			mapContainerRef.current &&
+			typeof IntersectionObserver !== "undefined"
+		) {
 			intersectionObserver = new IntersectionObserver(
 				(entries) => {
 					for (const entry of entries) {
@@ -319,7 +352,8 @@ export function BaliMapTilerView({
 		const t3 = setTimeout(() => mapInstance?.resize(), 800);
 
 		return () => {
-			if (fallbackTimer) clearTimeout(fallbackTimer);
+			active = false;
+			if (loadTimer) clearTimeout(loadTimer);
 			clearTimeout(t1);
 			clearTimeout(t2);
 			clearTimeout(t3);
@@ -330,95 +364,181 @@ export function BaliMapTilerView({
 				activePopupRef.current.remove();
 				activePopupRef.current = null;
 			}
-			districtPillsRef.current.forEach((m) => m.remove());
-			districtPillsRef.current = [];
+			userMarkerRef.current?.remove();
+			userMarkerRef.current = null;
 			allVillagesMarkersRef.current.forEach((m) => m.remove());
 			allVillagesMarkersRef.current = [];
 			mapInstance?.remove();
 			mapRef.current = null;
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [mapAttempt, cooperativeGestures]);
 
-	// Mount overview District Ceremony Count Pills (visible when zoom < 11.2)
+	useEffect(() => {
+		const map = mapRef.current;
+		if (
+			!map ||
+			Boolean(mapError) ||
+			venueLng === undefined ||
+			venueLat === undefined ||
+			!sacredCenterName
+		) {
+			return;
+		}
+		const marker = new maplibregl.Marker({ color: "#4D702F", anchor: "bottom" })
+			.setLngLat([venueLng, venueLat])
+			.addTo(map);
+		marker
+			.getElement()
+			.setAttribute(
+				"aria-label",
+				`Lokasi acara: ${sacredCenterName}${isVillageSimulation ? " (simulasi)" : ""}`,
+			);
+		return () => {
+			marker.remove();
+		};
+	}, [
+		mapAttempt,
+		mapError,
+		isMapLoaded,
+		venueLng,
+		venueLat,
+		sacredCenterName,
+		isVillageSimulation,
+	]);
+
+	// Switch basemap style dynamically when effectiveBasemapStyle changes
 	useEffect(() => {
 		const map = mapRef.current;
 		if (!map || !isMapLoaded) return;
-
-		districtPillsRef.current.forEach((m) => m.remove());
-		districtPillsRef.current = [];
-
-		districtFeaturesData.features.forEach(
-			(feat: { properties: BaliDistrictProperties }) => {
-				const dist = feat.properties;
-				if (!dist.ceremonies || dist.ceremonies.length === 0) return;
-
-				const el = document.createElement("div");
-				el.className = "district-count-pill";
-				el.style.setProperty("--district-border", dist.borderColor);
-				el.innerHTML = `
-					<span class="district-count-name">${dist.name}</span>
-					<span class="district-count-badge">${dist.ceremonies.length} Acara</span>
-				`;
-
-				el.addEventListener("click", (e) => {
-					e.stopPropagation();
-					if (onSelectRegionRef.current) {
-						onSelectRegionRef.current(dist.name, dist);
-					}
-					const foundVillage = allVillages.find((v) =>
-						dist.ceremonies.some((c) => c.id === v.id || c.slug === v.slug),
-					);
-					if (foundVillage && onSelectVillage) {
-						onSelectVillage(foundVillage);
-					}
-					const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
-					map.flyTo({
-						center: foundVillage ? foundVillage.mapCenter : dist.center,
-						zoom: 13.0,
-						padding: isMobile
-							? { top: 130, bottom: 40, left: 20, right: 20 }
-							: { top: 60, bottom: 40, left: 20, right: 460 },
-						duration: 800,
-						essential: true,
-					});
-				});
-
-				// If zoomed in, hide initially
-				if (map.getZoom() >= 11.2) {
-					el.style.display = "none";
-				}
-
-				const marker = new maplibregl.Marker({ element: el, anchor: "center" })
-					.setLngLat(dist.center)
-					.addTo(map);
-
-				districtPillsRef.current.push(marker);
-			},
+		if (appliedBasemapRef.current === effectiveBasemapStyle) return;
+		appliedBasemapRef.current = effectiveBasemapStyle;
+		map.setStyle(
+			effectiveBasemapStyle === "osm" ? OSM_STYLE : SATELLITE_STYLE,
 		);
+	}, [effectiveBasemapStyle, isMapLoaded]);
 
-		return () => {
-			districtPillsRef.current.forEach((m) => m.remove());
-			districtPillsRef.current = [];
-		};
-	}, [isMapLoaded, districtFeaturesData, allVillages, onSelectVillage]);
-
-	// Fly camera when village changes
+	useEffect(() => {
+		if (gps.following && gps.position && mapRef.current) mapRef.current.easeTo({ center: gps.position.coordinates, zoom: Math.max(mapRef.current.getZoom(), 14), duration: 500 });
+	}, [gps.following, gps.position]);
 	useEffect(() => {
 		const map = mapRef.current;
-		if (!map || !isMapLoaded || !village) return;
+		if (!map || !isMapLoaded) return;
+		showGpsAccuracy(map, gps.position);
+	}, [gps.position, isMapLoaded, styleEpoch]);
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map || !isMapLoaded) return;
+		map.on("dragstart", gps.pauseFollowing);
+		return () => { map.off("dragstart", gps.pauseFollowing); };
+	}, [gps.pauseFollowing, isMapLoaded]);
 
-		if (!isBaliOverview) {
+	// Click on map to pick custom user origin when isPickingUserOrigin is active
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map || !isMapLoaded || !isPickingUserOrigin || !onPickUserOrigin) {
+			return;
+		}
+		const canvas = map.getCanvas();
+		const prevCursor = canvas.style.cursor;
+		canvas.style.cursor = "crosshair";
+
+		const handleMapClick = (e: maplibregl.MapMouseEvent) => {
+			const picked: [number, number] = [
+				Number(e.lngLat.lng.toFixed(6)),
+				Number(e.lngLat.lat.toFixed(6)),
+			];
+			if (isWithinBaliBounds(picked)) {
+				onPickUserOrigin(picked);
+			}
+		};
+
+		map.on("click", handleMapClick);
+		return () => {
+			canvas.style.cursor = prevCursor;
+			map.off("click", handleMapClick);
+		};
+	}, [isMapLoaded, isPickingUserOrigin, onPickUserOrigin]);
+
+	// Fit once after the event's spatial data has loaded; status polling must not move the camera.
+	useEffect(() => {
+		const map = mapRef.current;
+		if (
+			!map ||
+			!isMapLoaded ||
+			!village ||
+			!fitDataReady ||
+			isBaliOverview ||
+			fittedEventRef.current === village.id
+		) {
+			return;
+		}
+		const coordinates: [number, number][] = [];
+		if (village.venueLocation) coordinates.push(village.venueLocation);
+		for (const road of village.roadSegments) {
+			coordinates.push(
+				...(road.coordinateParts ?? [road.coordinates]).flat(),
+			);
+		}
+		for (const route of [
+			...alternativeRoutes,
+			...(village.alternativeRoutes ?? []),
+		]) {
+			const line =
+				route.coordinates ??
+				("geometry" in route ? route.geometry?.coordinates : undefined);
+			if (Array.isArray(line)) {
+				coordinates.push(
+					...line.filter(
+						(point): point is [number, number] =>
+							Array.isArray(point) &&
+							point.length >= 2 &&
+							Number.isFinite(point[0]) &&
+							Number.isFinite(point[1]) &&
+							Math.abs(point[0]) <= 180 && Math.abs(point[1]) <= 90,
+					),
+				);
+			}
+		}
+		if (coordinates.length > 1) {
+			const bounds = new maplibregl.LngLatBounds();
+			coordinates.forEach((point) => bounds.extend(point));
+			map.fitBounds(bounds, { padding: 55, maxZoom: 15, duration: 800 });
+		} else {
 			map.flyTo({
-				center: village.mapCenter,
+				center: coordinates[0] ?? village.mapCenter,
 				zoom: village.mapZoom,
-				duration: 1200,
-				essential: true,
+				duration: 800,
 			});
 		}
-	}, [village, isMapLoaded, isBaliOverview]);
+		fittedEventRef.current = village.id;
+		focusedSegmentRef.current = null;
+	}, [village, alternativeRoutes, isMapLoaded, fitDataReady, isBaliOverview]);
 
-	// Fly camera to selected district center when selectedRegionName changes (only if no specific village is already in that district)
+	useEffect(() => {
+		const map = mapRef.current;
+		if (
+			!map ||
+			!isMapLoaded ||
+			!village ||
+			!selectedSegmentId ||
+			selectedSegmentId === focusedSegmentRef.current
+		) {
+			return;
+		}
+		const road = village.roadSegments.find(
+			(segment) => segment.id === selectedSegmentId,
+		);
+		if (!road) return;
+		const coordinates = (road.coordinateParts ?? [road.coordinates]).flat();
+		if (coordinates.length < 2) return;
+		const bounds = new maplibregl.LngLatBounds();
+		coordinates.forEach((point) => bounds.extend(point));
+		map.fitBounds(bounds, { padding: 65, maxZoom: 16, duration: 500 });
+		focusedSegmentRef.current = selectedSegmentId;
+	}, [village, selectedSegmentId, isMapLoaded]);
+
+	// Fly camera when selectedRegionName changes (focusing on the ceremony point in that area if available)
 	useEffect(() => {
 		const map = mapRef.current;
 		if (!map || !isMapLoaded || !selectedRegionName) return;
@@ -433,6 +553,22 @@ export function BaliMapTilerView({
 			return;
 		}
 
+		const matchingCeremony = allVillages.find(
+			(v) =>
+				v.kabupaten.toLowerCase().includes(q) ||
+				v.kecamatan.toLowerCase().includes(q) ||
+				q.includes(v.kecamatan.toLowerCase()),
+		);
+		if (matchingCeremony?.venueLocation) {
+			map.flyTo({
+				center: matchingCeremony.venueLocation,
+				zoom: 13.5,
+				duration: 900,
+				essential: true,
+			});
+			return;
+		}
+
 		const matchedDistrict = districtFeaturesData.features.find(
 			(f) =>
 				f.properties.name.toLowerCase().includes(q) ||
@@ -443,18 +579,19 @@ export function BaliMapTilerView({
 		if (matchedDistrict) {
 			map.flyTo({
 				center: matchedDistrict.properties.center,
-				zoom: 12.5,
-				duration: 1000,
+				zoom: 12.2,
+				duration: 900,
 				essential: true,
 			});
 		}
-	}, [selectedRegionName, isMapLoaded, village, districtFeaturesData]);
+	}, [selectedRegionName, isMapLoaded, village, allVillages, districtFeaturesData]);
 
 	// Open compact point popup directly above the ceremony point on the map
 	const openCompactPopupForVillage = useCallback(
 		(v: BaliVillageCeremonyProfile) => {
 			const map = mapRef.current;
-			if (!map || !v.roadSegments.some((road) => road.coordinates.length > 0)) return;
+			const pinCoords = v.venueLocation;
+			if (!map || !pinCoords) return;
 
 			if (activePopupRef.current) {
 				activePopupRef.current.remove();
@@ -468,14 +605,20 @@ export function BaliMapTilerView({
 			popupNode.className = "map-popup-card";
 			popupNode.innerHTML = `
 				<div class="map-popup-header">
-					<span class="map-popup-badge ${statusBadge.className}">${statusBadge.label}</span>
-					${v.isSimulation !== false ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ''}
-					<span class="map-popup-location"></span>
+					<div class="map-popup-location"></div>
+					<div class="map-popup-top-badges">
+						<span class="map-popup-badge ${statusBadge.className}">${statusBadge.label}</span>
+						${v.isSimulation !== false ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ""}
+					</div>
 				</div>
 				<h4 class="map-popup-title"></h4>
 				<div class="map-popup-meta-box">
 					<div class="map-popup-meta-row">
 						<span class="map-popup-meta-label">Jalur:</span>
+						<span class="map-popup-meta-val"></span>
+					</div>
+					<div class="map-popup-meta-row">
+						<span class="map-popup-meta-label">Alternatif:</span>
 						<span class="map-popup-meta-val"></span>
 					</div>
 					<div class="map-popup-meta-row">
@@ -492,10 +635,25 @@ export function BaliMapTilerView({
 			const location = popupNode.querySelector(".map-popup-location");
 			const title = popupNode.querySelector(".map-popup-title");
 			const values = popupNode.querySelectorAll(".map-popup-meta-val");
-			if (location) location.textContent = v.desaAdatName;
-			if (title) title.textContent = v.ceremonyTitle;
-			if (values[0]) values[0].textContent = v.roadSegments[0]?.roadName || v.sacredCenterName || "Koridor Wilayah";
-			if (values[1]) values[1].textContent = v.scheduleWindowWita || "Jadwal menyusul";
+			const cleanDesaName = v.desaAdatName.replace(/\s*\([Ss]imulasi\)/g, "").trim();
+			const cleanCeremonyTitle = v.ceremonyTitle.replace(/^\[SIMULATED\]\s*/i, "").trim();
+			const firstRawRoadName = v.roadSegments[0]?.roadName || v.sacredCenterName || "Koridor Wilayah";
+			const cleanFirstRoadName = firstRawRoadName.replace(/^\[SIMULATED\]\s*/i, "").trim();
+			if (location) location.textContent = cleanDesaName;
+			if (title) title.textContent = cleanCeremonyTitle;
+			if (values[0]) {
+				values[0].textContent = cleanFirstRoadName;
+			}
+			if (values[1]) {
+				values[1].textContent =
+					v.alternativeRoutes?.[0]?.name ||
+					v.roadSegments[0]?.guidanceNote ||
+					v.alternativeRouteSummary ||
+					"Jalur alternatif tersedia";
+			}
+			if (values[2]) {
+				values[2].textContent = v.scheduleWindowWita || "Jadwal menyusul";
+			}
 			const btn = popupNode.querySelector(".map-popup-btn");
 			if (btn) {
 				btn.addEventListener("click", () => {
@@ -515,7 +673,9 @@ export function BaliMapTilerView({
 							windowWita: v.scheduleWindowWita,
 							sacredCenterName: v.puraPoint.name,
 							roadName: v.roadSegments[0]?.roadName,
-							detourRoute: v.roadSegments[0]?.guidanceNote || v.alternativeRouteSummary,
+							detourRoute:
+								v.roadSegments[0]?.guidanceNote ||
+								v.alternativeRouteSummary,
 							isSimulation: v.isSimulation,
 						});
 					}
@@ -536,14 +696,15 @@ export function BaliMapTilerView({
 					right: [-18, -20],
 				},
 				anchor: "bottom",
-				closeButton: false,
+				closeButton: true,
 				closeOnClick: false,
-				maxWidth: "248px",
+				maxWidth: "320px",
 			})
-				.setLngLat(v.mapCenter)
+				.setLngLat(pinCoords)
 				.setDOMContent(popupNode)
 				.addTo(map);
 
+			popup.getElement()?.querySelector(".maplibregl-popup-close-button")?.setAttribute("aria-label", "Tutup informasi peta");
 			popup.on("close", () => {
 				if (activePopupRef.current === popup) {
 					activePopupRef.current = null;
@@ -555,7 +716,7 @@ export function BaliMapTilerView({
 		[],
 	);
 
-	// Render Pan-Bali village pins for all registered villages (Teduh Teardrop Pins)
+	// Render Pan-Bali ceremony location pins at all zoom levels (without polygon area boxes)
 	useEffect(() => {
 		const map = mapRef.current;
 		if (!map || !isMapLoaded || !showAllVillagesMarkers) return;
@@ -564,16 +725,19 @@ export function BaliMapTilerView({
 		allVillagesMarkersRef.current = [];
 
 		allVillages.forEach((v) => {
-			if (v.isSimulation !== false) return;
-			if (!v.roadSegments.some((road) => road.coordinates.length > 0)) return;
+			const pinCoords = v.venueLocation;
+			if (!pinCoords) return;
 			const pinColor = getStatusColor(v.primaryStatus);
 			const isCurrent = village ? v.id === village.id : false;
 
 			const pinEl = document.createElement("div");
 			pinEl.className = `standard-location-pin ${isCurrent ? "is-active" : ""}`;
-			if (map.getZoom() < 11.2) {
-				pinEl.style.display = "none";
-			}
+			pinEl.setAttribute(
+				"aria-label",
+				`Lokasi acara: ${v.sacredCenterName || v.ceremonyTitle}${
+					v.isSimulation !== false ? " (simulasi)" : ""
+				}`,
+			);
 			pinEl.innerHTML = `
 				<div class="pin-inner">
 					<div class="pin-pulse-halo" style="background: ${pinColor}40;"></div>
@@ -585,12 +749,15 @@ export function BaliMapTilerView({
 				<div class="marker-hover-label"></div>
 			`;
 			const label = pinEl.querySelector(".marker-hover-label");
-			if (label) label.textContent = v.desaAdatName;
+			if (label) {
+				label.textContent = `${v.desaAdatName}${v.isSimulation !== false ? " • SIMULASI" : ""}`;
+			}
 
 			pinEl.addEventListener("click", (evt) => {
 				evt.stopPropagation();
 				setIsBaliOverview(false);
-				const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
+				const isMobile =
+					typeof window !== "undefined" && window.innerWidth <= 768;
 				if (onSelectVillage) {
 					onSelectVillage(v);
 				}
@@ -603,8 +770,8 @@ export function BaliMapTilerView({
 					}
 				}
 				map.flyTo({
-					center: v.mapCenter,
-					zoom: 13.5,
+					center: pinCoords,
+					zoom: Math.max(map.getZoom(), 14),
 					padding: isMobile
 						? { top: 130, bottom: 40, left: 20, right: 20 }
 						: { top: 60, bottom: 40, left: 20, right: 460 },
@@ -612,14 +779,25 @@ export function BaliMapTilerView({
 				});
 			});
 
-			const pinMarker = new maplibregl.Marker({ element: pinEl, anchor: "bottom" })
-				.setLngLat(v.mapCenter)
+			const pinMarker = new maplibregl.Marker({
+				element: pinEl,
+				anchor: "bottom",
+			})
+				.setLngLat(pinCoords)
 				.addTo(map);
 			allVillagesMarkersRef.current.push(pinMarker);
 		});
-	}, [allVillages, village, isMapLoaded, isBaliOverview, showAllVillagesMarkers, onSelectVillage, openCompactPopupForVillage]);
+	}, [
+		allVillages,
+		village,
+		isMapLoaded,
+		isBaliOverview,
+		showAllVillagesMarkers,
+		onSelectVillage,
+		openCompactPopupForVillage,
+	]);
 
-	// Render Road LineStrings for the selected village
+	// Render Road LineStrings for the selected village (or all villages when in island overview)
 	useEffect(() => {
 		const map = mapRef.current;
 		if (!map || !isMapLoaded) return;
@@ -628,12 +806,30 @@ export function BaliMapTilerView({
 		const lineHaloLayerId = "rangkai-road-routes-halo";
 		const lineLayerId = "rangkai-road-routes-line";
 
-		const segments = village?.roadSegments ?? [];
-		const geojsonData = {
-			type: "FeatureCollection" as const,
-			features: segments
-				.filter((seg: VillageRoadRouteSegment) => seg.coordinates && seg.coordinates.length >= 2)
-				.map((seg: VillageRoadRouteSegment) => ({
+		const sourceVillages = village ? [village] : allVillages;
+		const features: Array<{
+			type: "Feature";
+			id: string;
+			properties: {
+				id: string;
+				roadName: string;
+				corridorSection: string;
+				status: OperationalRoadStatus;
+				isSimulation: boolean;
+				color: string;
+				isSelected: boolean;
+				windowWita: string;
+				roleLabel: string;
+			};
+			geometry:
+				| { type: "MultiLineString"; coordinates: Array<Array<[number, number]>> }
+				| { type: "LineString"; coordinates: Array<[number, number]> };
+		}> = [];
+
+		for (const activeVillage of sourceVillages) {
+			for (const seg of activeVillage.roadSegments ?? []) {
+				if (!seg.coordinates || seg.coordinates.length < 2) continue;
+				features.push({
 					type: "Feature" as const,
 					id: seg.id,
 					properties: {
@@ -641,16 +837,25 @@ export function BaliMapTilerView({
 						roadName: seg.roadName,
 						corridorSection: seg.corridorSection,
 						status: seg.status,
+						isSimulation: activeVillage.isSimulation !== false,
 						color: getStatusColor(seg.status),
 						isSelected: seg.id === selectedSegmentId,
 						windowWita: seg.windowWita,
 						roleLabel: seg.roleLabel,
 					},
-					geometry: {
-						type: "LineString" as const,
-						coordinates: seg.coordinates,
-					},
-				})),
+					geometry: seg.coordinateParts
+						? {
+								type: "MultiLineString" as const,
+								coordinates: seg.coordinateParts,
+							}
+						: { type: "LineString" as const, coordinates: seg.coordinates },
+				});
+			}
+		}
+
+		const geojsonData = {
+			type: "FeatureCollection" as const,
+			features,
 		};
 
 		if (map.getSource(sourceId)) {
@@ -662,7 +867,8 @@ export function BaliMapTilerView({
 				type: "geojson",
 				data: geojsonData,
 			});
-
+		}
+		if (!map.getLayer(lineHaloLayerId)) {
 			map.addLayer({
 				id: lineHaloLayerId,
 				type: "line",
@@ -681,7 +887,8 @@ export function BaliMapTilerView({
 					"line-width": ["case", ["get", "isSelected"], 12, 9],
 				},
 			});
-
+		}
+		if (!map.getLayer(lineLayerId)) {
 			map.addLayer({
 				id: lineLayerId,
 				type: "line",
@@ -695,6 +902,8 @@ export function BaliMapTilerView({
 					"line-width": ["case", ["get", "isSelected"], 7, 5],
 					"line-dasharray": [
 						"case",
+						["get", "isSimulation"],
+						["literal", [2, 2]],
 						["==", ["get", "status"], "intermittent"],
 						["literal", [2, 1.5]],
 						["==", ["get", "status"], "open"],
@@ -703,22 +912,28 @@ export function BaliMapTilerView({
 					],
 				},
 			});
-
-			map.on("click", lineLayerId, (e: maplibregl.MapLayerMouseEvent) => {
-				const feat = e.features?.[0];
-				if (feat && feat.properties?.id && onSelectSegment) {
-					onSelectSegment(feat.properties.id as string);
-				}
-			});
-
-			map.on("mouseenter", lineLayerId, () => {
-				map.getCanvas().style.cursor = "pointer";
-			});
-			map.on("mouseleave", lineLayerId, () => {
-				map.getCanvas().style.cursor = "";
-			});
 		}
-	}, [village, selectedSegmentId, isMapLoaded, onSelectSegment, activeLayer]);
+		const handleClick = (e: maplibregl.MapLayerMouseEvent) => {
+			const feat = e.features?.[0];
+			if (feat && feat.properties?.id && onSelectSegment) {
+				onSelectSegment(feat.properties.id as string);
+			}
+		};
+		const handleEnter = () => {
+			map.getCanvas().style.cursor = "pointer";
+		};
+		const handleLeave = () => {
+			map.getCanvas().style.cursor = "";
+		};
+		map.on("click", lineLayerId, handleClick);
+		map.on("mouseenter", lineLayerId, handleEnter);
+		map.on("mouseleave", lineLayerId, handleLeave);
+		return () => {
+			map.off("click", lineLayerId, handleClick);
+			map.off("mouseenter", lineLayerId, handleEnter);
+			map.off("mouseleave", lineLayerId, handleLeave);
+		};
+	}, [village, allVillages, selectedSegmentId, isMapLoaded, onSelectSegment, styleEpoch]);
 
 	// Render Alternative Routes Overlay (SPEC-08: Dashed blue LineString distinct from closures)
 	useEffect(() => {
@@ -726,31 +941,72 @@ export function BaliMapTilerView({
 		if (!map || !isMapLoaded) return;
 
 		const sourceId = "rangkai-alt-routes-source";
+		const haloLayerId = "rangkai-alt-routes-halo";
 		const lineLayerId = "rangkai-alt-routes-line";
 
-		const activeAltRoutes = [
-			...(alternativeRoutes || []),
-			...(village?.alternativeRoutes || []),
-		];
+		const sourceVillagesForAlt = village ? [village] : allVillages;
+		const activeClosureSegments = (profile: BaliVillageCeremonyProfile) =>
+			profile.roadSegments.filter(
+				(segment) =>
+					getRoadCoordinateParts(segment).length > 0 &&
+					isActiveRoadClosure(segment),
+			);
+		const activeAltRoutes = showAlternativeRoutes
+			? [
+					...alternativeRoutes.map((route) => ({
+						route,
+						isSimulation: village?.isSimulation !== false,
+						closedRoads: village ? activeClosureSegments(village) : [],
+					})),
+					...sourceVillagesForAlt.flatMap((profile) =>
+						(profile.alternativeRoutes || []).map((route) => ({
+							route,
+							isSimulation: profile.isSimulation !== false,
+							closedRoads: activeClosureSegments(profile),
+						})),
+					),
+				]
+			: [];
 
+		const seenIds = new Set<string>();
 		const geojsonData = {
 			type: "FeatureCollection" as const,
 			features: activeAltRoutes
-				.map((r) => {
+				.map(({ route: r, isSimulation, closedRoads }) => {
 					const coords =
-						("coordinates" in r && Array.isArray(r.coordinates) && r.coordinates.length > 0)
+						"coordinates" in r &&
+						Array.isArray(r.coordinates) &&
+						r.coordinates.length > 0
 							? r.coordinates
-							: ("geometry" in r && r.geometry && Array.isArray(r.geometry.coordinates))
+							: "geometry" in r &&
+								  r.geometry &&
+								  Array.isArray(r.geometry.coordinates)
 								? (r.geometry.coordinates as [number, number][])
 								: [];
 					return {
 						id: r.id,
 						name: r.name,
-						description: r.description || "Jalur pengalihan sementara panitia",
+						description:
+							r.description || "Jalur pengalihan sementara panitia",
 						coords,
+						isSimulation,
+						closedRoads,
 					};
 				})
-				.filter((r) => r.coords.length >= 2)
+				.filter((r) => {
+					if (r.coords.length < 2 || !r.coords.every(point => Array.isArray(point) && point.length >= 2 && Number.isFinite(point[0]) && Number.isFinite(point[1]) && Math.abs(point[0]) <= 180 && Math.abs(point[1]) <= 90)) return false;
+					if (
+						r.closedRoads.some((road) =>
+							getRoadCoordinateParts(road).some((part) =>
+								doesPathIntersectCorridor(r.coords, part, 22),
+							),
+						)
+					)
+						return false;
+					if (seenIds.has(r.id)) return false;
+					seenIds.add(r.id);
+					return true;
+				})
 				.map((r) => ({
 					type: "Feature" as const,
 					id: r.id,
@@ -758,6 +1014,7 @@ export function BaliMapTilerView({
 						id: r.id,
 						name: r.name,
 						description: r.description,
+						isSimulation: r.isSimulation,
 					},
 					geometry: {
 						type: "LineString" as const,
@@ -767,13 +1024,31 @@ export function BaliMapTilerView({
 		};
 
 		if (map.getSource(sourceId)) {
-			(map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojsonData);
+			(map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(
+				geojsonData,
+			);
 		} else {
 			map.addSource(sourceId, {
 				type: "geojson",
 				data: geojsonData,
 			});
-
+		}
+		if (!map.getLayer(haloLayerId)) {
+			map.addLayer({
+				id: haloLayerId,
+				type: "line",
+				source: sourceId,
+				layout: {
+					"line-join": "round",
+					"line-cap": "round",
+				},
+				paint: {
+					"line-color": "rgba(255, 255, 255, 0.85)",
+					"line-width": 8,
+				},
+			});
+		}
+		if (!map.getLayer(lineLayerId)) {
 			map.addLayer({
 				id: lineLayerId,
 				type: "line",
@@ -788,217 +1063,168 @@ export function BaliMapTilerView({
 					"line-dasharray": [2, 2],
 				},
 			});
-
-			map.on("click", lineLayerId, (e: maplibregl.MapLayerMouseEvent) => {
+		}
+		const handleClick = (e: maplibregl.MapLayerMouseEvent) => {
 				const feat = e.features?.[0];
 				if (feat && feat.properties) {
+					const content = document.createElement("section");
+					const heading = document.createElement("strong");
+					heading.textContent = feat.properties.isSimulation === true ? "Jalur Alternatif (SIMULASI)" : "Jalur Alternatif";
+					const name = document.createElement("p");
+					name.textContent = String(
+						feat.properties.name || "Rute Pengalihan",
+					);
+					const description = document.createElement("p");
+					description.textContent = String(
+						feat.properties.description || "",
+					);
+					const disclaimer = document.createElement("p");
+					disclaimer.textContent =
+						"Panduan adat • Bukan rute resmi kepolisian";
+					content.append(heading, name, description, disclaimer);
 					new maplibregl.Popup({ closeButton: true, closeOnClick: true })
 						.setLngLat(e.lngLat)
-						.setHTML(
-							`<div style="font-family:sans-serif; padding:4px;">` +
-								`<div style="font-size:12px; font-weight:700; color:#1E40AF;">Jalur Alternatif Sementara (Simulasi)</div>` +
-								`<div style="font-size:11px; font-weight:600; color:#181817; margin-top:2px;">${feat.properties.name || "Rute Pengalihan"}</div>` +
-								`<div style="font-size:10px; color:#585854; margin-top:2px;">${feat.properties.description || ""}</div>` +
-								`<div style="font-size:9.5px; color:#92400E; margin-top:4px; font-style:italic;">Panduan adat • Bukan rute resmi kepolisian</div>` +
-							`</div>`,
-						)
+						.setDOMContent(content)
 						.addTo(map);
 				}
-			});
+		};
+		const handleEnter = () => { map.getCanvas().style.cursor = "pointer"; };
+		const handleLeave = () => { map.getCanvas().style.cursor = ""; };
+		map.on("click", lineLayerId, handleClick);
+		map.on("mouseenter", lineLayerId, handleEnter);
+		map.on("mouseleave", lineLayerId, handleLeave);
+		return () => {
+			map.off("click", lineLayerId, handleClick);
+			map.off("mouseenter", lineLayerId, handleEnter);
+			map.off("mouseleave", lineLayerId, handleLeave);
+		};
+	}, [alternativeRoutes, village, allVillages, isMapLoaded, showAlternativeRoutes, styleEpoch]);
 
-			map.on("mouseenter", lineLayerId, () => {
-				map.getCanvas().style.cursor = "pointer";
-			});
-			map.on("mouseleave", lineLayerId, () => {
-				map.getCanvas().style.cursor = "";
-			});
-		}
-	}, [alternativeRoutes, village, isMapLoaded, activeLayer]);
-
-	// Render Territorial District Boundaries & Handle Regional Selection
+	// Render User Location Marker & Green Guidance Route Line (#4D702F)
 	useEffect(() => {
 		const map = mapRef.current;
 		if (!map || !isMapLoaded) return;
 
-		const sourceId = "rangkai-districts-source";
-		const fillLayerId = "rangkai-districts-fill";
-		const lineLayerId = "rangkai-districts-line";
-		const labelLayerId = "rangkai-districts-label";
+		const sourceId = "rangkai-user-guidance-source";
+		const haloLayerId = "rangkai-user-guidance-halo";
+		const lineLayerId = "rangkai-user-guidance-line";
+
+		const routeCoords = effectiveGuidanceRoute?.coordinates ?? [];
+		const geojsonData = {
+			type: "FeatureCollection" as const,
+			features:
+				routeCoords.length >= 2
+					? [
+							{
+								type: "Feature" as const,
+								properties: {
+									name:
+										effectiveGuidanceRoute?.routeName ||
+										"Rute Alternatif Anda",
+								},
+								geometry: {
+									type: "LineString" as const,
+									coordinates: routeCoords,
+								},
+							},
+						]
+					: [],
+		};
 
 		if (map.getSource(sourceId)) {
 			(map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(
-				districtFeaturesData as unknown as Parameters<maplibregl.GeoJSONSource["setData"]>[0],
+				geojsonData,
 			);
-			return;
-		}
-
-		map.addSource(sourceId, {
-			type: "geojson",
-			data: districtFeaturesData as unknown as Parameters<maplibregl.GeoJSONSource["setData"]>[0],
-		});
-
-		map.addLayer({
-			id: fillLayerId,
-			type: "fill",
-			source: sourceId,
-			paint: {
-				"fill-color": ["get", "fillColor"],
-				"fill-opacity": 0.22,
-			},
-		});
-
-		map.addLayer({
-			id: lineLayerId,
-			type: "line",
-			source: sourceId,
-			paint: {
-				"line-color": ["get", "borderColor"],
-				"line-width": 2.2,
-				"line-opacity": 0.85,
-			},
-		});
-
-		map.addLayer({
-			id: labelLayerId,
-			type: "symbol",
-			source: sourceId,
-			layout: {
-				"text-field": ["get", "name"],
-				"text-size": 11,
-				"text-anchor": "center",
-				"text-allow-overlap": false,
-			},
-			paint: {
-				"text-color": "#18181B",
-				"text-halo-color": "#FFFFFF",
-				"text-halo-width": 2,
-			},
-		});
-
-		map.on("click", fillLayerId, (e: maplibregl.MapLayerMouseEvent) => {
-			const feat = e.features?.[0];
-			if (feat && feat.properties) {
-				const districtProps = feat.properties as unknown as BaliDistrictProperties;
-				if (onSelectRegionRef.current) {
-					onSelectRegionRef.current(districtProps.name, districtProps);
-				}
-
-				const q = districtProps.name.toLowerCase();
-				const matchingVillage = allVillages.find(
-					(v) =>
-						v.kabupaten.toLowerCase().includes(districtProps.kabupaten.toLowerCase()) ||
-						v.kecamatan.toLowerCase().includes(q) ||
-						q.includes(v.kecamatan.toLowerCase()),
-				);
-				if (matchingVillage) {
-					const isMobile = typeof window !== "undefined" && window.innerWidth <= 768;
-					if (onSelectVillage) {
-						onSelectVillage(matchingVillage);
-					}
-					if (isMobile) {
-						openCompactPopupForVillage(matchingVillage);
-					} else {
-						if (activePopupRef.current) {
-							activePopupRef.current.remove();
-							activePopupRef.current = null;
-						}
-					}
-					map.flyTo({
-						center: matchingVillage.mapCenter,
-						zoom: 13.5,
-						padding: isMobile
-							? { top: 130, bottom: 40, left: 20, right: 20 }
-							: { top: 60, bottom: 40, left: 20, right: 460 },
-						essential: true,
-					});
-				}
-			}
-		});
-
-		map.on("mouseenter", fillLayerId, () => {
-			map.getCanvas().style.cursor = "pointer";
-		});
-
-		map.on("mouseleave", fillLayerId, () => {
-			map.getCanvas().style.cursor = "";
-		});
-
-		map.on("click", (e: maplibregl.MapMouseEvent) => {
-			if (!onSelectRegionRef.current) return;
-			const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
-				[e.point.x - 4, e.point.y - 4],
-				[e.point.x + 4, e.point.y + 4],
-			];
-			const hit = map.queryRenderedFeatures(bbox, {
-				layers: [fillLayerId],
-			});
-			if (hit.length === 0) {
-				const clickCoord: [number, number] = [e.lngLat.lng, e.lngLat.lat];
-				let nearestDist = Infinity;
-				let nearestDistrict: BaliDistrictProperties | null = null;
-				for (const feat of BALI_DISTRICTS_DATA.features) {
-					const dist = calculateDistance(clickCoord, feat.properties.center);
-					if (dist < nearestDist) {
-						nearestDist = dist;
-						nearestDistrict = feat.properties;
-					}
-				}
-				if (nearestDistrict && nearestDist <= 35) {
-					onSelectRegionRef.current(nearestDistrict.name, nearestDistrict);
-				}
-			}
-		});
-	}, [isMapLoaded, activeLayer, districtFeaturesData, allVillages, openCompactPopupForVillage]);
-
-	// Update district polygon layer high-contrast highlighting whenever selectedRegionName changes
-	useEffect(() => {
-		const map = mapRef.current;
-		if (!map || !isMapLoaded || !map.getLayer("rangkai-districts-fill")) return;
-
-		if (selectedRegionName) {
-			const q = selectedRegionName.toLowerCase();
-			const matchedDistrict = BALI_DISTRICTS_DATA.features.find(
-				(f) =>
-					f.properties.name.toLowerCase().includes(q) ||
-					q.includes(f.properties.name.toLowerCase()) ||
-					f.properties.kabupaten.toLowerCase().includes(q),
-			);
-			const targetId = matchedDistrict?.properties.id || "";
-
-			map.setPaintProperty("rangkai-districts-fill", "fill-opacity", [
-				"case",
-				["==", ["get", "id"], targetId],
-				0.52,
-				0.08,
-			]);
-			map.setPaintProperty("rangkai-districts-line", "line-width", [
-				"case",
-				["==", ["get", "id"], targetId],
-				3.5,
-				1.2,
-			]);
-			map.setPaintProperty("rangkai-districts-line", "line-opacity", [
-				"case",
-				["==", ["get", "id"], targetId],
-				1.0,
-				0.25,
-			]);
 		} else {
-			map.setPaintProperty("rangkai-districts-fill", "fill-opacity", 0.28);
-			map.setPaintProperty("rangkai-districts-line", "line-width", 2.0);
-			map.setPaintProperty("rangkai-districts-line", "line-opacity", 0.75);
+			map.addSource(sourceId, {
+				type: "geojson",
+				data: geojsonData,
+			});
 		}
-	}, [selectedRegionName, isMapLoaded]);
+		if (!map.getLayer(haloLayerId)) {
+			map.addLayer({
+				id: haloLayerId,
+				type: "line",
+				source: sourceId,
+				layout: {
+					"line-join": "round",
+					"line-cap": "round",
+				},
+				paint: {
+					"line-color": "rgba(255, 255, 255, 0.92)",
+					"line-width": 10,
+				},
+			});
+		}
+		if (!map.getLayer(lineLayerId)) {
+			map.addLayer({
+				id: lineLayerId,
+				type: "line",
+				source: sourceId,
+				layout: {
+					"line-join": "round",
+					"line-cap": "round",
+				},
+				paint: {
+					"line-color": "#2563EB",
+					"line-width": 5.5,
+				},
+			});
+		}
+
+		userMarkerRef.current?.remove();
+		userMarkerRef.current = null;
+
+		if (effectiveUserLocation) {
+			const el = document.createElement("div");
+			el.setAttribute("aria-label", "Lokasi Anda");
+			el.style.cssText =
+				"width:22px;height:22px;border-radius:9999px;background:#4D702F;border:3px solid #FFFFFF;box-shadow:0 0 0 6px rgba(92,132,55,0.28),0 4px 10px rgba(15,23,42,0.35);cursor:pointer;";
+			el.title = "Lokasi Anda";
+			userMarkerRef.current = new maplibregl.Marker({
+				element: el,
+				anchor: "center",
+			})
+				.setLngLat(effectiveUserLocation)
+				.addTo(map);
+
+			if (routeCoords.length >= 2) {
+				const bounds = new maplibregl.LngLatBounds(
+					effectiveUserLocation,
+					effectiveUserLocation,
+				);
+				routeCoords.forEach((pt) => bounds.extend(pt));
+				map.fitBounds(bounds, {
+					padding: { top: 80, bottom: 90, left: 70, right: 70 },
+					maxZoom: 15.2,
+					duration: 750,
+				});
+			}
+		}
+	}, [
+		effectiveUserLocation,
+		effectiveGuidanceRoute,
+		isMapLoaded,
+		styleEpoch,
+	]);
 
 	function handleToggleOverview() {
 		const map = mapRef.current;
 		if (!map) return;
 		if (isBaliOverview && village) {
 			setIsBaliOverview(false);
-			map.flyTo({ center: village.mapCenter, zoom: village.mapZoom, duration: 1200 });
+			map.flyTo({
+				center: village.mapCenter,
+				zoom: village.mapZoom,
+				duration: 1200,
+			});
 		} else {
 			setIsBaliOverview(true);
-			map.flyTo({ center: BALI_ISLAND_CENTER, zoom: BALI_ISLAND_ZOOM, duration: 1400 });
+			map.flyTo({
+				center: BALI_ISLAND_CENTER,
+				zoom: BALI_ISLAND_ZOOM,
+				duration: 1400,
+			});
 		}
 	}
 
@@ -1009,7 +1235,8 @@ export function BaliMapTilerView({
 				height,
 				minHeight: height === "100%" ? "100%" : minHeightValue,
 				position: "relative",
-				borderRadius: height === "100%" ? 0 : "var(--radius-element, 12px)",
+				borderRadius:
+					height === "100%" ? 0 : "var(--radius-element, 12px)",
 				overflow: "hidden",
 				border: "none",
 				background: "#151E28",
@@ -1038,11 +1265,12 @@ export function BaliMapTilerView({
 						borderRadius: 12,
 						padding: "10px 16px",
 						zIndex: 5,
+						boxShadow: "0 4px 16px rgba(15, 23, 42, 0.08)",
 					}}
 				>
 					<div
 						style={{
-							fontWeight: 500,
+							fontWeight: 600,
 							fontSize: 13,
 							color: "#181B20",
 						}}
@@ -1061,33 +1289,101 @@ export function BaliMapTilerView({
 				</div>
 			)}
 
-			{/* Controls top right (Bali Overview Toggle) - hidden in minimalControls mode */}
+			{controlledUserLocation === undefined && <GpsControls gps={gps} fullMap={height === "100%"} />}
+
+			{/* Controls top right (Basemap Mode Switcher + User Route + Bali Overview Toggle) - hidden in minimalControls mode */}
 			{!minimalControls && (
 				<div
 					style={{
 						position: "absolute",
 						top: height === "100%" ? 84 : 14,
-						right: 54, // next to maplibre nav buttons
+						right: 54,
 						display: "flex",
+						flexWrap: "wrap",
+						alignItems: "center",
+						justifyContent: "flex-end",
 						gap: 6,
-						zIndex: 5,
+						zIndex: 6,
 					}}
 				>
-					{/* Pan-Bali toggle button */}
+					<div
+						role="group"
+						aria-label="Pilih tampilan peta dasar"
+						style={{
+							display: "inline-flex",
+							alignItems: "center",
+							background: "rgba(24, 27, 32, 0.88)",
+							backdropFilter: "blur(8px)",
+							padding: 2.5,
+							borderRadius: 4,
+							boxShadow: "0 2px 10px rgba(0,0,0,0.14)",
+						}}
+					>
+						<button
+							type="button"
+							onClick={() => handleBasemapChange("satellite")}
+							aria-pressed={effectiveBasemapStyle === "satellite"}
+							style={{
+								border: "none",
+								borderRadius: 4,
+								padding: "5px 10px",
+								fontSize: 11.5,
+								fontWeight: 600,
+								cursor: "pointer",
+								background:
+									effectiveBasemapStyle === "satellite"
+										? "#FFFFFF"
+										: "transparent",
+								color:
+									effectiveBasemapStyle === "satellite"
+										? "#18181B"
+										: "#E2E8F0",
+							}}
+						>
+							Satelit
+						</button>
+						<button
+							type="button"
+							onClick={() => handleBasemapChange("osm")}
+							aria-pressed={effectiveBasemapStyle === "osm"}
+							style={{
+								border: "none",
+								borderRadius: 4,
+								padding: "5px 10px",
+								fontSize: 11.5,
+								fontWeight: 600,
+								cursor: "pointer",
+								background:
+									effectiveBasemapStyle === "osm"
+										? "#FFFFFF"
+										: "transparent",
+								color:
+									effectiveBasemapStyle === "osm"
+										? "#18181B"
+										: "#E2E8F0",
+							}}
+						>
+							Peta Jalan
+						</button>
+					</div>
+
+
 					<button
 						type="button"
 						onClick={handleToggleOverview}
 						style={{
-							background: isBaliOverview ? "#18181B" : "rgba(255, 255, 255, 0.95)",
+							background: isBaliOverview
+								? "#18181B"
+								: "rgba(255, 255, 255, 0.95)",
 							color: isBaliOverview ? "#FFFFFF" : "#18181B",
-							border: "1px solid #E4E4E7",
-							borderRadius: 8,
+							border: "1px solid var(--color-border)",
+							borderRadius: 4,
 							padding: "6px 12px",
 							fontFamily: "var(--font-family)",
 							fontSize: 11.5,
 							fontWeight: 600,
 							cursor: "pointer",
-							boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+							boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
 							backdropFilter: "blur(8px)",
 						}}
 					>
@@ -1106,10 +1402,10 @@ export function BaliMapTilerView({
 						background: "rgba(255, 255, 255, 0.95)",
 						backdropFilter: "blur(10px)",
 						WebkitBackdropFilter: "blur(10px)",
-						border: "1px solid #E4E4E7",
-						borderRadius: 8,
-						padding: "6px 12px",
-						boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+						border: "1px solid var(--color-border)",
+						borderRadius: 4,
+						padding: "7px 12px",
+						boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
 						display: "flex",
 						alignItems: "center",
 						gap: 12,
@@ -1177,12 +1473,53 @@ export function BaliMapTilerView({
 								width: 12,
 								height: 4,
 								borderRadius: 2,
-								background: "#15803D",
+								background: "#4D702F",
 								display: "inline-block",
 							}}
 						/>
-						<span>Jalur Alternatif</span>
+						<span>Dibuka</span>
 					</div>
+					<div className="map-legend-item">
+						<span
+							aria-hidden="true"
+							style={{
+								display: "inline-block",
+								width: 12,
+								height: 4,
+								background: "#78716C",
+							}}
+						/>{" "}
+						Belum dikonfirmasi
+					</div>
+					<div className="map-legend-item">
+						<span
+							aria-hidden="true"
+							style={{
+								display: "inline-block",
+								width: 12,
+								height: 4,
+								background: "#2563EB",
+							}}
+						/>{" "}
+						Jalur alternatif
+					</div>
+					{effectiveUserLocation ? (
+						<div className="map-legend-item">
+							<span
+								aria-hidden="true"
+								style={{
+									display: "inline-block",
+									width: 12,
+									height: 4,
+									background: "#2563EB",
+								}}
+							/>{" "}
+										Rute alternatif Anda{effectiveGuidanceRoute?.isSimulation ? " (SIMULASI)" : ""}
+						</div>
+					) : null}
+					{village && village.isSimulation !== false ? (
+						<div className="map-legend-item">Garis putus: simulasi</div>
+					) : null}
 				</div>
 			)}
 
@@ -1196,8 +1533,8 @@ export function BaliMapTilerView({
 						transform: "translate(-50%, -50%)",
 						background: "rgba(255, 255, 255, 0.95)",
 						backdropFilter: "blur(8px)",
-						border: "1px solid #E4E4E7",
-						borderRadius: 9999,
+						border: "1px solid var(--color-border)",
+						borderRadius: 4,
 						padding: "8px 16px",
 						boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
 						fontFamily: "Figtree, sans-serif",
@@ -1220,7 +1557,7 @@ export function BaliMapTilerView({
 							animation: "pulse 1.5s infinite",
 						}}
 					/>
-					<span>Memuat Peta Citra & Jalur Desa...</span>
+					<span>Memuat Peta Citra & Titik Lokasi Upacara...</span>
 				</div>
 			)}
 
@@ -1237,13 +1574,27 @@ export function BaliMapTilerView({
 						overflowY: "auto",
 					}}
 				>
+					<p role="alert">{mapError}</p>
+					<button
+						type="button"
+						className="teduh-btn-secondary"
+						onClick={() => {
+							setMapError(null);
+							setIsMapLoaded(false);
+							fittedEventRef.current = null;
+							setMapAttempt((attempt) => attempt + 1);
+						}}
+					>
+						Coba lagi peta
+					</button>
 					<MapFallbackRoadList
 						showMapUnavailableNotice
 						segments={
-							village?.roadSegments?.map((seg) => {
+							village?.roadSegments?.map((seg: VillageRoadRouteSegment) => {
 								const rawImpact = (seg.impactType || "").toLowerCase();
 								const mappedImpact: RoadSegmentFallbackItem["impactType"] =
-									rawImpact.includes("intermittent") || rawImpact.includes("buka_tutup")
+									rawImpact.includes("intermittent") ||
+									rawImpact.includes("buka_tutup")
 										? "intermittent_flow"
 										: rawImpact.includes("parking")
 											? "parking_restriction"
@@ -1254,10 +1605,11 @@ export function BaliMapTilerView({
 								return {
 									id: seg.id,
 									segmentName: seg.roadName,
-									corridorArea: seg.corridorSection || village.desaAdatName,
+									corridorArea:
+										seg.corridorSection || village.desaAdatName,
 									impactType: mappedImpact,
-									plannedFrom: seg.plannedFrom || village.scheduleIso?.startsAt || new Date().toISOString(),
-									plannedTo: seg.plannedTo || village.scheduleIso?.endsAt || new Date().toISOString(),
+									plannedFrom: seg.plannedFrom ?? null,
+									plannedTo: seg.plannedTo ?? null,
 									observedAt: seg.observedAt || null,
 									expiresAt: seg.expiresAt || null,
 									diversionNote: seg.guidanceNote || null,

@@ -1,3 +1,4 @@
+import { approveSyntheticOrganization } from "./approval-fixture";
 import { test, expect, type BrowserContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -16,11 +17,15 @@ import {
 import { user, account, session } from "../../src/db/auth-schema";
 import { eq, inArray } from "drizzle-orm";
 
-const EVIDENCE_DIR = "D:/Development/Lomba/rangkai/.scratch/ui-refinement-20261108/correction-evidence";
+const EVIDENCE_DIR = "./.scratch/ui-refinement-20261108/correction-evidence";
 
 const getScrollWidth = () =>
 	(globalThis as unknown as { document: { documentElement: { scrollWidth: number } } }).document
 		.documentElement.scrollWidth;
+
+const settledScheduleSelector = "#jadwal .schedule-grid, #jadwal [data-gsap='scroll-card'], #jadwal [role='alert']";
+
+test.use({ actionTimeout: 10_000 });
 
 test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 	test("verifies simplified layouts, removes clutter, checks responsive viewports, and captures settled evidence", async ({
@@ -89,7 +94,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 
 			// Reveal #jadwal GSAP section before snapshot and wait for settled cards or empty state
 			await desktopPage.locator("#jadwal").scrollIntoViewIfNeeded();
-			await expect(desktopPage.locator(".schedule-grid, [data-gsap='scroll-card']").first()).toBeVisible({ timeout: 10000 });
+			await expect(desktopPage.locator(settledScheduleSelector).first()).toBeVisible({ timeout: 10000 });
 
 			await desktopPage.screenshot({
 				path: `${EVIDENCE_DIR}/landing-1280px-desktop.png`,
@@ -100,7 +105,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await desktop1440Page.goto("/");
 			await desktop1440Page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await desktop1440Page.locator("#jadwal").scrollIntoViewIfNeeded();
-			await expect(desktop1440Page.locator(".schedule-grid, [data-gsap='scroll-card']").first()).toBeVisible({ timeout: 10000 });
+			await expect(desktop1440Page.locator(settledScheduleSelector).first()).toBeVisible({ timeout: 10000 });
 			await desktop1440Page.screenshot({
 				path: `${EVIDENCE_DIR}/landing-1440px-desktop.png`,
 				fullPage: true,
@@ -110,7 +115,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await tabletPage.goto("/");
 			await tabletPage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await tabletPage.locator("#jadwal").scrollIntoViewIfNeeded();
-			await expect(tabletPage.locator(".schedule-grid, [data-gsap='scroll-card']").first()).toBeVisible({ timeout: 10000 });
+			await expect(tabletPage.locator(settledScheduleSelector).first()).toBeVisible({ timeout: 10000 });
 			const tabletScrollWidth = await tabletPage.evaluate(getScrollWidth);
 			expect(tabletScrollWidth).toBeLessThanOrEqual(768);
 			await tabletPage.screenshot({
@@ -122,7 +127,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await mobilePage.goto("/");
 			await mobilePage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await mobilePage.locator("#jadwal").scrollIntoViewIfNeeded();
-			await expect(mobilePage.locator(".schedule-grid, [data-gsap='scroll-card']").first()).toBeVisible({ timeout: 10000 });
+			await expect(mobilePage.locator(settledScheduleSelector).first()).toBeVisible({ timeout: 10000 });
 
 			// SPEC-2.3: Mobile schedule filter bar must start at reachable first filter (no negative scroll clipping)
 			const landingFirstFilter390 = mobilePage.locator(".schedule-filter-bar .schedule-filter-btn").first();
@@ -143,7 +148,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await mobile320Page.goto("/");
 			await mobile320Page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await mobile320Page.locator("#jadwal").scrollIntoViewIfNeeded();
-			await expect(mobile320Page.locator(".schedule-grid, [data-gsap='scroll-card']").first()).toBeVisible({ timeout: 10000 });
+			await expect(mobile320Page.locator(settledScheduleSelector).first()).toBeVisible({ timeout: 10000 });
 
 			const landingFirstFilter320 = mobile320Page.locator(".schedule-filter-bar .schedule-filter-btn").first();
 			await expect(landingFirstFilter320).toBeVisible();
@@ -165,7 +170,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await expect(desktopPage.getByText(/Jadwal Upacara & Rekayasa Jalur Bali/i)).toBeVisible();
 			// Await settled content: detachment of loading indicator and appearance of cards/empty state (SPEC-3)
 			await desktopPage.getByText("Memuat daftar jadwal upacara terpublikasi...").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
-			await expect(desktopPage.locator(".events-grid, .schedule-card, .teduh-empty-state").first()).toBeVisible({ timeout: 10000 });
+			await expect(desktopPage.locator(".events-grid, .schedule-card, .teduh-empty-surface, [role='alert']").first()).toBeVisible({ timeout: 10000 });
 
 			await desktopPage.screenshot({
 				path: `${EVIDENCE_DIR}/events-list-1280px-desktop.png`,
@@ -175,7 +180,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await desktop1440Page.goto("/events");
 			await desktop1440Page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await desktop1440Page.getByText("Memuat daftar jadwal upacara terpublikasi...").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
-			await expect(desktop1440Page.locator(".events-grid, .schedule-card, .teduh-empty-state").first()).toBeVisible({ timeout: 10000 });
+			await expect(desktop1440Page.locator(".events-grid, .schedule-card, .teduh-empty-surface, [role='alert']").first()).toBeVisible({ timeout: 10000 });
 			await desktop1440Page.screenshot({
 				path: `${EVIDENCE_DIR}/events-list-1440px-desktop.png`,
 				fullPage: true,
@@ -185,7 +190,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await tabletPage.goto("/events");
 			await tabletPage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await tabletPage.getByText("Memuat daftar jadwal upacara terpublikasi...").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
-			await expect(tabletPage.locator(".events-grid, .schedule-card, .teduh-empty-state").first()).toBeVisible({ timeout: 10000 });
+			await expect(tabletPage.locator(".events-grid, .schedule-card, .teduh-empty-surface, [role='alert']").first()).toBeVisible({ timeout: 10000 });
 			const tabletEventsWidth = await tabletPage.evaluate(getScrollWidth);
 			expect(tabletEventsWidth).toBeLessThanOrEqual(768);
 			await tabletPage.screenshot({
@@ -206,10 +211,11 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await mobilePage.goto("/events");
 			await mobilePage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await mobilePage.getByText("Memuat daftar jadwal upacara terpublikasi...").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
-			await expect(mobilePage.locator(".events-grid, .schedule-card, .teduh-empty-state").first()).toBeVisible({ timeout: 10000 });
+			await expect(mobilePage.locator(".events-grid, .schedule-card, .teduh-empty-surface, [role='alert']").first()).toBeVisible({ timeout: 10000 });
 
 			// Filter bar reachability on /events
-			const eventsFirstFilter390 = mobilePage.locator(".schedule-filter-bar .schedule-filter-btn").first();
+			const eventsFirstFilter390 = mobilePage.getByRole("combobox", { name: "Filter status jadwal" });
+			await expect(eventsFirstFilter390.locator("option")).toHaveCount(3);
 			await expect(eventsFirstFilter390).toBeVisible();
 			const ef390Box = await eventsFirstFilter390.boundingBox();
 			expect(ef390Box).not.toBeNull();
@@ -226,9 +232,10 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await mobile320Page.goto("/events");
 			await mobile320Page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await mobile320Page.getByText("Memuat daftar jadwal upacara terpublikasi...").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
-			await expect(mobile320Page.locator(".events-grid, .schedule-card, .teduh-empty-state").first()).toBeVisible({ timeout: 10000 });
+			await expect(mobile320Page.locator(".events-grid, .schedule-card, .teduh-empty-surface, [role='alert']").first()).toBeVisible({ timeout: 10000 });
 
-			const eventsFirstFilter320 = mobile320Page.locator(".schedule-filter-bar .schedule-filter-btn").first();
+			const eventsFirstFilter320 = mobile320Page.getByRole("combobox", { name: "Filter status jadwal" });
+			await expect(eventsFirstFilter320.locator("option")).toHaveCount(3);
 			await expect(eventsFirstFilter320).toBeVisible();
 			const ef320Box = await eventsFirstFilter320.boundingBox();
 			expect(ef320Box).not.toBeNull();
@@ -268,7 +275,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 				if (await firstSearchItem.isVisible()) {
 					await firstSearchItem.click();
 					// Wait for drawer to show details and SIMULASI token
-					const simBadge = desktopPage.locator(".astryx-token").filter({ hasText: /SIMULASI/i }).first();
+					const simBadge = desktopPage.locator(".simulation-token").filter({ hasText: /SIMULASI/i }).first();
 					await expect(simBadge).toBeVisible({ timeout: 5000 });
 				}
 			}
@@ -395,11 +402,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			});
 			expect(orgSignup.ok()).toBe(true);
 
-			const orgRes = await desktopContext.request.post(`${baseURL}/api/organizations`, {
-				data: { name: orgName, village: "Ubud", district: "Gianyar" },
-			});
-			expect(orgRes.status()).toBe(201);
-			const orgData = (await orgRes.json()) as { organization: { id: string } };
+			const orgData = await approveSyntheticOrganization(browser, desktopContext.request, baseURL, { name: orgName, village: "Ubud", district: "Gianyar" });
 			const orgId = orgData.organization.id;
 
 			// Create a test event and road
@@ -450,20 +453,23 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			// Await Spatial Inspector road data settled (loading text detached)
 			await desktopPage.getByText("Memuat data ruas jalan...").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 
-			// Verify removal of "Inspektur Spasial Kegiatan" decorative eyebrow and verify "Peta kegiatan" heading
+			// The overview and event list are separate routes; verify event management on its list.
 			await expect(desktopPage.getByText("Inspektur Spasial Kegiatan")).toHaveCount(0);
-			await expect(desktopPage.getByText(/Peta kegiatan/i).first()).toBeVisible();
+			await desktopPage.goto("/dashboard/events");
+			await expect(desktopPage).toHaveURL("/dashboard/events");
+			await expect(desktopPage.getByText(eventTitle).first()).toBeVisible({ timeout: 15000 });
+			await expect(desktopPage.locator(`[data-event-id="${eventId}"]`).locator(`a[href="/dashboard/events/${eventId}"]`).last()).toBeVisible();
 
-			// SPEC-2.2: Assert EventLifecycleBadge is NOT truncated into "DRAF..." or "DR..."
-			const statusBadge = desktopPage.locator(".astryx-token").filter({ hasText: /DRAF/i }).first();
+			// SPEC-2.2: Assert the event row shows its current, untruncated Draf status.
+			const statusBadge = desktopPage.locator(`[data-event-id="${eventId}"]`).getByText(/^Draf(?: - Simulasi)?$/);
 			await expect(statusBadge).toBeVisible();
 			const badgeText = await statusBadge.textContent();
-			expect(badgeText).toContain("DRAF");
+			expect(badgeText).toContain("Draf");
 			expect(badgeText).not.toBe("DR...");
 			expect(badgeText).not.toBe("DRAF...");
 
 			// Assert SIMULASI token on active event
-			const simTokenDashboard = desktopPage.locator(".astryx-token").filter({ hasText: /SIMULASI/i }).first();
+			const simTokenDashboard = desktopPage.locator(`[data-event-id="${eventId}"]`).getByText(/Simulasi/i);
 			await expect(simTokenDashboard).toBeVisible();
 
 			await desktopPage.screenshot({
@@ -570,8 +576,9 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await desktopPage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await expect(desktopPage.getByText(orgEmail).first()).toBeVisible({ timeout: 15000 });
 			await expect(desktopPage.getByText("Mode Tamu / Anda belum masuk")).toHaveCount(0);
-			await expect(desktopPage.getByText(/Pengaturan Akun & Desa Adat/i)).toBeVisible();
-			await expect(desktopPage.getByText(/Profil Petugas & Sesi Otentikasi/i)).toBeVisible();
+			await expect(desktopPage.getByRole("heading", { name: "Pengaturan" })).toBeVisible();
+			await expect(desktopPage.getByRole("heading", { name: "Akun" })).toBeVisible();
+			await expect(desktopPage.getByRole("heading", { name: "Organisasi" })).toBeVisible();
 
 			await desktopPage.screenshot({
 				path: `${EVIDENCE_DIR}/settings-1280px-desktop.png`,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { venueLocationSchema } from "./venue-location";
 
 export const EVENT_CATEGORIES = [
 	"upacara",
@@ -18,6 +19,7 @@ export const EVENT_CATEGORIES = [
 ] as const;
 
 export const GEMINI_MODEL_NAME = "gemini-3.5-flash-lite";
+export const GEMINI_FALLBACK_MODEL_NAME = "gemini-3.6-flash";
 export const GEMINI_PROMPT_VERSION = "v1.1";
 export const GEMINI_SCHEMA_VERSION = "1.0";
 
@@ -139,10 +141,11 @@ export type GeminiExtractionResult = z.infer<
 const patchExtractedFieldsObjectSchema = z
 	.object({
 		title: z.string().trim().min(3).max(200).optional(),
-		category: z.enum(EVENT_CATEGORIES).nullable().optional(),
+		category: z.enum([...EVENT_CATEGORIES, "odalan", "melasti", "pengerupukan", "karya"]).nullable().optional(),
 		startsAt: strictIsoDatetimeSchema.nullable().optional(),
 		endsAt: strictIsoDatetimeSchema.nullable().optional(),
 		venueName: z.string().trim().max(300).nullable().optional(),
+		venueLocation: venueLocationSchema.nullable().optional(),
 		description: z.string().trim().max(5000).nullable().optional(),
 		permitReference: z.string().trim().max(200).nullable().optional(),
 		processionDescription: z.string().trim().max(2000).nullable().optional(),

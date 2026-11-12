@@ -1,3 +1,4 @@
+import { approveSyntheticOrganization } from "./approval-fixture";
 import { test, expect } from "@playwright/test";
 import { eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -62,6 +63,8 @@ const EVIDENCE_DIR =
 	process.env.EVIDENCE_DIR ||
 	"test-results/organizer-evidence";
 
+test.use({ actionTimeout: 10_000 });
+
 test.describe("Organizer Navigation & Dashboard Verification (After Polish)", () => {
 	test("verifies polished dashboard, contextual navigation, team invitation, bounds, and mixed-role resolution", async ({
 		browser,
@@ -77,6 +80,7 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 		const officerEmail = `officer.verify.${key}@test.local`;
 		const orgNameA = `Desa Adat dengan Nama Organisasi Panjang untuk Pengujian Reflow ${key}`;
 		const orgNameB = `Desa Adat Verification B ${key}`;
+		const orgNameC = `Desa Adat Approval Mixed Role ${key}`;
 		const eventTitleA = `Upacara Melasti Segara ${key}`;
 		const eventTitleB = `Karya Pujawali Pura Desa ${key}`;
 
@@ -93,6 +97,7 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 
 		let orgIdA = "";
 		let orgIdB = "";
+		let orgIdC = "";
 		let eventAId = "";
 		let eventBId = "";
 
@@ -108,27 +113,19 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			expect(signupRes.ok()).toBe(true);
 
 			// 2. Create organization A
-			const orgARes = await context.request.post(`${baseURL}/api/organizations`, {
-				data: {
+			const orgAJson = await approveSyntheticOrganization(browser, context.request, baseURL, {
 					name: orgNameA,
 					village: "Sanur",
 					district: "Denpasar Selatan",
-				},
-			});
-			expect(orgARes.status()).toBe(201);
-			const orgAJson = (await orgARes.json()) as { organization: { id: string } };
+				});
 			orgIdA = orgAJson.organization.id;
 
 			// 3. Create organization B (for multi-org and mixed-role verification)
-			const orgBRes = await context.request.post(`${baseURL}/api/organizations`, {
-				data: {
+			const orgBJson = await approveSyntheticOrganization(browser, context.request, baseURL, {
 					name: orgNameB,
 					village: "Kuta",
 					district: "Badung",
-				},
-			});
-			expect(orgBRes.status()).toBe(201);
-			const orgBJson = (await orgBRes.json()) as { organization: { id: string } };
+				});
 			orgIdB = orgBJson.organization.id;
 
 			// 4. Create Event A in Org A
@@ -164,10 +161,16 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			eventBId = eventBJson.event.id;
 
 			// 6. Navigate to /dashboard
+			const myOrganizations = await context.request.get(`${baseURL}/api/organizations/my`);
+			expect(myOrganizations.status()).toBe(200);
+			const myOrganizationsBody = (await myOrganizations.json()) as { organizations: Array<{ id: string; role: string }> };
+			expect(myOrganizationsBody.organizations).toEqual(expect.arrayContaining([
+				expect.objectContaining({ id: orgIdA, role: "organizer" }),
+				expect.objectContaining({ id: orgIdB, role: "organizer" }),
+			]));
 			await page.goto("/dashboard");
 			await page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
-			await expect(page.getByText(eventTitleA).first()).toBeVisible({ timeout: 15000 });
-			await expect(page.getByText(eventTitleB).first()).toBeVisible({ timeout: 15000 });
+			await expect(page.getByRole("heading", { name: "Ringkasan", exact: true })).toBeVisible({ timeout: 15000 });
 
 			// --- VERIFICATION 1: Eyebrow filler is gone ---
 			const pageText = await page.textContent("body");
@@ -175,9 +178,9 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 
 			// --- VERIFICATION 2: General navigation on /dashboard without active event ---
 			const sidebar = page.locator(".teduh-workspace-sidebar");
-			await expect(sidebar.getByRole("link", { name: "Ikhtisar Kegiatan" })).toBeVisible();
+			await expect(sidebar.getByRole("link", { name: "Ringkasan" })).toHaveAttribute("href", "/dashboard");
+			await expect(sidebar.locator('a[href="/dashboard/events"]')).toBeVisible();
 			await expect(sidebar.getByRole("link", { name: "Pengaturan" })).toBeVisible();
-			await expect(sidebar.getByRole("link", { name: "Buat Kegiatan" })).toBeVisible();
 
 			// Ensure fake links to /dashboard or /events/new do NOT appear in sidebar
 			await expect(sidebar.getByRole("link", { name: "Surat Edaran & Detail" })).toHaveCount(0);
@@ -185,16 +188,23 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			await expect(sidebar.getByRole("link", { name: "Tim & Undangan Petugas" })).toHaveCount(0);
 			await expect(sidebar.getByRole("link", { name: "Kebersihan & Sampah" })).toHaveCount(0);
 
-			// Check guidance text
-			await expect(sidebar.getByText(/Pilih kegiatan dari daftar/i)).toBeVisible();
+			// The general navigation has no event-specific context before one is selected.
+			await expect(sidebar.locator(".context-navigation")).toHaveCount(0);
 
 			// --- VERIFICATION 3: Dashboard has no duplicate side-panel map editor ---
 			await expect(page.locator("text=Editor Ruas & Penutupan Cepat")).toHaveCount(0);
 			await expect(page.locator("text=Pilih kegiatan dari daftar untuk menginspeksi atau mengedit ruas jalan")).toHaveCount(0);
 
-			// --- VERIFICATION 4: Activity Table / List with Kelola buttons ---
-			const kelolaLinks = page.getByRole("link", { name: "Kelola Kegiatan" });
-			expect(await kelolaLinks.count()).toBeGreaterThanOrEqual(2);
+			// --- VERIFICATION 4: Event management lives on its own route ---
+			await sidebar.getByRole("link", { name: "Kegiatan" }).click();
+			await expect(page).toHaveURL("/dashboard/events");
+			await expect(page.locator(`[data-event-id="${eventAId}"]`).getByText(eventTitleA, { exact: true })).toBeVisible();
+			await expect(page.locator(`[data-event-id="${eventBId}"]`).getByText(eventTitleB, { exact: true })).toBeVisible();
+			await page.getByText("Memuat kegiatan...").waitFor({ state: "detached", timeout: 20000 }).catch(() => {});
+			const eventAKelola = page.locator(`[data-event-id="${eventAId}"] a[href="/dashboard/events/${eventAId}"]`).last();
+			const eventBKelola = page.locator(`[data-event-id="${eventBId}"] a[href="/dashboard/events/${eventBId}"]`).last();
+			await expect(eventAKelola).toBeVisible();
+			await expect(eventBKelola).toBeVisible();
 
 			// --- VERIFICATION 5: Proportional Typography & Computed Styles ---
 			// Check Event Title font size: ~18px
@@ -212,14 +222,14 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			expect(metaFontSizePx).toBeGreaterThanOrEqual(13);
 
 			// Check Action Button font size: at least 13px (no 9px or 11px tiny text)
-			const firstKelola = kelolaLinks.first();
+			const firstKelola = eventAKelola;
 			const kelolaFontSize = await firstKelola.evaluate((el: unknown) => window.getComputedStyle(el).fontSize);
 			const kelolaFontSizePx = parseFloat(kelolaFontSize);
 			console.log("[VERIFY TYPOGRAPHY] Kelola button font size:", kelolaFontSize);
 			expect(kelolaFontSizePx).toBeGreaterThanOrEqual(13);
 
 			// Check Filter Select font size: at least 16px (mobile floor compliant)
-			const filterSelect = page.getByRole("combobox", { name: "Filter Desa Adat" });
+			const filterSelect = page.getByRole("combobox", { name: "Status" });
 			const selectFontSize = await filterSelect.evaluate((el: unknown) => window.getComputedStyle(el).fontSize);
 			console.log("[VERIFY TYPOGRAPHY] Filter Select font size:", selectFontSize);
 			expect(parseFloat(selectFontSize)).toBeGreaterThanOrEqual(16);
@@ -328,18 +338,18 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			await page.screenshot({ path: `${EVIDENCE_DIR}/after-dashboard-1440px.png`, fullPage: true });
 
 			// --- VERIFICATION 7: Click Kelola for Event A -> Verify Contextual Nav ---
-			const eventARowKelola = page.locator(`:is(tr, [data-testid="event-row"]):has-text("${eventTitleA}")`).getByRole("link", { name: "Kelola Kegiatan" }).first();
+			const eventARowKelola = page.locator(`:is(tr, [data-testid="event-row"]):has-text("${eventTitleA}")`).locator(`a[href="/dashboard/events/${eventAId}"]`).last();
 			await eventARowKelola.click();
 
 			await expect(page).toHaveURL(`/dashboard/events/${eventAId}`);
 			await page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 
-			// Verify contextual sidebar header displays event name and Kembali link
+			// Verify contextual sidebar header displays the event name and a stable path to the list
 			await expect(sidebar.getByText(eventTitleA)).toBeVisible({ timeout: 10000 });
-			await expect(sidebar.getByRole("link", { name: "Kembali ke Daftar" })).toBeVisible();
+			await expect(sidebar.getByRole("link", { name: "Kegiatan", exact: true })).toHaveAttribute("href", "/dashboard/events");
 
 			// Verify all 5 contextual event links in sidebar
-			const sidebarRingkasan = sidebar.getByRole("link", { name: "Ringkasan / Detail" });
+			const sidebarRingkasan = sidebar.getByRole("link", { name: "Detail kegiatan" });
 			const sidebarDokumen = sidebar.getByRole("link", { name: "Dokumen & AI" });
 			const sidebarJalan = sidebar.getByRole("link", { name: "Dampak Jalan" });
 			const sidebarKebersihan = sidebar.getByRole("link", { name: "Kebersihan" });
@@ -354,22 +364,22 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			// --- VERIFICATION 8: Navigate to Dokumen & AI (/document) ---
 			await sidebarDokumen.click();
 			await expect(page).toHaveURL(`/dashboard/events/${eventAId}/document`);
-			await expect(page.getByRole("tab", { name: "Dokumen & AI" })).toBeVisible();
+			await expect(page.locator(".teduh-workspace-subtitle")).toContainText("Unggah foto atau PDF surat pengumuman desa adat");
 
 			// --- VERIFICATION 9: Navigate to Dampak Jalan (/roads) ---
 			await sidebarJalan.click();
 			await expect(page).toHaveURL(`/dashboard/events/${eventAId}/roads`);
-			await expect(page.getByRole("tab", { name: "Dampak Jalan" })).toBeVisible();
+			await expect(page.locator(".teduh-workspace-subtitle")).toContainText("Tentukan ruas jalan yang ditutup sementara");
 
 			// --- VERIFICATION 10: Navigate to Kebersihan (/cleanup) ---
 			await sidebarKebersihan.click();
 			await expect(page).toHaveURL(`/dashboard/events/${eventAId}/cleanup`);
-			await expect(page.getByRole("tab", { name: "Kebersihan" })).toBeVisible();
+			await expect(page.locator(".teduh-workspace-subtitle")).toContainText("Pantau bukti foto pembersihan area kegiatan");
 
 			// --- VERIFICATION 11: Navigate to Tim & Petugas (/team) & Test Invitation Workflow ---
 			await sidebarTim.click();
 			await expect(page).toHaveURL(`/dashboard/events/${eventAId}/team`);
-			await expect(page.getByRole("tab", { name: "Tim & Petugas" })).toBeVisible();
+			await expect(page.locator(".teduh-workspace-subtitle")).toContainText("Kelola daftar petugas lapangan");
 
 			// Ensure Team Management UI is loaded
 			await expect(page.getByRole("heading", { name: "Buat Tautan Undangan Petugas", exact: true })).toBeVisible({ timeout: 15000 });
@@ -392,7 +402,8 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			await page.setViewportSize({ width: 1440, height: 900 });
 			await page.waitForTimeout(300);
 
-			const inviteEmailInput = page.getByPlaceholder("contoh: pecalang.desa@rangkai.local");
+			const inviteEmailInput = page.getByLabel("Email Penerima Undangan *");
+			await expect(page.getByLabel("Peran Undangan")).toBeVisible();
 			const inputFont = await inviteEmailInput.evaluate((el: unknown) => window.getComputedStyle(el).fontSize);
 			console.log("[VERIFY TYPOGRAPHY] Team invite input font size at 1440px:", inputFont);
 			expect(parseFloat(inputFont)).toBeGreaterThanOrEqual(16);
@@ -444,12 +455,12 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			expect(revokedInv?.status).toBe("revoked");
 
 			// --- VERIFICATION 12: Return to Dashboard and check Event B context isolation ---
-			const backToListLink = sidebar.getByRole("link", { name: "Kembali ke Daftar" });
+			const backToListLink = sidebar.locator('a[href="/dashboard/events"]');
 			await backToListLink.click();
-			await expect(page).toHaveURL("/dashboard");
+			await expect(page).toHaveURL("/dashboard/events");
 
 			// Open Event B
-			const eventBRowKelola = page.locator(`:is(tr, [data-testid="event-row"]):has-text("${eventTitleB}")`).getByRole("link", { name: "Kelola Kegiatan" }).first();
+			const eventBRowKelola = page.locator(`:is(tr, [data-testid="event-row"]):has-text("${eventTitleB}")`).locator(`a[href="/dashboard/events/${eventBId}"]`).last();
 			await eventBRowKelola.click();
 			await expect(page).toHaveURL(`/dashboard/events/${eventBId}`);
 
@@ -467,13 +478,14 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			// --- VERIFICATION 13: 200% Text Scaling Bounds Check ---
 			await page.goto("/dashboard");
 			await page.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
+			const overviewAction = page.getByRole("link", { name: "Buat kegiatan" });
 			await page.evaluate(() => {
 				document.documentElement.style.fontSize = "200%";
 			});
 			await page.waitForTimeout(500);
 
 			// Verify Kelola button right edge does NOT exceed any clipping ancestors and rootWidth <= 1440
-			const bounds200pct = await checkBoundsAndAncestors(firstKelola, 1440);
+			const bounds200pct = await checkBoundsAndAncestors(overviewAction, 1440);
 			console.log("[VERIFY BOUNDS 200pct]", bounds200pct);
 
 			await page.screenshot({ path: `${EVIDENCE_DIR}/after-dashboard-200pct-text.png`, fullPage: true });
@@ -509,39 +521,39 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			const offToken = ((await offInviteRes.json()) as { invitation: { token: string } }).invitation.token;
 			await officerContext.request.post(`${baseURL}/api/invitations/${offToken}/accept`, { data: {} });
 
-			// Invite officer to Org B as organizer (creating mixed memberships: Org A = officer, Org B = organizer)
-			const mixedInviteRes = await context.request.post(`${baseURL}/api/invitations`, {
-				data: {
-					organizationId: orgIdB,
-					role: "organizer",
-					recipientEmail: officerEmail,
-					canUpdateTraffic: false,
-					canUpdateCleanup: false,
-				},
+			// A field officer receives organizer membership only through the reviewed application flow.
+			const approvedOrgC = await approveSyntheticOrganization(browser, officerContext.request, baseURL, {
+				name: orgNameC,
+				village: "Sanur",
+				district: "Denpasar Selatan",
 			});
-			expect(mixedInviteRes.status()).toBe(201);
-			const mixedToken = ((await mixedInviteRes.json()) as { invitation: { token: string } }).invitation.token;
-			await officerContext.request.post(`${baseURL}/api/invitations/${mixedToken}/accept`, { data: {} });
+			orgIdC = approvedOrgC.organization.id;
+			const officerMemberships = await officerContext.request.get(`${baseURL}/api/organizations/my`);
+			expect(officerMemberships.status()).toBe(200);
+			const officerMembershipBody = (await officerMemberships.json()) as { organizations: Array<{ id: string; role: string }> };
+			expect(officerMembershipBody.organizations).toEqual(expect.arrayContaining([
+				expect.objectContaining({ id: orgIdA, role: "officer" }),
+				expect.objectContaining({ id: orgIdC, role: "organizer" }),
+			]));
 
 			// Test Org A selection on officer account: must show Petugas Lapangan and NOT Panitia
 			await officerPage.goto("/dashboard");
 			await officerPage.locator(".rangkai-preloader").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
-			const officerOrgFilter = officerPage.getByRole("combobox", { name: "Filter Desa Adat" });
-			await officerOrgFilter.selectOption(orgIdA);
-			await expect(officerPage.locator(".teduh-workspace-org-badge")).toHaveAttribute("title", orgNameA);
-			await expect(officerPage.locator(".teduh-workspace-role-pill")).toHaveText("Petugas Lapangan (Pecalang)");
+			await officerPage.getByRole("button", { name: "Profil" }).click();
+			const officerOrgSelect = officerPage.getByRole("combobox", { name: "Organisasi" });
+			await officerOrgSelect.selectOption(orgIdA);
+			await expect(officerPage.locator(".workspace-context")).toContainText(`${orgNameA} - Petugas`);
 
-			// Test Org B selection on officer account: must show Panitia Desa
-			await officerOrgFilter.selectOption(orgIdB);
-			await expect(officerPage.locator(".teduh-workspace-org-badge")).toHaveAttribute("title", orgNameB);
-			await expect(officerPage.locator(".teduh-workspace-role-pill")).toHaveText("Panitia Desa (Organizer)");
+			// Test approved organization selection on officer account: must show Panitia, scoped to that organization.
+			await officerOrgSelect.selectOption(orgIdC);
+			await expect(officerPage.locator(".workspace-context")).toContainText(`${orgNameC} - Panitia`);
 
 			console.log("[VERIFICATION COMPLETE] All criteria verified successfully!");
 		} finally {
 			await Promise.all([context.close(), officerContext.close()]);
 
 			// Database cleanup on Neon dev branch
-			for (const orgName of [orgNameA, orgNameB]) {
+			for (const orgName of [orgNameA, orgNameB, orgNameC]) {
 				const [org] = await db
 					.select({ id: organizations.id })
 					.from(organizations)

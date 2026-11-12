@@ -1,3 +1,4 @@
+import { approveSyntheticOrganization } from "./approval-fixture";
 import { test, expect, type BrowserContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -24,7 +25,9 @@ import {
 	wasteRecords,
 } from "../../src/db/schema";
 
-const EVIDENCE_DIR = "D:/Development/Lomba/rangkai/.scratch/final-development-20261109/residual-fix-evidence";
+const EVIDENCE_DIR = "./.scratch/final-development-20261109/residual-fix-evidence";
+
+test.use({ actionTimeout: 10_000 });
 
 test.describe("Residual Fixes Verification: STD-02, SPEC-10, BASE-01, and Core Flow", () => {
 	test("complete browser proof for layout ergonomics, clipboard denial, settled fallbacks, and core lifecycle", async ({
@@ -90,11 +93,7 @@ test.describe("Residual Fixes Verification: STD-02, SPEC-10, BASE-01, and Core F
 			const orgSignupData = (await orgSignupRes.json()) as { user: { id: string } };
 			testOrganizerUserId = orgSignupData.user.id;
 
-			const orgRes = await desktopContext.request.post(`${baseURL}/api/organizations`, {
-				data: { name: orgName, village: "Sanur Kauh", district: "Denpasar Selatan" },
-			});
-			expect(orgRes.status()).toBe(201);
-			const orgData = (await orgRes.json()) as { organization: { id: string } };
+			const orgData = await approveSyntheticOrganization(browser, desktopContext.request, baseURL, { name: orgName, village: "Sanur Kauh", district: "Denpasar Selatan" });
 			testOrgId = orgData.organization.id;
 
 			// Sign up officer on a separate officerContext to preserve organizer session on desktopContext

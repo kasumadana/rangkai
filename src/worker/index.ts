@@ -10,8 +10,14 @@ import { documentsRouter } from "./routes/documents";
 import { eventsRouter } from "./routes/events";
 import { extractionsRouter } from "./routes/extractions";
 import { publicRouter } from "./routes/public";
+import { publicAssistantRouter } from "./routes/public-assistant";
+import { assistantRouter } from "./routes/assistant";
 import { roadsRouter } from "./routes/roads";
 import { organizationsRouter } from "./routes/organizations";
+import { applicationsRouter } from "./routes/organization-applications";
+import { activationRouter, adminAccountsRouter } from "./routes/admin-accounts";
+import { territoriesRouter } from "./routes/territories";
+import { reviewerTerritoryRouter } from "./routes/road-review";
 import { invitationsRouter } from "./routes/invitations";
 import { fieldRouter } from "./routes/field";
 import { advisoryRouter } from "./routes/advisory";
@@ -133,6 +139,8 @@ app.all("/api/auth/*", async (c) => {
 });
 
 // Mount Public API routes (anonymous read-only access)
+app.route("/api/public/assistant", publicAssistantRouter);
+app.route("/api/assistant", assistantRouter);
 app.route("/api/public", publicRouter);
 // Invitation inspection is anonymous; its mutation and listing handlers enforce authentication.
 app.route("/api/invitations", invitationsRouter);
@@ -149,6 +157,11 @@ app.route("/api", alternativeRoutesRouter);
 app.route("/api/events", assignmentsRouter);
 app.route("/api/events", eventsRouter);
 app.route("/api/organizations", organizationsRouter);
+app.route("/api", applicationsRouter);
+app.route("/api/admin", adminAccountsRouter);
+app.route("/api/admin", territoriesRouter);
+app.route("/api/activation-invitations", activationRouter);
+app.route("/api", reviewerTerritoryRouter);
 app.route("/api/field", fieldRouter);
 
 // 404 handler for API routes

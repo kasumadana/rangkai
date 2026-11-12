@@ -1,3 +1,4 @@
+import { approveSyntheticOrganization } from "./approval-fixture";
 import { test, expect } from "@playwright/test";
 import { eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -71,11 +72,7 @@ test.describe("Journey 5: Selected Cleanup Photo/Waste/Submit -> Organizer Verif
 			});
 			expect(orgSignup.ok()).toBe(true);
 
-			const orgRes = await orgContext.request.post(`${baseURL}/api/organizations`, {
-				data: { name: orgName, village: "Ubud", district: "Gianyar" },
-			});
-			expect(orgRes.status()).toBe(201);
-			const org = (await orgRes.json()) as { organization: { id: string } };
+			const org = await approveSyntheticOrganization(browser, orgContext.request, baseURL, { name: orgName, village: "Ubud", district: "Gianyar" });
 
 			// 2. Create Event & Simulation Road
 			const createEventRes = await orgContext.request.post(`${baseURL}/api/events`, {
@@ -206,7 +203,7 @@ test.describe("Journey 5: Selected Cleanup Photo/Waste/Submit -> Organizer Verif
 			await expect(officerPage.getByText(/Tugas kebersihan diserahkan untuk diverifikasi/i)).toBeVisible();
 
 			await officerPage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey5-cleanup-submitted.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey5-cleanup-submitted.png",
 				fullPage: true,
 			});
 
@@ -221,7 +218,7 @@ test.describe("Journey 5: Selected Cleanup Photo/Waste/Submit -> Organizer Verif
 			await expect(orgPage.getByText(/Kebersihan area berhasil diverifikasi Prajuru/i)).toBeVisible();
 
 			await orgPage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey5-organizer-verified.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey5-organizer-verified.png",
 				fullPage: true,
 			});
 
@@ -249,7 +246,7 @@ test.describe("Journey 5: Selected Cleanup Photo/Waste/Submit -> Organizer Verif
 			await expect(orgPage.getByText(/TERBUKA KEMBALI|REOPENED|in_progress/i).first()).toBeVisible();
 
 			await orgPage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey5-cleanup-reopened.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey5-cleanup-reopened.png",
 				fullPage: true,
 			});
 		} finally {

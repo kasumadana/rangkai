@@ -1,7 +1,3 @@
-import { Icon } from "@astryxdesign/core/Icon";
-import { HStack } from "@astryxdesign/core/Stack";
-import { Text } from "@astryxdesign/core/Text";
-import { Token, type TokenProps } from "@astryxdesign/core/Token";
 import { Scale } from "lucide-react";
 
 /**
@@ -29,21 +25,21 @@ const CATEGORY_LABELS: Record<WasteCategory, string> = {
 
 const METHOD_CONFIG: Record<
 	WasteMeasurementMethod,
-	{ label: string; color: NonNullable<TokenProps["color"]>; note: string }
+	{ label: string; color: string; note: string }
 > = {
 	weighed: {
 		label: "Berat Tertimbang (Fakta Terukur)",
-		color: "green",
+		color: "bg-green-50 text-green-900",
 		note: "Ditimbang langsung dengan alat ukur",
 	},
 	estimated: {
 		label: "Berat Estimasi (Perkiraan)",
-		color: "orange",
+		color: "bg-orange-50 text-orange-900",
 		note: "Perkiraan petugas, bukan hasil timbangan",
 	},
 	sack_count: {
 		label: "Jumlah Karung (Hitungan Fisik)",
-		color: "blue",
+		color: "bg-blue-50 text-blue-900",
 		note: "Dihitung berdasarkan jumlah karung terkumpul",
 	},
 };
@@ -56,17 +52,10 @@ export function WasteMeasurementBadge({
 }: WasteMeasurementBadgeProps) {
 	const methodInfo = METHOD_CONFIG[method];
 	return (
-		<HStack gap={2} vAlign="center" wrap="wrap">
-			<Token
-				color="gray"
-				size="sm"
-				icon={<Icon icon={Scale} size="xsm" />}
-				label={`${CATEGORY_LABELS[category]}: ${quantity} ${unit}`}
-			/>
-			<Token color={methodInfo.color} size="sm" label={methodInfo.label} />
-			<Text size="xsm" color="secondary">
-				({methodInfo.note})
-			</Text>
-		</HStack>
+		<span className="inline-flex flex-wrap items-center gap-2">
+			<span className="inline-flex items-center gap-1 rounded-[4px] bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-800"><Scale size={14} aria-hidden="true" />{CATEGORY_LABELS[category]}: {quantity} {unit}</span>
+			<span className={`rounded-[4px] px-2.5 py-1 text-xs font-semibold ${methodInfo.color}`}>{methodInfo.label}</span>
+			<small>({methodInfo.note})</small>
+		</span>
 	);
 }

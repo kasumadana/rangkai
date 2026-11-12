@@ -1,9 +1,9 @@
-import { Icon } from "@astryxdesign/core/Icon";
-import { Token, type TokenProps } from "@astryxdesign/core/Token";
 import {
+	AlertTriangle,
+	CheckCircle2,
 	FileQuestion,
 	PencilLine,
-	Sparkles,
+	FileText,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -28,43 +28,36 @@ export interface FieldReviewIndicatorProps {
 
 const STATE_CONFIG: Record<
 	FieldReviewState,
-	{ label: string; color: NonNullable<TokenProps["color"]>; icon: ReactNode }
+	{ label: string; color: string; icon: ReactNode }
 > = {
 	extracted: {
 		label: "Diekstrak AI (Draf)",
-		color: "blue",
-		icon: <Icon icon={Sparkles} size="xsm" />,
+		color: "bg-blue-50 text-blue-900",
+		icon: <FileText size={14} aria-hidden="true" />,
 	},
 	missing: {
-		label: "Tidak Tercantum (Missing)",
-		color: "gray",
-		icon: <Icon icon={FileQuestion} size="xsm" />,
+		label: "Tidak Tercantum",
+		color: "bg-stone-100 text-stone-800",
+		icon: <FileQuestion size={14} aria-hidden="true" />,
 	},
 	needs_review: {
 		label: "Perlu Tinjauan Manual",
-		color: "orange",
-		icon: <Icon icon="warning" size="xsm" />,
+		color: "bg-orange-50 text-orange-900",
+		icon: <AlertTriangle size={14} aria-hidden="true" />,
 	},
 	corrected: {
 		label: "Dikoreksi Panitia",
-		color: "purple",
-		icon: <Icon icon={PencilLine} size="xsm" />,
+		color: "bg-purple-50 text-purple-900",
+		icon: <PencilLine size={14} aria-hidden="true" />,
 	},
 	confirmed: {
 		label: "Terkonfirmasi",
-		color: "green",
-		icon: <Icon icon="success" size="xsm" />,
+		color: "bg-green-50 text-green-900",
+		icon: <CheckCircle2 size={14} aria-hidden="true" />,
 	},
 };
 
 export function FieldReviewIndicator({ state }: FieldReviewIndicatorProps) {
 	const config = STATE_CONFIG[state];
-	return (
-		<Token
-			color={config.color}
-			size="sm"
-			icon={config.icon}
-			label={config.label}
-		/>
-	);
+	return <span className={`inline-flex items-center gap-1 rounded px-2.5 py-1 text-base font-semibold ${config.color}`}>{config.icon}{config.label}</span>;
 }

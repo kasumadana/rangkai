@@ -1,5 +1,3 @@
-import { Banner } from "@astryxdesign/core/Banner";
-import { Text } from "@astryxdesign/core/Text";
 import { UX_EMPTY_COPY } from "../../lib/constants";
 import { formatWitaDateTime, isTimestampExpired } from "../../lib/wita";
 import {
@@ -36,18 +34,14 @@ export function StaleStatusNotice({
 	const presentation = getRoadStatusPresentation(lastKnownStatus);
 
 	return (
-		<Banner
-			status="warning"
-			collapsible={false}
-			title={UX_EMPTY_COPY.STALE_STATUS}
-			description={
-				<Text size="sm" color="secondary">
+		<section className="rounded-xl bg-amber-50 p-4 text-amber-950" role="status">
+			<strong>{UX_EMPTY_COPY.STALE_STATUS}</strong>
+				<p className="text-sm">
 					Laporan terakhir tercatat sebagai <strong>{presentation.label}</strong>{" "}
 					pada <strong>{formatWitaDateTime(observedAt)}</strong> (batas berlaku:{" "}
 					{formatWitaDateTime(expiresAt)}). Sistem tidak mengasumsikan ruas jalan
 					sudah dibuka sebelum ada konfirmasi baru dari petugas lapangan.
-				</Text>
-			}
-		/>
+				</p>
+		</section>
 	);
 }

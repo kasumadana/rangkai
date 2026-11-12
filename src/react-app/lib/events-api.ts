@@ -1,3 +1,4 @@
+import { validateCleanupPhoto } from "./cleanup-input";
 import {
 	apiFetch,
 	type EventLifecycleStatus,
@@ -17,6 +18,7 @@ import {
 import type { OperationalRoadStatus } from "./road-status";
 
 export type { EventLifecycleStatus, EventRecord, PaginatedEventsResponse };
+export type VenueLocation = { type: "Point"; coordinates: [number, number] };
 
 export interface ListEventsParams {
 	page?: number;
@@ -27,12 +29,14 @@ export interface ListEventsParams {
 
 export interface CreateEventPayload {
 	organizationId: string;
+	isSimulation?: boolean;
 	title: string;
 	startsAt?: string | null;
 	endsAt?: string | null;
 	category?: string | null;
 	description?: string | null;
 	venueName?: string | null;
+	venueLocation?: VenueLocation | null;
 	permitReference?: string | null;
 }
 
@@ -43,6 +47,7 @@ export interface UpdateEventPayload {
 	category?: string | null;
 	description?: string | null;
 	venueName?: string | null;
+	venueLocation?: VenueLocation | null;
 	permitReference?: string | null;
 }
 
@@ -109,6 +114,7 @@ export interface ExtractedFieldsPayload {
 	startsAt?: string | null;
 	endsAt?: string | null;
 	venueName?: string | null;
+	venueLocation?: VenueLocation | null;
 	description?: string | null;
 	permitReference?: string | null;
 	processionDescription?: string | null;
@@ -203,6 +209,9 @@ export interface RoadImpactRecord {
 	diversionNote: string | null;
 	displayName?: string;
 	coverageArea?: string;
+	sourceType?: string;
+	reviewStatus?: "pending" | "approved" | "rejected" | "superseded" | null;
+	reviewReason?: string | null;
 	segment?: {
 		id: string;
 		displayName: string;
@@ -329,6 +338,7 @@ export interface PublicEventItem {
 	category: string | null;
 	description: string | null;
 	venueName: string | null;
+	venueLocation?: VenueLocation | null;
 	startsAt: string | null;
 	endsAt: string | null;
 	status: string;
@@ -337,6 +347,7 @@ export interface PublicEventItem {
 	village: string;
 	district: string;
 	isSimulation?: boolean;
+	alternativeRoutes?: AlternativeRouteRecord[];
 	organization?: {
 		name: string;
 		village: string;
@@ -789,6 +800,16 @@ export async function deleteRoadImpact(
 	);
 }
 
+export async function submitRoadImpactForReview(
+	eventId: string,
+	impactId: string,
+): Promise<{ request: { id: string; status: string }; duplicate?: boolean }> {
+	return apiFetch<{ request: { id: string; status: string }; duplicate?: boolean }>(
+		`/api/events/${encodeURIComponent(eventId)}/road-impacts/${encodeURIComponent(impactId)}/review`,
+		{ method: "POST", body: {} },
+	);
+}
+
 export async function updateRoadStatus(
 	impactId: string,
 	payload: UpdateRoadStatusPayload,
@@ -846,6 +867,7 @@ export async function uploadCleanupEvidence(
 	photoFile: File,
 	stage: "before" | "after",
 ): Promise<{ evidence: CleanupEvidenceRecord }> {
+	validateCleanupPhoto(photoFile);
 	const formData = new FormData();
 	formData.append("file", photoFile);
 	formData.append("stage", stage);
@@ -935,6 +957,7 @@ interface RawPublicEventPayload {
 	category?: string | null;
 	description?: string | null;
 	venueName?: string | null;
+	venueLocation?: VenueLocation | null;
 	startsAt?: string | null;
 	endsAt?: string | null;
 	status?: string;
@@ -947,6 +970,7 @@ interface RawPublicEventPayload {
 	village?: string;
 	district?: string;
 	isSimulation?: boolean;
+	alternativeRoutes?: AlternativeRouteRecord[];
 	organization?: {
 		name?: string;
 		village?: string;
@@ -976,6 +1000,7 @@ function normalizePublicEvent(raw: RawPublicEventPayload): PublicEventItem & {
 		category: raw.category ?? null,
 		description: raw.description ?? null,
 		venueName: raw.venueName ?? null,
+		venueLocation: raw.venueLocation ?? null,
 		startsAt: raw.startsAt ?? null,
 		endsAt: raw.endsAt ?? null,
 		status: raw.status ?? "published",
@@ -988,6 +1013,9 @@ function normalizePublicEvent(raw: RawPublicEventPayload): PublicEventItem & {
 		village,
 		district,
 		isSimulation: raw.isSimulation !== false,
+		alternativeRoutes: Array.isArray(raw.alternativeRoutes)
+			? raw.alternativeRoutes
+			: [],
 		organization: {
 			name: orgName,
 			village,
@@ -1412,24 +1440,27 @@ export function mapPublicEventToCeremonyProfile(
 	let derivedCenter: [number, number] | null = null;
 	const mappedRoads: VillageRoadRouteSegment[] = roads.map((r, rIdx) => {
 		let coords: Array<[number, number]> = [];
+		let coordinateParts: Array<Array<[number, number]>> | undefined;
+		const validLine = (line: unknown): line is Array<[number, number]> =>
+			Array.isArray(line) && line.length >= 2 && line.every((pt: unknown) =>
+				Array.isArray(pt) && pt.length >= 2 &&
+				typeof pt[0] === "number" && Number.isFinite(pt[0]) && pt[0] >= -180 && pt[0] <= 180 &&
+				typeof pt[1] === "number" && Number.isFinite(pt[1]) && pt[1] >= -90 && pt[1] <= 90,
+			);
 		const geom = r.geometry;
 		if (
 			geom &&
 			geom.type === "LineString" &&
-			Array.isArray(geom.coordinates)
+			validLine(geom.coordinates)
 		) {
-			coords = (geom.coordinates as Array<[number, number]>).filter(
-				(pt) => Array.isArray(pt) && pt.length >= 2,
-			);
+			coords = geom.coordinates;
 		} else if (
 			geom &&
 			geom.type === "MultiLineString" &&
-			Array.isArray(geom.coordinates) &&
-			Array.isArray(geom.coordinates[0])
+			Array.isArray(geom.coordinates)
 		) {
-			coords = (geom.coordinates[0] as Array<[number, number]>).filter(
-				(pt) => Array.isArray(pt) && pt.length >= 2,
-			);
+			coordinateParts = geom.coordinates.filter(validLine);
+			coords = coordinateParts[0] ?? [];
 		}
 
 		if (!derivedCenter && coords.length > 0) {
@@ -1442,7 +1473,8 @@ export function mapPublicEventToCeremonyProfile(
 		const effStatus = r.operationalStatus?.effectiveStatus;
 		const normalizedImpact = normalizeRoadImpactType(r.impactType);
 		let roadStatus: OperationalRoadStatus = "unknown";
-		if (!r.operationalStatus?.isStale && (effStatus === "closed" || effStatus === "intermittent" || effStatus === "open")) {
+		const expiry = Date.parse(r.operationalStatus?.expiresAt ?? "");
+		if (!r.operationalStatus?.isStale && Number.isFinite(expiry) && expiry > Date.now() && (effStatus === "closed" || effStatus === "intermittent" || effStatus === "open")) {
 			roadStatus = effStatus;
 		}
 
@@ -1473,11 +1505,9 @@ export function mapPublicEventToCeremonyProfile(
 			lastConfirmedLabel: r.operationalStatus?.observedAt
 				? formatWitaEventSchedule(r.operationalStatus.observedAt, null).dateLabel
 				: "Belum dikonfirmasi",
-			guidanceNote:
-				r.diversionNote ||
-				evt.trafficImpactDescription ||
-				"Ikuti arahan petugas pecalang di simpang jalan.",
+			guidanceNote: r.diversionNote || "Arahan pengalihan belum tersedia.",
 			coordinates: coords,
+			coordinateParts,
 			svgPath: "M 180 260 L 760 260",
 			labelPoint: { x: 460, y: 245 },
 		};
@@ -1505,9 +1535,28 @@ export function mapPublicEventToCeremonyProfile(
 		primaryStatus = "closed";
 	} else if (mappedRoads.some((r) => r.status === "intermittent")) {
 		primaryStatus = "intermittent";
-	} else if (mappedRoads.some((r) => r.status === "open")) {
+	} else if (mappedRoads.length > 0 && mappedRoads.every((r) => r.status === "open")) {
 		primaryStatus = "open";
 	}
+
+	const mappedAlternativeRoutes: Array<{
+		id: string;
+		name: string;
+		description?: string;
+		coordinates: Array<[number, number]>;
+	}> = (evt.alternativeRoutes ?? [])
+		.filter(
+			(ar) =>
+				ar.geometry &&
+				Array.isArray(ar.geometry.coordinates) &&
+				ar.geometry.coordinates.length >= 2,
+		)
+		.map((ar) => ({
+			id: ar.id,
+			name: ar.name,
+			description: ar.description ?? undefined,
+			coordinates: ar.geometry.coordinates,
+		}));
 
 	return {
 		id: evt.id,
@@ -1518,8 +1567,8 @@ export function mapPublicEventToCeremonyProfile(
 		kecamatan: matchedDistrict?.name || villageName,
 		ceremonyTitle: evt.title,
 		yadnyaCategory: evt.category || "Upacara Adat",
-		sacredCenterName: evt.venueName || orgName,
-		destinationName: evt.venueName || orgName,
+		sacredCenterName: evt.venueName || "Lokasi belum ditentukan",
+		destinationName: evt.venueName || "Lokasi belum ditentukan",
 		participatingBanjars: [villageName],
 		scheduleDateLabel: schedule.dateLabel,
 		scheduleWindowWita: schedule.windowWita,
@@ -1529,15 +1578,11 @@ export function mapPublicEventToCeremonyProfile(
 		},
 		coordinatorName: evt.organizerName || orgName,
 		primaryStatus,
-		overview:
-			evt.description ||
-			evt.processionDescription ||
-			`Pelaksanaan ${evt.title} oleh ${orgName}.`,
+		overview: evt.description || evt.processionDescription || "",
 		alternativeRouteSummary:
-			evt.trafficImpactDescription ||
-			mappedRoads[0]?.guidanceNote ||
-			"Penyesuaian arus lalu lintas mengikuti arahan petugas di lapangan.",
-		mapCenter: derivedCenter,
+			mappedAlternativeRoutes[0]?.description || "Belum ada informasi jalur alternatif.",
+		mapCenter: evt.venueLocation?.coordinates ?? derivedCenter,
+		venueLocation: evt.venueLocation?.coordinates ?? null,
 		mapZoom: 14.2,
 		puraPoint: {
 			name: evt.venueName || orgName,
@@ -1550,6 +1595,7 @@ export function mapPublicEventToCeremonyProfile(
 			description: evt.processionDescription || evt.title,
 		},
 		roadSegments: mappedRoads,
+		alternativeRoutes: mappedAlternativeRoutes,
 		parkingLots: [],
 		pecalangPosts: [],
 		communityNotices: [],
@@ -1611,6 +1657,7 @@ export function buildDistrictFeaturesFromEvents(
 				windowWita: m.scheduleWindowWita,
 				sacredCenterName: m.sacredCenterName,
 				coordinates: m.mapCenter,
+				hasVenueLocation: m.venueLocation != null,
 				roadName: m.roadSegments[0]?.roadName,
 				detourRoute: m.roadSegments[0]?.guidanceNote || m.alternativeRouteSummary,
 				isSimulation: m.isSimulation !== false,
@@ -1975,3 +2022,49 @@ export async function generateWastePlan(
 	);
 }
 
+export const CATEGORY_OPTIONS = [
+	{ value: "upacara_adat", label: "Upacara Adat / Dewa Yadnya" },
+	{ value: "odalan", label: "Piodalan / Pujawali Pura" },
+	{ value: "melasti", label: "Prosesi Melasti" },
+	{ value: "pengerupukan", label: "Pengerupukan / Pawai Ogoh-Ogoh" },
+	{ value: "karya", label: "Karya Agung / Pitra Yadnya (Pelebon)" },
+	{ value: "lainnya", label: "Kegiatan Adat & Budaya Lainnya" },
+];
+
+export const IMPACT_TYPE_OPTIONS: Array<{
+	value: "closure" | "intermittent" | "narrowing" | "procession";
+	label: string;
+}> = [
+	{
+		value: "closure",
+		label: "Penutupan Total (Bahu & Badan Jalan Ditutup)",
+	},
+	{
+		value: "intermittent",
+		label: "Buka-Tutup Berkala (Intermittent / Prioritas Prosesi)",
+	},
+	{
+		value: "narrowing",
+		label: "Penyempitan Lajur / Pengalihan Sebagian",
+	},
+	{
+		value: "procession",
+		label: "Jalur Iring-iringan Prosesi Berjalan",
+	},
+];
+
+export function getImpactTypeLabel(type?: string): string {
+	const normalized = normalizeRoadImpactType(type);
+	switch (normalized) {
+		case "closure":
+			return "Penutupan Total";
+		case "intermittent":
+			return "Buka-Tutup Berkala";
+		case "narrowing":
+			return "Penyempitan Lajur";
+		case "procession":
+			return "Jalur Prosesi";
+		default:
+			return "Penutupan Jalan";
+	}
+}
