@@ -8,13 +8,14 @@ type Result = { status: string; sources: AssistantSourceFact[] };
 const org = "10000000-0000-4000-8000-000000000001";
 const eventId = "20000000-0000-4000-8000-000000000002";
 const env = { PUBLIC_ASSISTANT_ENABLED: "true", GEMINI_API_KEY: "synthetic" };
-type State = { member: string | null; event: boolean; assignment: { traffic: boolean; cleanup: boolean } | null; session: boolean };
+type State = { member: string | null; event: boolean; assignment: { traffic: boolean; cleanup: boolean } | null; session: boolean; expiresAt?: Date; sessionId?: string; authFailure?: boolean; onQuery?: (table: unknown) => Promise<void> };
 function harness(state: State) {
  const calls: unknown[] = [];
  const mutations = { insert: vi.fn(), update: vi.fn(), delete: vi.fn(), execute: vi.fn() };
  const db = { ...mutations, select: () => {
   let table: unknown;
   const chain = { from: (v: unknown) => { table = v; calls.push(v); return chain; }, innerJoin: () => chain, where: () => chain, orderBy: () => chain, limit: async () => {
+   if (state.onQuery) await state.onQuery(table);
    if (table === memberships) return state.member ? [{ role: state.member }] : [];
    if (table === events) return state.event ? [{ id: eventId, title: "Simulated ceremony", status: "draft", startsAt: null, endsAt: null, isSimulation: true, contactInformation: "secret" }] : [];
    if (table === eventAssignments) return state.assignment ? [state.assignment] : [];
@@ -25,7 +26,7 @@ function harness(state: State) {
    return [];
   } }; return chain;
  } };
- const auth = { api: { getSession: async () => state.session ? { user: { id: "user" }, session: {} } : null } };
+ const auth = { api: { getSession: async () => { if (state.authFailure) throw new Error("auth unavailable"); return state.session ? { user: { id: "user" }, session: { id: state.sessionId ?? "session", userId: "user", expiresAt: state.expiresAt ?? new Date("2099-01-01") } } : null; } } };
  const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
  app.use("*", async (c, next) => { c.set("db", db as never); c.set("auth", auth as never); c.set("requestId", "test"); await next(); });
  app.route("/assistant", assistantRouter);
@@ -70,6 +71,40 @@ describe("authenticated assistant", () => {
    const s = { ...state(), member: "officer", assignment: { traffic: true, cleanup: true } };
    vi.stubGlobal("fetch", vi.fn(async () => { if (revoke === "member") s.member = null as never; else s.assignment = null as never; return provider("road_status"); }));
    expect((await harness(s).request(input)).status).toBe(403);
+  }
+ });
+ it("revalidates the original session after pending private fact reads", async () => {
+  for (const outcome of ["revoked", "expired", "replaced", "failure", "authorized"] as const) {
+   let release!: () => void; let reached!: () => void;
+   const pending = new Promise<void>(resolve => { release = resolve; });
+   const entered = new Promise<void>(resolve => { reached = resolve; });
+   const s = state();
+   s.onQuery = async table => { if (table === roadImpacts) { reached(); await pending; } };
+   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(provider("road_status")));
+   const request = harness(s).request(input);
+   await entered;
+   if (outcome === "revoked") s.session = false;
+   if (outcome === "expired") s.expiresAt = new Date("2000-01-01");
+   if (outcome === "replaced") s.sessionId = "different";
+   if (outcome === "failure") s.authFailure = true;
+   release();
+   const response = await request; const json = await response.json();
+   expect(response.status).toBe(outcome === "authorized" ? 200 : outcome === "failure" ? 503 : 401);
+   if (outcome === "authorized") expect(json).toMatchObject({ sources: [{ kind: "road", facts: { status: "unconfirmed", isSimulation: true } }] });
+   else { expect(json).not.toHaveProperty("sources"); expect(JSON.stringify(json)).not.toContain("Road"); }
+  }
+ });
+ it("rejects revocation while final access is pending and guards empty selections", async () => {
+  for (const empty of [false, true]) {
+   let release!: () => void; let reached!: () => void; let memberReads = 0;
+   const pending = new Promise<void>(resolve => { release = resolve; });
+   const entered = new Promise<void>(resolve => { reached = resolve; });
+   const s = state();
+   s.onQuery = async table => { if (table === memberships && ++memberReads === (empty ? 2 : 3)) { reached(); await pending; } };
+   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(provider("event_lookup", empty ? [] : [`event:${eventId}`])));
+   const request = harness(s).request(input); await entered; s.session = false; release();
+   const response = await request;
+   expect(response.status).toBe(401); expect(await response.json()).not.toHaveProperty("sources");
   }
  });
  it("enforces its isolate-local rate limit", async () => {

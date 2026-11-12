@@ -66,15 +66,25 @@ assistantRouter.post("/questions", async c => {
  const source: AssistantSource = { sourceId: `event:${eventId}`, publicUrl: "", title: initial.event.title, status: initial.event.status, isSimulation: initial.event.isSimulation, startsAt: null, endsAt: null, observedAt: null, expiresAt: null };
  const selected = validateSelection(await selectAssistantSources(question, [source], c.env.GEMINI_API_KEY.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME), [source]);
  if (!selected) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten tidak dapat memproses pertanyaan. Gunakan halaman kegiatan.", 503);
- let session;
- try { session = await c.get("auth").api.getSession({ headers: c.req.raw.headers }); } catch { return sendError(c, "DEPENDENCY_UNAVAILABLE", "Authentication dependency unavailable.", 503); }
- if (!session?.user || session.user.id !== userId) return sendError(c, "UNAUTHORIZED", "Authentication required.", 401);
+ const originalSession = c.get("session");
+ const validateSession = async () => {
+  try {
+   const session = await c.get("auth").api.getSession({ headers: c.req.raw.headers, query: { disableCookieCache: true, disableRefresh: true } });
+   if (!session?.user || !session.session || session.user.id !== userId || session.session.userId !== userId || session.session.id !== originalSession?.id || !Number.isFinite(session.session.expiresAt.getTime()) || session.session.expiresAt.getTime() <= Date.now()) return sendError(c, "UNAUTHORIZED", "Authentication required.", 401);
+  } catch { return sendError(c, "DEPENDENCY_UNAVAILABLE", "Authentication dependency unavailable.", 503); }
+ };
+ const sessionError = await validateSession();
+ if (sessionError) return sessionError;
  const current = await access();
  if (current.error) return denied(current.error);
  if (selected.intent === "road_status" && !current.traffic || selected.intent === "cleanup_summary" && !current.cleanup) return sendError(c, "FORBIDDEN", "Permission required.", 403);
  const url = current.organizer ? `/dashboard/events/${eventId}` : `/field/events/${eventId}`;
  const base = { status: "abstained" as const, scope: "internal" as const, intent: selected.intent, answer: "Informasi yang diminta belum dapat dijawab. Gunakan halaman kegiatan.", sources: [] as AssistantSourceFact[], searchUrl: url };
- if (!selected.sourceIds.includes(source.sourceId)) return c.json(base);
+ if (!selected.sourceIds.includes(source.sourceId)) {
+  const sessionError = await validateSession();
+  if (sessionError) return sessionError;
+  return c.json(base);
+ }
  const sim = current.event.isSimulation;
  if (selected.intent === "event_lookup") {
   base.sources.push({ sourceId: source.sourceId, url, kind: "event", title: current.event.title, facts: { status: current.event.status, startsAt: current.event.startsAt?.toISOString() ?? null, endsAt: current.event.endsAt?.toISOString() ?? null, isSimulation: sim } });
@@ -95,6 +105,8 @@ assistantRouter.post("/questions", async c => {
  if (finalAccess.error) return denied(finalAccess.error);
  if (selected.intent === "road_status" && !finalAccess.traffic || selected.intent === "cleanup_summary" && !finalAccess.cleanup) return sendError(c, "FORBIDDEN", "Permission required.", 403);
  if (finalAccess.organizer !== current.organizer || finalAccess.event.isSimulation !== sim) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Konteks berubah. Silakan coba lagi.", 503);
+ const finalSessionError = await validateSession();
+ if (finalSessionError) return finalSessionError;
  for (const item of base.sources) if (item.kind === "road") item.facts.status = freshRoadStatus(item.facts.status, item.facts.expiresAt);
  if (!base.sources.length) return c.json(base);
  return c.json({ ...base, status: "answered", answer: selected.intent === "road_status" ? "Status kedaluwarsa tidak terkonfirmasi; jalan terbuka belum tentu lancar." : selected.intent === "cleanup_summary" ? "Berikut catatan kebersihan dan sampah. Verifikasi kebersihan tidak membuka jalan." : "Berikut data kegiatan yang dipilih." });
