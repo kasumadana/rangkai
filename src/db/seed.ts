@@ -1,4 +1,5 @@
 import * as dotenv from "dotenv";
+import { createHash } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { hashPassword } from "better-auth/crypto";
 import { assertDevBranch, sanitizeDatabaseError } from "./guard";
@@ -540,6 +541,19 @@ export async function seedDatabase(databaseUrl?: string) {
 				},
 			});
 
+		const routeSourceSnapshotHash = createHash("sha256")
+			.update(
+				JSON.stringify([
+					{
+						id: item.impactId,
+						plannedFrom: startsAt.toISOString(),
+						plannedTo: endsAt.toISOString(),
+						impactType: item.impactType,
+					},
+				]),
+			)
+			.digest("hex");
+
 		await db
 			.insert(eventAlternativeRoutes)
 			.values({
@@ -554,7 +568,7 @@ export async function seedDatabase(databaseUrl?: string) {
 				approvedBy: SIMULATED_DATA.users.organizer.id,
 				approvedAt: now,
 				expiresAt: endsAt,
-				sourceSnapshotHash: `seed-hash-${item.id}`,
+				sourceSnapshotHash: routeSourceSnapshotHash,
 			})
 			.onConflictDoUpdate({
 				target: eventAlternativeRoutes.id,
@@ -563,6 +577,7 @@ export async function seedDatabase(databaseUrl?: string) {
 					description: sql`EXCLUDED.description`,
 					geom: sql`EXCLUDED.geom`,
 					status: sql`EXCLUDED.status`,
+					sourceSnapshotHash: sql`EXCLUDED.source_snapshot_hash`,
 					approvedAt: sql`EXCLUDED.approved_at`,
 					expiresAt: sql`EXCLUDED.expires_at`,
 				},

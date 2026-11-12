@@ -1,5 +1,4 @@
 import {
-	Compass,
 	Layers,
 	MapPin,
 	MousePointerClick,
@@ -11,7 +10,6 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BALI_DISTRICTS_DATA } from "../../lib/bali-districts";
 import {
-	BALI_ISLAND_CENTER,
 	BALI_MAP_BOUNDS,
 	BALI_MAP_MAX_ZOOM,
 	BALI_MAP_MIN_ZOOM,
@@ -22,6 +20,9 @@ import {
 	type RoadSegmentRecord,
 } from "../../lib/events-api";
 import { snapCoordinatesToRoad } from "../../lib/routing-engine";
+import { useGpsTracking } from "./useGpsTracking";
+import { showGpsAccuracy } from "./gpsAccuracy";
+import { GpsControls } from "./GpsControls";
 
 export type DashboardMapInteractionMode = "draw" | "catalog" | "operational";
 
@@ -207,6 +208,7 @@ export function DashboardRoadMapInput({
 	const [baseStyle, setBaseStyle] = useState<"street" | "satellite">("street");
 	const [isMapLoaded, setIsMapLoaded] = useState(false);
 	const [styleEpoch, setStyleEpoch] = useState(0);
+	const gps = useGpsTracking();
 	const [isSnappingRoad, setIsSnappingRoad] = useState(false);
 	const [mapError, setMapError] = useState<string | null>(null);
 	const [selectedQuickArea, setSelectedQuickArea] = useState<string>("");
@@ -574,7 +576,7 @@ export function DashboardRoadMapInput({
 				source: drawnSourceId,
 				layout: { "line-join": "round", "line-cap": "round" },
 				paint: {
-					"line-color": "#9E2A2B",
+					"line-color": "#B91C1C",
 					"line-width": 5,
 					"line-dasharray": [1.5, 1.2],
 				},
@@ -591,7 +593,7 @@ export function DashboardRoadMapInput({
 				width: 24px;
 				height: 24px;
 				border-radius: 50%;
-				background: ${isFirst ? "#4D702F" : isLast ? "#9E2A2B" : "#D97706"};
+				background: ${isFirst ? "#4D702F" : isLast ? "#B91C1C" : "#D97706"};
 				color: #FFFFFF;
 				border: 2.5px solid #FFFFFF;
 				display: flex;
@@ -659,24 +661,25 @@ export function DashboardRoadMapInput({
 		}
 	}
 
-	function handleLocateMe() {
+	useEffect(() => {
 		const map = mapRef.current;
-		if (!map || typeof navigator === "undefined" || !navigator.geolocation) return;
-		navigator.geolocation.getCurrentPosition(
-			(pos) => {
-				const lng = pos.coords.longitude;
-				const lat = pos.coords.latitude;
-				if (lng >= 114.4 && lng <= 115.8 && lat >= -8.95 && lat <= -8.0) {
-					map.flyTo({ center: [lng, lat], zoom: 16.0, duration: 900 });
-				} else {
-					map.flyTo({ center: BALI_ISLAND_CENTER, zoom: 11.0, duration: 900 });
-				}
-			},
-			() => {
-				// Ignore geolocation permission denial
-			},
-		);
-	}
+		if (!map || !isMapLoaded) return;
+		showGpsAccuracy(map, gps.position);
+		if (!gps.position) return;
+		const marker = new maplibregl.Marker({ color: "#4D702F" }).setLngLat(gps.position.coordinates).addTo(map);
+		marker.getElement().setAttribute("aria-label", "Lokasi Anda");
+		return () => { marker.remove(); };
+	}, [gps.position, isMapLoaded, styleEpoch]);
+	useEffect(() => {
+		const map = mapRef.current;
+		if (map && gps.following && gps.position) map.easeTo({ center: gps.position.coordinates, zoom: Math.max(map.getZoom(), 14), duration: 500 });
+	}, [gps.position, gps.following]);
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map || !isMapLoaded) return;
+		map.on("dragstart", gps.pauseFollowing);
+		return () => { map.off("dragstart", gps.pauseFollowing); };
+	}, [gps.pauseFollowing, isMapLoaded]);
 
 	return (
 		<div className="teduh-dashboard-map-wrapper">
@@ -735,16 +738,6 @@ export function DashboardRoadMapInput({
 							</option>
 						))}
 					</select>
-
-					<button
-						type="button"
-						className="teduh-map-tool-btn"
-						onClick={handleLocateMe}
-						title="Pusatkan ke Lokasi Saya"
-					>
-						<Compass size={14} />
-						<span>GPS</span>
-					</button>
 
 					<button
 						type="button"
@@ -871,6 +864,7 @@ export function DashboardRoadMapInput({
 						height: "100%",
 					}}
 				/>
+				{!mapError && <GpsControls gps={gps} />}
 
 				{mapError ? (
 					<div

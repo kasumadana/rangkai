@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./api-client";
+import { useNavigate } from "react-router";
 
 export interface AuthUser {
 	id: string;
@@ -242,12 +243,19 @@ export function useSignInMutation() {
 
 export function useSignOutMutation() {
 	const queryClient = useQueryClient();
+	const navigate = useNavigate();
 	return useMutation({
-		mutationFn: signOutCurrentSession,
+		mutationFn: async () => {
+			const result = await signOutCurrentSession();
+			if (result.success !== true) throw new Error("Tidak dapat keluar. Coba lagi.");
+			return result;
+		},
 		onSuccess: async () => {
-			queryClient.setQueryData(AUTH_SESSION_QUERY_KEY, null);
-			await queryClient.invalidateQueries({ queryKey: AUTH_SESSION_QUERY_KEY });
-			await queryClient.invalidateQueries({ queryKey: ["events"] });
+			await queryClient.cancelQueries();
+			queryClient.clear();
+			window.dispatchEvent(new Event("rangkai:session-changed"));
+			try { localStorage.removeItem("rangkai:last-organization-id"); localStorage.setItem("rangkai:session-changed", crypto.randomUUID()); } catch { /* Storage may be disabled. */ }
+			navigate("/", { replace: true });
 		},
 	});
 }

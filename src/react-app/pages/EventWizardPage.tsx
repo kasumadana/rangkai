@@ -447,8 +447,8 @@ export function EventWizardPage() {
 			category: normalizeEventCategory(formState.category) || "upacara_adat",
 			venueName: formState.venueName.trim() || null,
 			venueLocation: formState.venueLongitude && formState.venueLatitude ? { type: "Point", coordinates: [Number(formState.venueLongitude), Number(formState.venueLatitude)] } : null,
-			startsAt: toWitaIsoTimestamp(formState.startsAtWita),
-			endsAt: toWitaIsoTimestamp(formState.endsAtWita),
+			startsAt: toWitaIsoTimestamp(formState.startsAtWita) || null,
+			endsAt: toWitaIsoTimestamp(formState.endsAtWita) || null,
 			permitReference: formState.permitReference.trim() || null,
 			description: formState.description.trim() || null,
 		});
@@ -586,8 +586,8 @@ export function EventWizardPage() {
 					category: canonicalCategory,
 					venueName: parsed.data.venueName || null,
 					venueLocation,
-					startsAt: startsAtIso,
-					endsAt: endsAtIso,
+					startsAt: startsAtIso || null,
+					endsAt: endsAtIso || null,
 					permitReference: parsed.data.permitReference || null,
 					description: parsed.data.description || null,
 				});
@@ -606,8 +606,8 @@ export function EventWizardPage() {
 				category: canonicalCategory,
 				venueName: parsed.data.venueName || null,
 				venueLocation,
-				startsAt: startsAtIso,
-				endsAt: endsAtIso,
+				startsAt: startsAtIso || null,
+				endsAt: endsAtIso || null,
 				permitReference: parsed.data.permitReference || null,
 				description: parsed.data.description || null,
 				processionDescription: parsed.data.processionDescription || null,
@@ -932,6 +932,8 @@ export function EventWizardPage() {
 			? roadSegmentsQuery.error
 			: null;
 	const catalogRequestId = catalogError?.requestId ?? "";
+	const canSaveDraft =
+		UUID_REGEX.test(formState.organizationId) && formState.title.trim().length >= 3;
 
 	return (
 		<div className="workflow-page" onChangeCapture={() => setDirty(true)}>
@@ -952,7 +954,7 @@ export function EventWizardPage() {
 					</p>
 				</div>
 
-				<div className="flex flex-wrap items-center gap-2">
+				{!isCreateMode ? <div className="flex flex-wrap items-center gap-2">
 					<Link
 						to="/dashboard"
 						className="ui-button"
@@ -961,7 +963,7 @@ export function EventWizardPage() {
 						<span>Daftar Upacara</span>
 					</Link>
 
-				</div>
+				</div> : null}
 			</div>
 
 			{isCreateMode ? <p className="mb-6 text-sm font-semibold">Langkah {activeStep + 1} dari 4: {WIZARD_STEPS[activeStep].label.replace(/^\d\. /, "")}</p> : null}
@@ -1204,16 +1206,6 @@ export function EventWizardPage() {
 									/>
 								) : null}
 
-								<div className="flex justify-end pt-2">
-									<button
-										type="button"
-										onClick={() => setActiveStep(1)}
-										className="ui-button"
-									>
-										<span>Lewati &amp; Isi Rincian Manual</span>
-										<ArrowRight className="w-3.5 h-3.5" />
-									</button>
-								</div>
 							</div>
 
 							{/* Right Column: AI Extraction Summary */}
@@ -1226,7 +1218,7 @@ export function EventWizardPage() {
 										</h3>
 									</div>
 									{activeExtraction ? (
-										<span className="px-2.5 py-0.5 rounded-full bg-white text-[#4D702F] text-[11px] font-bold">
+										<span className="px-2.5 py-0.5 rounded border border-[#C5D5BC] bg-white text-[#4D702F] text-[11px] font-bold">
 											{activeExtraction.modelName} ({activeExtraction.latencyMs}{" "}
 											ms)
 										</span>
@@ -1304,6 +1296,36 @@ export function EventWizardPage() {
 							</div>
 						</div>
 					) : null}
+					{isCreateMode && activeStep === 0 ? (
+						<div className="wizard-navigation-footer">
+							<Link to="/dashboard" className="ui-button">
+								<ArrowLeft className="w-3.5 h-3.5" />
+								<span>Kembali ke dashboard</span>
+							</Link>
+							<div className="wizard-navigation-actions">
+								<button
+									type="button"
+									disabled={!canSaveDraft || saveDraftMutation.isPending}
+									onClick={() => void saveDraftMutation.mutateAsync()}
+									className="ui-button"
+								>
+									<Save className="w-3.5 h-3.5" />
+									<span>{saveDraftMutation.isPending ? "Menyimpan..." : "Simpan draf"}</span>
+								</button>
+								<button
+									type="button"
+									onClick={() => setActiveStep(1)}
+									className="ui-button ui-button-primary"
+								>
+									<span>Lanjut ke detail kegiatan</span>
+									<ArrowRight className="w-3.5 h-3.5" />
+								</button>
+							</div>
+							{!canSaveDraft ? (
+								<p className="wizard-save-hint">Pilih Desa Adat dan isi nama kegiatan pada langkah berikutnya sebelum menyimpan draf.</p>
+							) : null}
+						</div>
+					) : null}
 
 					{/* ================================================================= */}
 					{/* STEP 1: DETAIL UPACARA & JADWAL WITA                              */}
@@ -1321,7 +1343,7 @@ export function EventWizardPage() {
 									</p>
 								</div>
 								{activeExtraction ? (
-									<span className="px-3 py-1 rounded-full bg-white text-[#4D702F] text-base font-semibold">
+									<span className="px-3 py-1 rounded border border-[#C5D5BC] bg-white text-[#4D702F] text-base font-semibold">
 										Terisi dari Ekstraksi Surat Edaran
 									</span>
 								) : null}
@@ -1341,7 +1363,7 @@ export function EventWizardPage() {
 										className="w-full rounded border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base text-[#181817] focus:border-[#4D702F]"
 									/>
 									{fieldErrors.title ? (
-										<p className="text-base text-[#9E2A2B] font-medium">
+										<p className="text-base text-[#B91C1C] font-medium">
 											{fieldErrors.title}
 										</p>
 									) : null}
@@ -1462,7 +1484,7 @@ export function EventWizardPage() {
 										className="w-full rounded border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-base text-[#181817] focus:border-[#4D702F]"
 									/>
 									{fieldErrors.endsAtWita ? (
-										<p className="text-base text-[#9E2A2B] font-medium">
+										<p className="text-base text-[#B91C1C] font-medium">
 											{fieldErrors.endsAtWita}
 										</p>
 									) : null}
@@ -1535,7 +1557,7 @@ export function EventWizardPage() {
 								</div>
 							</div>
 
-							<div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#F0EFEA]">
+							<div className="wizard-navigation-footer">
 								<button
 									type="button"
 									onClick={() => setActiveStep(0)}
@@ -1545,7 +1567,7 @@ export function EventWizardPage() {
 									<span>Kembali ke Surat Edaran</span>
 								</button>
 
-								<div className="flex items-center gap-2">
+								<div className="wizard-navigation-actions">
 									<button
 										type="button"
 										disabled={saveDraftMutation.isPending}
@@ -1553,12 +1575,12 @@ export function EventWizardPage() {
 										className="ui-button"
 									>
 										<Save className="w-3.5 h-3.5" />
-										<span>Simpan Rincian</span>
+										<span>{saveDraftMutation.isPending ? "Menyimpan..." : "Simpan draf"}</span>
 									</button>
 									<button
 										type="button"
 										onClick={() => setActiveStep(2)}
-										className="ui-button"
+										className="ui-button ui-button-primary"
 									>
 										<span>Lanjut ke Peta &amp; Ruas Jalan</span>
 										<ArrowRight className="w-3.5 h-3.5" />
@@ -2038,7 +2060,7 @@ export function EventWizardPage() {
 								)}
 
 
-								<div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#F0EFEA]">
+								<div className="wizard-navigation-footer">
 									<button
 										type="button"
 										onClick={() => setActiveStep(1)}
@@ -2047,14 +2069,25 @@ export function EventWizardPage() {
 										<ArrowLeft className="w-3.5 h-3.5" />
 										<span>Kembali ke Detail Upacara</span>
 									</button>
+									<div className="wizard-navigation-actions">
+									<button
+										type="button"
+										disabled={saveDraftMutation.isPending}
+										onClick={() => void saveDraftMutation.mutateAsync()}
+										className="ui-button"
+									>
+										<Save className="w-3.5 h-3.5" />
+										<span>{saveDraftMutation.isPending ? "Menyimpan..." : "Simpan draf"}</span>
+									</button>
 									<button
 										type="button"
 										onClick={() => setActiveStep(3)}
-										className="ui-button"
+										className="ui-button ui-button-primary"
 									>
 										<span>Lanjut ke Verifikasi &amp; Terbitkan</span>
 										<ArrowRight className="w-3.5 h-3.5" />
 									</button>
+									</div>
 								</div>
 							</div>
 						</div>
@@ -2311,7 +2344,7 @@ export function EventWizardPage() {
 				</>
 			)}
 
-			{isCreateMode && activeStep === 3 ? <div className="mt-6"><button className="ui-button" type="button" onClick={() => setActiveStep(2)}>Kembali ke jalan</button></div> : null}
+			{isCreateMode && activeStep === 3 ? <div className="wizard-navigation-footer"><button className="ui-button" type="button" onClick={() => setActiveStep(2)}><ArrowLeft className="w-3.5 h-3.5" />Kembali ke jalan</button></div> : null}
 
 			<dialog ref={publishDialogRef} aria-labelledby="publish-dialog-title" aria-describedby="publish-dialog-description"
 				className="m-auto w-[min(92vw,32rem)] rounded-lg bg-white p-6 text-stone-900 shadow-xl backdrop:bg-black/50"

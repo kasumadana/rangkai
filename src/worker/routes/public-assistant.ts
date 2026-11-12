@@ -7,6 +7,7 @@ import { events, organizations } from "../../db/schema";
 import { sendError } from "../lib/errors";
 import { rateLimit } from "../middleware/rate-limit";
 import { assistantInputSchema, freshRoadStatus, selectAssistantSources, validateSelection, type AssistantSource } from "../services/public-assistant";
+import { assistantHelp, type AssistantHelpTopic } from "../services/assistant-help";
 import type { AppVariables, Env } from "../types";
 import { GEMINI_MODEL_NAME } from "../validators/extractions";
 
@@ -33,10 +34,23 @@ publicAssistantRouter.post("/questions", async c => {
   return rows.filter(r => r.slug !== null).map(r => ({ sourceId: `event:${r.slug}`, publicUrl: `/events/${encodeURIComponent(r.slug!)}`, title: r.title, status: r.status, isSimulation: r.isSimulation !== false, startsAt: r.startsAt?.toISOString() ?? null, endsAt: r.endsAt?.toISOString() ?? null, observedAt: null, expiresAt: null }));
  };
  const sources = await retrieve();
- const providerSelection = await selectAssistantSources(question, sources, c.env.GEMINI_API_KEY.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME);
- const selected = validateSelection(providerSelection, sources);
+ const helpSources = Object.entries(assistantHelp).map(([key, item]) => ({ sourceId: `help:${key}`, title: item.title }));
+ const available = [...sources, ...helpSources];
+ const providerSelection = await selectAssistantSources(question, available, c.env.GEMINI_API_KEY.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME);
+ const selected = validateSelection(providerSelection, available);
  if (!selected && providerSelection !== null) console.warn("assistant_provider_failure", { reason: "selection_invalid" });
  if (!selected) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten tidak dapat memproses pertanyaan. Gunakan pencarian kegiatan.", 503);
+ if (selected.intent === "help") {
+  const topics = selected.sourceIds.filter(id => id.startsWith("help:")).slice(0, 3);
+  if (topics.length) {
+   const guidance = topics.map(id => {
+    const topic = id.slice(5) as AssistantHelpTopic;
+    const item = assistantHelp[topic];
+    return { sourceId: id, kind: "help" as const, title: item.title, url: item.url, answer: item.answer };
+   });
+   return c.json({ status: "answered", intent: "help", answer: "Panduan penggunaan Rangkai:", sources: guidance, searchUrl: "/events" });
+  }
+ }
  const current = await retrieve();
  const result = current.filter(source => selected.sourceIds.includes(source.sourceId));
  if (selected.intent === "event_lookup" && result.length) return c.json({ status: "answered", intent: selected.intent, answer: "Berikut data kegiatan yang dipilih. Periksa kesesuaian sumber; status kegiatan bukan status jalan.", sources: result, searchUrl: "/events" });

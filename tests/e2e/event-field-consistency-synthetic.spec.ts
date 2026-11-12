@@ -16,6 +16,39 @@ async function setup(page: Page, officer = false) {
   return route.fulfill({ json: { events: [], pagination: { page: 1, total: 0, totalPages: 0 }, roadImpacts: [], segments: [], candidates: [], documents: [], extractions: [], assignments: [], invitations: [], cleanupTasks: [], items: [] } });
  });
 }
+test("dashboard road map tracks the device location", async ({ page }) => {
+ await setup(page);
+ await page.addInitScript(() => {
+  Object.defineProperty(navigator, "geolocation", { configurable: true, value: {
+   watchPosition: (success: (value: unknown) => void) => { setTimeout(() => success({ coords: { longitude: 115.22, latitude: -8.65, accuracy: 12 } }), 0); return 1; },
+   clearWatch: () => {},
+  } });
+ });
+ await page.goto(`/dashboard/events/${id}/roads`);
+ const start = page.getByRole("button", { name: "Aktifkan pelacakan lokasi" });
+ await start.scrollIntoViewIfNeeded(); await start.click();
+ await expect(page.locator('[aria-label="Lokasi Anda"]')).toHaveCount(1);
+	const gps = await page.locator(".teduh-dashboard-map-wrapper .landing-gps-controls").boundingBox();
+	const legend = await page.locator(".teduh-dashboard-map-legend").boundingBox();
+	if (gps && legend) expect(gps.x + gps.width <= legend.x || legend.x + legend.width <= gps.x || gps.y + gps.height <= legend.y || legend.y + legend.height <= gps.y).toBe(true);
+ await page.getByRole("button", { name: "Hentikan pelacakan lokasi" }).click();
+ await expect(page.locator('[aria-label="Lokasi Anda"]')).toHaveCount(0);
+});
+test("venue coordinate input explains incomplete coordinates", async ({ page }) => {
+ await setup(page); await page.setViewportSize({ width: 320, height: 800 });
+ await page.goto("/dashboard/events/new");
+ await page.locator("#wizard-org-select").selectOption(org);
+ await page.getByRole("button", { name: /Lewati.*Manual/ }).first().click();
+ const venue = page.getByRole("region", { name: "Titik lokasi acara" });
+ await expect(venue.getByRole("button", { name: "Tampilan Satelit" })).toBeVisible();
+ await venue.getByLabel("Bujur (longitude)").fill("115.22");
+ await expect(venue.getByText("Lengkapi kedua koordinat")).toBeVisible();
+ await venue.getByLabel("Lintang (latitude)").fill("-8.65");
+ await expect(venue.getByText(/Titik Terpilih/)).toBeVisible();
+ await venue.getByRole("button", { name: "Hapus titik lokasi" }).click();
+ await expect(venue.getByText("Titik lokasi belum ditentukan")).toBeVisible();
+ expect(await page.evaluate(() => { const browser = globalThis as unknown as { document: { documentElement: { scrollWidth: number } }; innerWidth: number }; return browser.document.documentElement.scrollWidth <= browser.innerWidth; })).toBe(true);
+});
 for (const width of [320, 390, 768, 1440]) test(`new event stays in wizard at ${width}`, async ({ page }) => {
  await setup(page); await page.setViewportSize({ width, height: 900 }); await page.goto("/dashboard/events/new");
  await expect(page.getByText(/Langkah 1 dari 4/)).toBeVisible();
@@ -52,7 +85,7 @@ test("unsaved wizard blocks links and browser Back, including after failed save"
  await page.locator("#wizard-org-select").selectOption(org);
  await page.getByRole("button", { name: /Lewati.*Manual/ }).first().click();
  await page.getByPlaceholder("Contoh: Karya Pujawali & Prosesi Melasti Pura Dalem Ubud").fill("Belum tersimpan");
- await page.getByRole("button", { name: "Asisten" }).click(); await page.getByRole("dialog", { name: "Asisten" }).getByLabel("Pertanyaan").fill("Draf asisten"); await page.keyboard.press("Escape");
+ await page.getByRole("button", { name: "Buka chatbot Rangkai" }).click(); await page.getByRole("dialog", { name: "Asisten" }).getByLabel("Pertanyaan").fill("Draf asisten"); await page.keyboard.press("Escape");
  const backDialog = page.waitForEvent("dialog");
  await page.evaluate(() => (globalThis as unknown as { history: { back: () => void } }).history.back());
  await (await backDialog).dismiss();
@@ -62,7 +95,7 @@ test("unsaved wizard blocks links and browser Back, including after failed save"
  await page.getByRole("button", { name: "Simpan Rincian" }).click(); await expect(page.getByText("Belum Dapat Menyimpan")).toBeVisible();
  const linkDialog = page.waitForEvent("dialog"); await page.getByRole("link", { name: "Daftar Upacara" }).click(); await (await linkDialog).dismiss(); await expect(page).toHaveURL(/\/dashboard\/events\/new$/);
  const discardDialog = page.waitForEvent("dialog"); await page.getByRole("link", { name: "Daftar Upacara" }).click(); await (await discardDialog).accept(); await expect(page).toHaveURL(/\/dashboard$/);
- await page.getByRole("button", { name: "Asisten" }).click(); await expect(page.getByRole("dialog", { name: "Asisten" }).getByLabel("Pertanyaan")).toHaveValue("Draf asisten");
+ await page.getByRole("button", { name: "Buka chatbot Rangkai" }).click(); await expect(page.getByRole("dialog", { name: "Asisten" }).getByLabel("Pertanyaan")).toHaveValue("Draf asisten");
 });
 
 test("AI failure retains wizard and manual entry remains available", async ({ page }) => {

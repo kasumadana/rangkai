@@ -8,7 +8,7 @@ import { Menu, X } from "lucide-react";
 
 import { useAuthSession, useMyOrganizationsQuery } from "../../lib/auth";
 
-import { fetchEventDetail, fetchFieldEventDetail, getSavedOrganizationId } from "../../lib/events-api";
+import { fetchEventDetail, getSavedOrganizationId } from "../../lib/events-api";
 
 import { ProfileMenu } from "../ui/ProfileMenu";
 import { BrandLogo } from "../ui/BrandLogo";
@@ -27,7 +27,47 @@ export function PublicShellLayout() {
 
  if (pathname === "/peta" || pathname.endsWith("/map")) return <><RangkaiPreloader preloaderKey="peta" /><Outlet /></>;
 
- return <div className="public-shell">{pathname === "/" && <RangkaiPreloader preloaderKey="landing" />}<PublicHeader /><main id="main-content"><Outlet /></main><footer className="simple-footer"><BrandLogo /><nav aria-label="Tautan publik"><Link to="/">Beranda</Link><Link to="/events">Jadwal kegiatan</Link><Link to="/peta">Peta kawasan</Link><Link to="/tanya">Tanya kegiatan</Link><Link to="/dashboard">Ruang kerja</Link><Link to="/field">Tugas lapangan</Link></nav><p>Rangkai membantu koordinasi dan bukan izin resmi penutupan jalan. Penyelesaian kebersihan tidak membuka jalan secara otomatis; pembaruan jalan dilakukan petugas berwenang.</p></footer></div>;
+ return (
+  <div className="public-shell">
+   {pathname === "/" && <RangkaiPreloader preloaderKey="landing" />}
+   <PublicHeader />
+   <main id="main-content"><Outlet /></main>
+   <footer className="public-footer">
+    <div className="public-footer-inner">
+     <div className="public-footer-main">
+      <div className="public-footer-brand">
+       <BrandLogo />
+       <p>Informasi kegiatan adat dan koordinasi ruang publik di Bali.</p>
+      </div>
+      <div className="public-footer-links">
+       <section aria-labelledby="footer-explore-title">
+        <h2 id="footer-explore-title">Jelajahi</h2>
+        <ul>
+         <li><Link to="/">Beranda</Link></li>
+         <li><Link to="/events">Jadwal kegiatan</Link></li>
+         <li><Link to="/peta">Peta kawasan</Link></li>
+        </ul>
+       </section>
+       <section aria-labelledby="footer-help-title">
+        <h2 id="footer-help-title">Panduan</h2>
+        <ul><li><Link to="/tanya">Tanya kegiatan</Link></li></ul>
+       </section>
+       <section aria-labelledby="footer-work-title">
+        <h2 id="footer-work-title">Ruang kerja</h2>
+        <ul>
+         <li><Link to="/dashboard">Penyelenggara</Link></li>
+         <li><Link to="/field">Petugas lapangan</Link></li>
+        </ul>
+       </section>
+      </div>
+     </div>
+     <div className="public-footer-bottom">
+      <p>Rangkai membantu koordinasi dan bukan izin resmi penutupan jalan. Penyelesaian kebersihan tidak membuka jalan secara otomatis; pembaruan jalan dilakukan petugas berwenang.</p>
+     </div>
+    </div>
+   </footer>
+  </div>
+ );
 
 }
 
@@ -65,8 +105,6 @@ export function WorkspaceShellLayout() {
 
  const event = useQuery({ queryKey: ["events", "detail", eventId], queryFn: () => fetchEventDetail(eventId!), enabled: !!eventId && !isField });
 
- const field = useQuery({ queryKey: ["field", "event", eventId], queryFn: () => fetchFieldEventDetail(eventId!), enabled: !!eventId && isField });
-
  useEffect(() => { const update = () => setOrgId(getSavedOrganizationId()); window.addEventListener("rangkai:organization-changed", update); return () => window.removeEventListener("rangkai:organization-changed", update); }, []);
 
  useEffect(() => { if (previousPath.current !== pathname) content.current?.focus(); previousPath.current = pathname; }, [pathname]);
@@ -85,9 +123,7 @@ export function WorkspaceShellLayout() {
 
  {organizer && eventId && !isField && <div className="context-navigation"><p>{event.data?.event.title || "Kegiatan terpilih"}</p>{[["", "Detail kegiatan"], ["/document", "Dokumen & AI"], ["/roads", "Dampak jalan"], ["/cleanup", "Kebersihan"], ["/team", "Tim & Petugas"]].map(([suffix, label]) => link(`/dashboard/events/${eventId}${suffix}`, label, pathname === `/dashboard/events/${eventId}${suffix}` || (suffix === "/document" && pathname.endsWith("/review"))))}</div>}
 
- {link("/field", organizer ? "Operasional lapangan" : "Tugas saya", pathname === "/field")}
-
- {eventId && isField && <div className="context-navigation"><p>{field.data?.event.title || "Tugas lapangan"}</p>{field.data?.permissions.canUpdateTraffic && link(`/field/events/${eventId}/traffic`, "Lalu lintas", pathname.endsWith("/traffic"))}{field.data?.permissions.canUpdateCleanup && link(`/field/events/${eventId}/cleanup`, "Kebersihan", pathname.includes("/cleanup"))}</div>}
+ {link("/field", organizer ? "Operasional lapangan" : "Tugas saya", pathname === "/field" || pathname.startsWith("/field/events/"))}
 
  <div className="sidebar-bottom">{link("/settings", "Pengaturan", pathname === "/settings")}</div></nav></aside>
 

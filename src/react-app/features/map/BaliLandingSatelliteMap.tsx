@@ -16,12 +16,9 @@ import {
 	type BaliVillageCeremonyProfile,
 } from "../../lib/bali-villages";
 import type { OperationalRoadStatus } from "../../lib/road-status";
-import {
-	calculateUserBypassRoute,
-	deriveDefaultSimulatedUserOrigin,
-	isWithinBaliBounds,
-	type UserGuidanceRoute,
-} from "../../lib/routing-engine";
+import { useGpsTracking } from "./useGpsTracking";
+import { showGpsAccuracy } from "./gpsAccuracy";
+import { GpsControls } from "./GpsControls";
 
 type BasemapStyle = "osm" | "satellite";
 
@@ -303,74 +300,25 @@ export function BaliLandingSatelliteMap({
 		useState<CeremonyDetailItem | null>(null);
 
 	// User location tracking & green bypass guidance route state
-	const [userLocation, setUserLocation] = useState<[number, number] | null>(
-		null,
-	);
-	const [userOriginMode, setUserOriginMode] = useState<
-		"gps" | "simulated" | "manual" | null
-	>(null);
-	const [isLocatingUser, setIsLocatingUser] = useState(false);
-	const [isPickingUserOrigin, setIsPickingUserOrigin] = useState(false);
-	const [userGuidanceRoute, setUserGuidanceRoute] =
-		useState<UserGuidanceRoute | null>(null);
+	const gps = useGpsTracking();
+	const userLocation = gps.position?.coordinates ?? null;
 	const userMarkerRef = useRef<maplibregl.Marker | null>(null);
 
-	const userRouteGeoJson = useMemo(() => {
-		if (!userGuidanceRoute || userGuidanceRoute.coordinates.length < 2) {
-			return {
-				type: "FeatureCollection" as const,
-				features: [] as Array<{
-					type: "Feature";
-					properties: { name: string };
-					geometry: { type: "LineString"; coordinates: Array<[number, number]> };
-				}>,
-			};
-		}
-		return {
-			type: "FeatureCollection" as const,
-			features: [
-				{
-					type: "Feature" as const,
-					properties: {
-						name: userGuidanceRoute.routeName,
-					},
-					geometry: {
-						type: "LineString" as const,
-						coordinates: userGuidanceRoute.coordinates,
-					},
-				},
-			],
-		};
-	}, [userGuidanceRoute]);
-
-	const userRouteGeoJsonRef = useRef(userRouteGeoJson);
-	useEffect(() => {
-		userRouteGeoJsonRef.current = userRouteGeoJson;
-	}, [userRouteGeoJson]);
-
-	const targetCeremonyForRouting = useMemo(() => {
-		if (activeCeremonyId) {
-			const matched = ceremonies.find((c) => c.id === activeCeremonyId);
-			if (matched) return matched;
-		}
-		return (
-			ceremonies.find((c) => (c.roadSegments?.length ?? 0) > 0) ??
-			ceremonies[0] ??
-			null
-		);
-	}, [activeCeremonyId, ceremonies]);
-
-	// Cooperative map activation state (prevents wheel scroll-trapping while scrolling page)
+	// Cooperative map activation state (prevents wheel & touch drag scroll-trapping while scrolling page)
 	const [isMapInteracting, setIsMapInteracting] = useState(false);
 
 	const handleActivateMap = useCallback(() => {
 		setIsMapInteracting(true);
 		mapRef.current?.scrollZoom.enable();
+		mapRef.current?.dragPan.enable();
+		mapRef.current?.touchZoomRotate.enable();
 	}, []);
 
 	const handleDeactivateMap = useCallback(() => {
 		setIsMapInteracting(false);
 		mapRef.current?.scrollZoom.disable();
+		mapRef.current?.dragPan.disable();
+		mapRef.current?.touchZoomRotate.disable();
 	}, []);
 
 	// Click outside the map container to release focus and restore smooth page scroll
@@ -395,7 +343,7 @@ export function BaliLandingSatelliteMap({
 	const openCeremonyPopup = useCallback(
 		(ceremony: BaliVillageCeremonyProfile) => {
 			const map = mapRef.current;
-			const pinCoords = ceremony.venueLocation ?? ceremony.mapCenter;
+			const pinCoords = ceremony.venueLocation;
 			if (!map || !pinCoords) return;
 
 			if (activePopupRef.current) {
@@ -418,9 +366,11 @@ export function BaliLandingSatelliteMap({
 			popupNode.className = "map-popup-card";
 			popupNode.innerHTML = `
 				<div class="map-popup-header">
-					<span class="map-popup-badge ${badge.className}">${badge.label}</span>
-					${isSim ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ""}
-					<span class="map-popup-location"></span>
+					<div class="map-popup-location"></div>
+					<div class="map-popup-top-badges">
+						<span class="map-popup-badge ${badge.className}">${badge.label}</span>
+						${isSim ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ""}
+					</div>
 				</div>
 				<h4 class="map-popup-title"></h4>
 				<div class="map-popup-meta-box">
@@ -437,18 +387,23 @@ export function BaliLandingSatelliteMap({
 						<span class="map-popup-meta-val"></span>
 					</div>
 				</div>
-				<button type="button" class="map-popup-btn">
-					<span>Lihat Detail</span>
-					<span aria-hidden="true">→</span>
-				</button>
+				<div class="map-popup-actions">
+					<button type="button" class="map-popup-btn">
+						<span>Lihat Detail</span>
+						<span aria-hidden="true">→</span>
+					</button>
+				</div>
 			`;
 
 			const location = popupNode.querySelector(".map-popup-location");
 			const title = popupNode.querySelector(".map-popup-title");
 			const values = popupNode.querySelectorAll(".map-popup-meta-val");
-			if (location) location.textContent = ceremony.desaAdatName;
-			if (title) title.textContent = ceremony.ceremonyTitle;
-			if (values[0]) values[0].textContent = firstRoadName;
+			const cleanDesaName = ceremony.desaAdatName.replace(/\s*\([Ss]imulasi\)/g, "").trim();
+			const cleanCeremonyTitle = ceremony.ceremonyTitle.replace(/^\[SIMULATED\]\s*/i, "").trim();
+			const cleanFirstRoadName = firstRoadName.replace(/^\[SIMULATED\]\s*/i, "").trim();
+			if (location) location.textContent = cleanDesaName;
+			if (title) title.textContent = cleanCeremonyTitle;
+			if (values[0]) values[0].textContent = cleanFirstRoadName;
 			if (values[1]) values[1].textContent = altRouteLabel;
 			if (values[2])
 				values[2].textContent =
@@ -488,14 +443,15 @@ export function BaliLandingSatelliteMap({
 					right: [-18, -20],
 				},
 				anchor: "bottom",
-				closeButton: false,
+				closeButton: true,
 				closeOnClick: false,
-				maxWidth: "248px",
+				maxWidth: "320px",
 			})
 				.setLngLat(pinCoords)
 				.setDOMContent(popupNode)
 				.addTo(map);
 
+			popup.getElement()?.querySelector(".maplibregl-popup-close-button")?.setAttribute("aria-label", "Tutup informasi peta");
 			popup.on("close", () => {
 				if (activePopupRef.current === popup) {
 					activePopupRef.current = null;
@@ -611,47 +567,6 @@ export function BaliLandingSatelliteMap({
 				},
 			});
 		}
-
-		if (!mapInstance.getSource("landing-user-route")) {
-			mapInstance.addSource("landing-user-route", {
-				type: "geojson",
-				data: userRouteGeoJsonRef.current,
-			});
-		}
-
-		if (!mapInstance.getLayer("landing-user-route-halo")) {
-			mapInstance.addLayer({
-				id: "landing-user-route-halo",
-				type: "line",
-				source: "landing-user-route",
-				layout: {
-					"line-cap": "round",
-					"line-join": "round",
-				},
-				paint: {
-					"line-color": "rgba(255, 255, 255, 0.92)",
-					"line-width": 10,
-					"line-opacity": 0.95,
-				},
-			});
-		}
-
-		if (!mapInstance.getLayer("landing-user-route-line")) {
-			mapInstance.addLayer({
-				id: "landing-user-route-line",
-				type: "line",
-				source: "landing-user-route",
-				layout: {
-					"line-cap": "round",
-					"line-join": "round",
-				},
-				paint: {
-					"line-color": "#16A34A",
-					"line-width": 5.5,
-					"line-opacity": 0.98,
-				},
-			});
-		}
 	}, []);
 
 	const handleSwitchBasemap = useCallback(
@@ -668,103 +583,23 @@ export function BaliLandingSatelliteMap({
 		[activeBasemap, attachRoadLayers],
 	);
 
-	// Recompute green bypass route whenever userLocation or targetCeremonyForRouting changes
 	useEffect(() => {
-		let cancelled = false;
-		if (!userLocation || !targetCeremonyForRouting) {
-			return;
-		}
-		calculateUserBypassRoute({
-			userOrigin: userLocation,
-			ceremony: targetCeremonyForRouting,
-		}).then((route) => {
-			if (!cancelled) {
-				setUserGuidanceRoute(route);
-			}
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [userLocation, targetCeremonyForRouting]);
-
-	const handleTrackUserLocation = useCallback(() => {
-		if (userLocation && !isPickingUserOrigin) {
-			setUserLocation(null);
-			setUserOriginMode(null);
-			setUserGuidanceRoute(null);
-			setIsPickingUserOrigin(false);
-			return;
-		}
-
-		const targetCeremony = targetCeremonyForRouting;
-		const applyOrigin = (
-			coord: [number, number],
-			mode: "gps" | "simulated" | "manual",
-		) => {
-			setUserLocation(coord);
-			setUserOriginMode(mode);
-			setIsLocatingUser(false);
-			setIsPickingUserOrigin(false);
-			if (targetCeremony) {
-				setActiveCeremonyId(targetCeremony.id);
-			}
-			const map = mapRef.current;
-			if (map) {
-				const destCoord =
-					targetCeremony?.venueLocation ??
-					targetCeremony?.mapCenter ??
-					coord;
-				const bounds = new maplibregl.LngLatBounds(coord, coord);
-				bounds.extend(destCoord);
-				for (const seg of targetCeremony?.roadSegments || []) {
-					for (const pt of seg.coordinates || []) {
-						bounds.extend(pt);
-					}
-				}
-				map.fitBounds(bounds, {
-					padding: { top: 90, bottom: 90, left: 70, right: 70 },
-					maxZoom: 15.2,
-					duration: 750,
-				});
-			}
-		};
-
-		if (
-			typeof navigator !== "undefined" &&
-			"geolocation" in navigator &&
-			typeof navigator.geolocation.getCurrentPosition === "function"
-		) {
-			setIsLocatingUser(true);
-			navigator.geolocation.getCurrentPosition(
-				(pos) => {
-					const candidate: [number, number] = [
-						Number(pos.coords.longitude.toFixed(6)),
-						Number(pos.coords.latitude.toFixed(6)),
-					];
-					if (isWithinBaliBounds(candidate)) {
-						applyOrigin(candidate, "gps");
-					} else {
-						const fallbackOrigin = targetCeremony
-							? deriveDefaultSimulatedUserOrigin(targetCeremony)
-							: BALI_ISLAND_CENTER;
-						applyOrigin(fallbackOrigin, "simulated");
-					}
-				},
-				() => {
-					const fallbackOrigin = targetCeremony
-						? deriveDefaultSimulatedUserOrigin(targetCeremony)
-						: BALI_ISLAND_CENTER;
-					applyOrigin(fallbackOrigin, "simulated");
-				},
-				{ enableHighAccuracy: true, timeout: 3500, maximumAge: 30000 },
-			);
-		} else {
-			const fallbackOrigin = targetCeremony
-				? deriveDefaultSimulatedUserOrigin(targetCeremony)
-				: BALI_ISLAND_CENTER;
-			applyOrigin(fallbackOrigin, "simulated");
-		}
-	}, [userLocation, isPickingUserOrigin, targetCeremonyForRouting]);
+		if (gps.following && gps.position && mapRef.current) mapRef.current.easeTo({ center: gps.position.coordinates, zoom: Math.max(mapRef.current.getZoom(), 14), duration: 500 });
+	}, [gps.position, gps.following]);
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map || !isMapLoaded) return;
+		const updateAccuracy = () => showGpsAccuracy(map, gps.position);
+		updateAccuracy();
+		map.on("style.load", updateAccuracy);
+		return () => { map.off("style.load", updateAccuracy); };
+	}, [gps.position, isMapLoaded]);
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map || !isMapLoaded) return;
+		map.on("dragstart", gps.pauseFollowing);
+		return () => { map.off("dragstart", gps.pauseFollowing); };
+	}, [gps.pauseFollowing, isMapLoaded]);
 
 	// Initialize MapLibre instance
 	useEffect(() => {
@@ -784,8 +619,10 @@ export function BaliLandingSatelliteMap({
 				attributionControl: false,
 			});
 
-			// Prevent scroll-trap: disable wheel scrollZoom by default until map is explicitly activated
+			// Prevent scroll-trap on mobile and desktop: disable wheel, dragPan & touchZoomRotate by default until map is explicitly activated
 			mapInstance.scrollZoom.disable();
+			mapInstance.dragPan.disable();
+			mapInstance.touchZoomRotate.disable();
 
 			mapInstance.addControl(
 				new maplibregl.NavigationControl({ showCompass: true }),
@@ -797,7 +634,7 @@ export function BaliLandingSatelliteMap({
 					compact: true,
 					customAttribution: "OpenStreetMap & Esri • Rangkai Bali",
 				}),
-				"bottom-right",
+				"bottom-left",
 			);
 
 			mapInstance.on("load", () => {
@@ -880,45 +717,10 @@ export function BaliLandingSatelliteMap({
 		};
 	}, [attachRoadLayers]);
 
-	// Handle click-on-map to pick custom user location origin
-	useEffect(() => {
-		const map = mapRef.current;
-		if (!map || !isMapLoaded || !isPickingUserOrigin) return;
-
-		const canvas = map.getCanvas();
-		const prevCursor = canvas.style.cursor;
-		canvas.style.cursor = "crosshair";
-
-		const onMapClick = (e: maplibregl.MapMouseEvent) => {
-			const picked: [number, number] = [
-				Number(e.lngLat.lng.toFixed(6)),
-				Number(e.lngLat.lat.toFixed(6)),
-			];
-			if (isWithinBaliBounds(picked)) {
-				setUserLocation(picked);
-				setUserOriginMode("manual");
-				setIsPickingUserOrigin(false);
-			}
-		};
-
-		map.on("click", onMapClick);
-		return () => {
-			canvas.style.cursor = prevCursor;
-			map.off("click", onMapClick);
-		};
-	}, [isMapLoaded, isPickingUserOrigin]);
-
-	// Sync user location marker & green bypass route GeoJSON
+	// Sync user device location marker when GPS is activated
 	useEffect(() => {
 		const map = mapRef.current;
 		if (!map || !isMapLoaded) return;
-
-		const userRouteSource = map.getSource("landing-user-route") as
-			| maplibregl.GeoJSONSource
-			| undefined;
-		if (userRouteSource) {
-			userRouteSource.setData(userRouteGeoJson);
-		}
 
 		userMarkerRef.current?.remove();
 		userMarkerRef.current = null;
@@ -927,8 +729,8 @@ export function BaliLandingSatelliteMap({
 			const el = document.createElement("div");
 			el.setAttribute("aria-label", "Lokasi Anda");
 			el.style.cssText =
-				"width:22px;height:22px;border-radius:9999px;background:#16A34A;border:3px solid #FFFFFF;box-shadow:0 0 0 6px rgba(22,163,74,0.28),0 4px 10px rgba(15,23,42,0.35);cursor:pointer;";
-			el.title = "Lokasi Anda (Titik Awal Rute Alternatif)";
+				"width:22px;height:22px;border-radius:9999px;background:#4D702F;border:3px solid #FFFFFF;box-shadow:0 0 0 6px rgba(92,132,55,0.28),0 4px 10px rgba(15,23,42,0.35);cursor:pointer;";
+			el.title = "Lokasi Anda";
 			userMarkerRef.current = new maplibregl.Marker({
 				element: el,
 				anchor: "center",
@@ -936,7 +738,7 @@ export function BaliLandingSatelliteMap({
 				.setLngLat(userLocation)
 				.addTo(map);
 		}
-	}, [isMapLoaded, userLocation, userRouteGeoJson]);
+	}, [isMapLoaded, userLocation]);
 
 	// Sync road segment data, alternative routes & ceremony location pins across Bali at all zoom levels
 	useEffect(() => {
@@ -961,7 +763,7 @@ export function BaliLandingSatelliteMap({
 		ceremonyMarkersRef.current = [];
 
 		for (const ceremony of ceremonies) {
-			const pinCoords = ceremony.venueLocation ?? ceremony.mapCenter;
+			const pinCoords = ceremony.venueLocation;
 			if (
 				!Array.isArray(pinCoords) ||
 				pinCoords.length !== 2 ||
@@ -1047,13 +849,19 @@ export function BaliLandingSatelliteMap({
 		>
 			<div
 				ref={mapContainerRef}
+				onClick={!isMapInteracting ? handleActivateMap : undefined}
+				className={!isMapInteracting ? "landing-map-scroll-locked" : undefined}
 				style={{
 					position: "absolute",
 					inset: 0,
 					width: "100%",
 					height: "100%",
+					cursor: !isMapInteracting ? "pointer" : "grab",
+					touchAction: !isMapInteracting ? "pan-y" : "none",
 				}}
 			/>
+
+			<GpsControls gps={gps} />
 
 			{/* Top-left non-obstructive Map Controls Bar: Basemap Switcher, User Location Tracking, & Zoom Focus */}
 			<div
@@ -1082,7 +890,7 @@ export function BaliLandingSatelliteMap({
 						background: "rgba(24, 27, 32, 0.88)",
 						backdropFilter: "blur(8px)",
 						padding: 3,
-						borderRadius: 9999,
+						borderRadius: 4,
 						boxShadow: "0 4px 14px rgba(15, 23, 42, 0.22)",
 						border: "1px solid rgba(255, 255, 255, 0.16)",
 					}}
@@ -1093,7 +901,7 @@ export function BaliLandingSatelliteMap({
 						aria-pressed={activeBasemap === "satellite"}
 						style={{
 							border: "none",
-							borderRadius: 9999,
+							borderRadius: 4,
 							padding: "5px 12px",
 							fontSize: 12,
 							fontWeight: 600,
@@ -1112,7 +920,7 @@ export function BaliLandingSatelliteMap({
 						aria-pressed={activeBasemap === "osm"}
 						style={{
 							border: "none",
-							borderRadius: 9999,
+							borderRadius: 4,
 							padding: "5px 12px",
 							fontSize: 12,
 							fontWeight: 600,
@@ -1126,69 +934,28 @@ export function BaliLandingSatelliteMap({
 					</button>
 				</div>
 
-				{/* User Location Tracking + Green Alternative Route Button */}
-				<button
-					type="button"
-					onClick={handleTrackUserLocation}
-					aria-pressed={Boolean(userLocation)}
-					style={{
-						pointerEvents: "auto",
-						border: userLocation
-							? "1px solid #16A34A"
-							: "1px solid rgba(255, 255, 255, 0.22)",
-						borderRadius: 9999,
-						padding: "6px 13px",
-						fontSize: 12,
-						fontWeight: 600,
-						cursor: "pointer",
-						background: userLocation
-							? "#16A34A"
-							: "rgba(255, 255, 255, 0.94)",
-						color: userLocation ? "#FFFFFF" : "#181B20",
-						boxShadow: "0 4px 14px rgba(15, 23, 42, 0.16)",
-						display: "inline-flex",
-						alignItems: "center",
-						gap: 6,
-					}}
-				>
-					<span
-						aria-hidden="true"
-						style={{
-							width: 8,
-							height: 8,
-							borderRadius: 9999,
-							background: userLocation ? "#FFFFFF" : "#16A34A",
-							display: "inline-block",
-						}}
-					/>
-					<span>
-						{isLocatingUser
-							? "Mencari Lokasi..."
-							: userLocation
-								? "Rute Alternatif Aktif"
-								: "Lokasi Saya & Rute Alternatif"}
-					</span>
-				</button>
-
-				{/* Cooperative Scroll Interaction Pill */}
+				{/* Cooperative Scroll Interaction Pill (discreet hint, faint background, no emojis) */}
 				{!isMapInteracting ? (
 					<button
 						type="button"
 						onClick={handleActivateMap}
 						style={{
 							pointerEvents: "auto",
-							border: "none",
-							borderRadius: 9999,
-							padding: "6px 12px",
-							fontSize: 11.5,
+							border: "1px solid rgba(0, 0, 0, 0.08)",
+							borderRadius: 4,
+							padding: "4px 10px",
+							fontSize: 11,
 							fontWeight: 500,
 							background: "rgba(255, 255, 255, 0.88)",
-							color: "#334155",
+							backdropFilter: "blur(4px)",
+							color: "#475569",
 							cursor: "pointer",
-							boxShadow: "0 2px 10px rgba(15, 23, 42, 0.12)",
+							boxShadow: "0 1px 4px rgba(0, 0, 0, 0.08)",
+							display: "inline-flex",
+							alignItems: "center",
 						}}
 					>
-						Klik peta untuk zoom
+						<span>Klik peta untuk berinteraksi</span>
 					</button>
 				) : (
 					<button
@@ -1196,24 +963,27 @@ export function BaliLandingSatelliteMap({
 						onClick={handleDeactivateMap}
 						style={{
 							pointerEvents: "auto",
-							border: "none",
-							borderRadius: 9999,
-							padding: "6px 12px",
-							fontSize: 11.5,
-							fontWeight: 600,
-							background: "rgba(24, 27, 32, 0.88)",
+							border: "1px solid rgba(0, 0, 0, 0.15)",
+							borderRadius: 4,
+							padding: "4px 10px",
+							fontSize: 11,
+							fontWeight: 500,
+							background: "rgba(24, 27, 32, 0.85)",
+							backdropFilter: "blur(4px)",
 							color: "#F8FAFC",
 							cursor: "pointer",
-							boxShadow: "0 2px 10px rgba(15, 23, 42, 0.18)",
+							boxShadow: "0 1px 4px rgba(0, 0, 0, 0.15)",
+							display: "inline-flex",
+							alignItems: "center",
 						}}
-						title="Klik untuk menonaktifkan zoom peta dan melanjutkan scroll halaman"
+						title="Klik untuk mengunci kembali peta dan melanjutkan scroll halaman"
 					>
-						✓ Zoom Aktif • Lepas Fokus
+						<span>Selesai berinteraksi</span>
 					</button>
 				)}
 			</div>
 
-			{/* Compact Bottom-Left Legend & Active Green Route Guidance Bar */}
+			{/* Compact Bottom-Left Legend */}
 			<div
 				onClick={(e) => e.stopPropagation()}
 				style={{
@@ -1228,116 +998,6 @@ export function BaliLandingSatelliteMap({
 					pointerEvents: "none",
 				}}
 			>
-				{userLocation && userGuidanceRoute && (
-					<div
-						style={{
-							pointerEvents: "auto",
-							background: "rgba(255, 255, 255, 0.96)",
-							backdropFilter: "blur(10px)",
-							borderRadius: 14,
-							padding: "10px 12px",
-							boxShadow: "0 8px 24px rgba(15, 23, 42, 0.18)",
-							border: "1px solid rgba(22, 163, 74, 0.35)",
-							fontSize: 12,
-							color: "#1E293B",
-						}}
-					>
-						<div
-							style={{
-								display: "flex",
-								alignItems: "center",
-								justifyContent: "space-between",
-								gap: 8,
-								marginBottom: 4,
-							}}
-						>
-							<span
-								style={{
-									fontWeight: 700,
-									color: "#15803D",
-									display: "inline-flex",
-									alignItems: "center",
-									gap: 5,
-								}}
-							>
-								<span
-									aria-hidden="true"
-									style={{
-										width: 8,
-										height: 8,
-										borderRadius: 9999,
-										background: "#16A34A",
-									}}
-								/>
-								Garis Hijau: {userGuidanceRoute.routeName}
-							</span>
-							<span
-								style={{
-									fontSize: 11,
-									fontWeight: 600,
-									color: "#475569",
-									whiteSpace: "nowrap",
-								}}
-							>
-								~{Math.max(1, Math.round(userGuidanceRoute.distanceMeters / 100) / 10)} km •{" "}
-								{userGuidanceRoute.estimatedMinutes} mnt
-							</span>
-						</div>
-						<p
-							style={{
-								margin: "0 0 8px 0",
-								fontSize: 11.5,
-								color: "#475569",
-								lineHeight: 1.35,
-							}}
-						>
-							Menghindari{" "}
-							<strong style={{ color: "#B91C1C" }}>
-								{userGuidanceRoute.avoidedRoadNames[0] || "ruas jalan ditutup"}
-							</strong>
-							{userOriginMode === "simulated"
-								? " (Titik simulasi di sekitar lokasi acara)."
-								: "."}
-						</p>
-						<div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-							<button
-								type="button"
-								onClick={() => setIsPickingUserOrigin((prev) => !prev)}
-								style={{
-									border: "1px solid #CBD5E1",
-									borderRadius: 9999,
-									padding: "4px 10px",
-									fontSize: 11,
-									fontWeight: 600,
-									background: isPickingUserOrigin ? "#FEF3C7" : "#F8FAFC",
-									color: "#1E293B",
-									cursor: "pointer",
-								}}
-							>
-								{isPickingUserOrigin
-									? "Klik titik di peta..."
-									: "Pilih Titik Lokasi di Peta"}
-							</button>
-							<a
-								href={userGuidanceRoute.googleMapsUrl}
-								target="_blank"
-								rel="noopener noreferrer"
-								style={{
-									borderRadius: 9999,
-									padding: "4px 10px",
-									fontSize: 11,
-									fontWeight: 600,
-									background: "#16A34A",
-									color: "#FFFFFF",
-									textDecoration: "none",
-								}}
-							>
-								Navigasi Google Maps ↗
-							</a>
-						</div>
-					</div>
-				)}
-
 				<div
 					style={{
 						pointerEvents: "auto",
@@ -1348,7 +1008,7 @@ export function BaliLandingSatelliteMap({
 						background: "rgba(24, 27, 32, 0.84)",
 						backdropFilter: "blur(8px)",
 						padding: "5px 12px",
-						borderRadius: 9999,
+						borderRadius: 4,
 						color: "#F8FAFC",
 						fontSize: 11,
 						fontWeight: 500,
@@ -1391,22 +1051,7 @@ export function BaliLandingSatelliteMap({
 						/>
 						Jalur Alternatif
 					</span>
-					{userLocation && (
-						<span
-							style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
-						>
-							<span
-								style={{
-									width: 10,
-									height: 3.5,
-									borderRadius: 2,
-									background: "#16A34A",
-									display: "inline-block",
-								}}
-							/>
-							Rute Anda
-						</span>
-					)}
+
 				</div>
 			</div>
 

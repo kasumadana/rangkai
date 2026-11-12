@@ -1,4 +1,7 @@
-import type { BaliVillageCeremonyProfile } from "./bali-villages";
+import type {
+	BaliVillageCeremonyProfile,
+	VillageRoadRouteSegment,
+} from "./bali-villages";
 
 export interface RoadRouteResult {
 	coordinates: Array<[number, number]>;
@@ -10,6 +13,7 @@ export interface RoadRouteResult {
 export interface UserGuidanceRoute {
 	origin: [number, number];
 	destination: [number, number];
+	isSimulation: boolean;
 	waypoints: Array<[number, number]>;
 	coordinates: Array<[number, number]>;
 	distanceMeters: number;
@@ -211,21 +215,7 @@ export function buildFallbackRoadGeometry(
 
 	const detailed: Array<[number, number]> = [valid[0]];
 	for (let i = 1; i < valid.length; i++) {
-		const prev = valid[i - 1];
 		const curr = valid[i];
-		const dist = haversineDistanceMeters(prev, curr);
-		if (dist > 140) {
-			// Add smooth intermediate road-like turn points instead of a harsh diagonal
-			const mid1: [number, number] = [
-				Number((prev[0] + (curr[0] - prev[0]) * 0.35).toFixed(6)),
-				Number((prev[1] + (curr[1] - prev[1]) * 0.25).toFixed(6)),
-			];
-			const mid2: [number, number] = [
-				Number((prev[0] + (curr[0] - prev[0]) * 0.7).toFixed(6)),
-				Number((prev[1] + (curr[1] - prev[1]) * 0.75).toFixed(6)),
-			];
-			detailed.push(mid1, mid2);
-		}
 		detailed.push([Number(curr[0].toFixed(6)), Number(curr[1].toFixed(6))]);
 	}
 
@@ -248,7 +238,9 @@ export function buildFallbackRoadGeometry(
 export async function snapCoordinatesToRoad(
 	waypoints: Array<[number, number]>,
 	signal?: AbortSignal,
+	options: { cache?: boolean } = {},
 ): Promise<RoadRouteResult> {
+	const useCache = options.cache !== false;
 	const valid = waypoints.filter(isWithinBaliBounds);
 	if (valid.length < 2) {
 		return buildFallbackRoadGeometry(valid);
@@ -269,9 +261,9 @@ export async function snapCoordinatesToRoad(
 	const cacheKey = sampled
 		.map(([lng, lat]) => `${lng.toFixed(5)},${lat.toFixed(5)}`)
 		.join(";");
-	const cached = routeCache.get(cacheKey);
-	if (cached) {
-		return cached;
+	if (useCache) {
+		const cached = routeCache.get(cacheKey);
+		if (cached) return cached;
 	}
 
 	const controller = new AbortController();
@@ -318,7 +310,7 @@ export async function snapCoordinatesToRoad(
 					),
 					source: "osrm",
 				};
-				routeCache.set(cacheKey, result);
+				if (useCache) routeCache.set(cacheKey, result);
 				return result;
 			}
 		}
@@ -329,9 +321,7 @@ export async function snapCoordinatesToRoad(
 		signal?.removeEventListener("abort", onExternalAbort);
 	}
 
-	const fallback = buildFallbackRoadGeometry(sampled);
-	routeCache.set(cacheKey, fallback);
-	return fallback;
+	return buildFallbackRoadGeometry(sampled);
 }
 
 /**
@@ -403,9 +393,149 @@ export function buildGoogleMapsNavigationUrl(
 	return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
+type ClosedRoadSegment = BaliVillageCeremonyProfile["roadSegments"][number];
+
+export function getRoadCoordinateParts(
+	segment: Pick<VillageRoadRouteSegment, "coordinates" | "coordinateParts">,
+): Array<Array<[number, number]>> {
+	const parts = (segment.coordinateParts ?? []).filter((part) => part.length >= 2);
+	if (parts.length > 0) return parts;
+	return segment.coordinates.length >= 2 ? [segment.coordinates] : [];
+}
+
+export function isActiveRoadClosure(segment: {
+	status: string;
+	impactType?: string | null;
+}): boolean {
+	const status = segment.status.toLowerCase();
+	if (status === "open") return false;
+	return (
+		status === "closed" ||
+		status === "intermittent" ||
+		(segment.impactType ?? "").toLowerCase().includes("closure")
+	);
+}
+
+function getActiveClosedRoads(
+	ceremony: BaliVillageCeremonyProfile,
+): ClosedRoadSegment[] {
+	return (ceremony.roadSegments ?? []).filter(
+		(segment) =>
+			getRoadCoordinateParts(segment).length > 0 &&
+			isActiveRoadClosure(segment),
+	);
+}
+
+function distanceToPolylineMeters(
+	point: [number, number],
+	line: Array<[number, number]>,
+): number {
+	let distance = Number.POSITIVE_INFINITY;
+	for (let index = 1; index < line.length; index++) {
+		distance = Math.min(
+			distance,
+			pointToSegmentDistanceMeters(point, line[index - 1], line[index]),
+		);
+	}
+	return distance;
+}
+
+function distanceToRoadMeters(
+	point: [number, number],
+	road: ClosedRoadSegment,
+): number {
+	return Math.min(
+		...getRoadCoordinateParts(road).map((part) =>
+			distanceToPolylineMeters(point, part),
+		),
+	);
+}
+
+function isClearOfClosedRoads(
+	path: Array<[number, number]>,
+	closedRoads: ClosedRoadSegment[],
+): boolean {
+	return closedRoads.every(
+		(road) =>
+			getRoadCoordinateParts(road).every(
+				(part) => !doesPathIntersectCorridor(path, part, 22),
+			),
+	);
+}
+
+function pointBeyondClosedRoad(
+	origin: [number, number],
+	closedRoad: ClosedRoadSegment,
+): { nearEnd: [number, number]; farEnd: [number, number]; destination: [number, number] } {
+	const roadPart = getRoadCoordinateParts(closedRoad).sort(
+		(a, b) =>
+			distanceToPolylineMeters(origin, a) - distanceToPolylineMeters(origin, b),
+	)[0];
+	if (!roadPart) {
+		const originFallback: [number, number] = [...origin];
+		return {
+			nearEnd: originFallback,
+			farEnd: originFallback,
+			destination: originFallback,
+		};
+	}
+	const first = roadPart[0];
+	const last = roadPart[roadPart.length - 1];
+	const firstIsNear =
+		haversineDistanceMeters(origin, first) <=
+		haversineDistanceMeters(origin, last);
+	const nearEnd = firstIsNear ? first : last;
+	const farEnd = firstIsNear ? last : first;
+	const metersPerDegreeLat = 111_320;
+	const metersPerDegreeLng =
+		metersPerDegreeLat * Math.cos((farEnd[1] * Math.PI) / 180);
+	const dx = (farEnd[0] - nearEnd[0]) * metersPerDegreeLng;
+	const dy = (farEnd[1] - nearEnd[1]) * metersPerDegreeLat;
+	const length = Math.hypot(dx, dy);
+	if (length < 1) {
+		return { nearEnd, farEnd, destination: farEnd };
+	}
+
+	const extensionMeters = 80;
+	const destination: [number, number] = [
+		Number(
+			(farEnd[0] + (dx / length) * (extensionMeters / metersPerDegreeLng)).toFixed(6),
+		),
+		Number(
+			(farEnd[1] + (dy / length) * (extensionMeters / metersPerDegreeLat)).toFixed(6),
+		),
+	];
+	return {
+		nearEnd,
+		farEnd,
+		destination: isWithinBaliBounds(destination) ? destination : farEnd,
+	};
+}
+
+function orientAlternativeRoute(
+	coordinates: Array<[number, number]>,
+	origin: [number, number],
+	nearClosureEnd: [number, number],
+	farClosureEnd: [number, number],
+): { coordinates: Array<[number, number]>; score: number } {
+	const forward = coordinates;
+	const reverse = [...coordinates].reverse();
+	const score = (line: Array<[number, number]>) =>
+		haversineDistanceMeters(origin, line[0]) +
+		polylineLengthMeters(line) +
+		haversineDistanceMeters(line[0], nearClosureEnd) +
+		haversineDistanceMeters(line[line.length - 1], farClosureEnd);
+	const forwardScore = score(forward);
+	const reverseScore = score(reverse);
+	return reverseScore < forwardScore
+		? { coordinates: reverse, score: reverseScore }
+		: { coordinates: forward, score: forwardScore };
+}
+
 /**
- * Calculates a green recommended alternative route from `userLocation` that avoids
- * the ceremony's closed road segments and guides the user via an open alternative route.
+ * Builds guidance only from an organizer-approved corridor and a road-network
+ * route that has been checked against every active closure. Returns null when
+ * no route can be verified; it never draws guessed fallback geometry.
  */
 export async function calculateUserBypassRoute(params: {
 	userLocation?: [number, number];
@@ -422,31 +552,25 @@ export async function calculateUserBypassRoute(params: {
 		};
 	}>;
 	signal?: AbortSignal;
-}): Promise<UserGuidanceRoute> {
+}): Promise<UserGuidanceRoute | null> {
 	const { ceremony, alternativeRoutes = [], signal } = params;
-	const userLocation =
-		params.userLocation ??
-		params.userOrigin ??
-		deriveDefaultSimulatedUserOrigin(ceremony);
+	const userLocation = params.userLocation ?? params.userOrigin;
+	if (!userLocation || !isWithinBaliBounds(userLocation)) return null;
 
-	const closedSegments = (ceremony.roadSegments ?? []).filter(
-		(seg) =>
-			seg.coordinates.length >= 2 &&
-			(seg.status === "closed" ||
-				seg.status === "intermittent" ||
-				(seg.impactType ?? "").toLowerCase().includes("closure")),
+	const closedSegments = getActiveClosedRoads(ceremony);
+	if (closedSegments.length === 0) return null;
+
+	const primaryClosed = [...closedSegments].sort(
+		(a, b) => distanceToRoadMeters(userLocation, a) - distanceToRoadMeters(userLocation, b),
+	)[0];
+	const { nearEnd, farEnd, destination } = pointBeyondClosedRoad(
+		userLocation,
+		primaryClosed,
 	);
-	const primaryClosed = closedSegments[0] ?? ceremony.roadSegments?.[0];
-	const avoidedRoadName =
-		primaryClosed?.roadName ||
-		ceremony.sacredCenterName ||
-		"Ruas Jalan Upacara";
-	const avoidedRoadNames =
-		closedSegments.length > 0
-			? closedSegments.map((seg) => seg.roadName)
-			: [avoidedRoadName];
+	const avoidedRoadNames = closedSegments.map((segment) => segment.roadName);
+	const avoidedRoadName = primaryClosed.roadName;
 
-	// Collect candidate alternative routes (explicitly passed or attached to ceremony)
+	const seenRouteIds = new Set<string>();
 	const combinedAltRoutes = [
 		...alternativeRoutes.map((r) => ({
 			id: r.id,
@@ -461,138 +585,51 @@ export async function calculateUserBypassRoute(params: {
 			name: r.name,
 			coords: (r.coordinates ?? []).filter(isWithinBaliBounds),
 		})),
-	].filter((r) => r.coords.length >= 2);
+	].filter((route) => {
+		if (route.coords.length < 2 || seenRouteIds.has(route.id)) return false;
+		seenRouteIds.add(route.id);
+		return isClearOfClosedRoads(route.coords, closedSegments);
+	});
 
-	let activeAltName =
-		combinedAltRoutes[0]?.name ||
-		primaryClosed?.guidanceNote ||
-		ceremony.alternativeRouteSummary ||
-		"Jalur Alternatif Terbuka";
+	if (combinedAltRoutes.length === 0) return null;
 
-	let altWaypoints: Array<[number, number]> =
-		combinedAltRoutes[0]?.coords ?? [];
+	const candidates = combinedAltRoutes
+		.map((route) => ({
+			route,
+			...orientAlternativeRoute(route.coords, userLocation, nearEnd, farEnd),
+		}))
+		.sort((a, b) => a.score - b.score);
+	const candidate = candidates[0];
+	if (!candidate) return null;
 
-	if (altWaypoints.length < 2 && primaryClosed?.coordinates?.length >= 2) {
-		altWaypoints = generateBypassWaypointsForClosure(
-			primaryClosed.coordinates,
-			1,
-		);
-		activeAltName =
-			primaryClosed.guidanceNote ||
-			`Jalur Pengalihan Menghindari ${primaryClosed.roadName}`;
-	}
-
-	// Orient alternative waypoints so they flow from the side closest to userLocation toward the far side
-	if (altWaypoints.length >= 2) {
-		const distToFirst = haversineDistanceMeters(
-			userLocation,
-			altWaypoints[0],
-		);
-		const distToLast = haversineDistanceMeters(
-			userLocation,
-			altWaypoints[altWaypoints.length - 1],
-		);
-		if (distToLast < distToFirst) {
-			altWaypoints = [...altWaypoints].reverse();
-		}
-	}
-
-	// Determine destination point past the closed road (or the end of the alternative route)
-	let destination: [number, number] =
-		ceremony.venueLocation ?? ceremony.mapCenter;
-	if (altWaypoints.length >= 2) {
-		const lastAlt = altWaypoints[altWaypoints.length - 1];
-		if (primaryClosed?.coordinates?.length >= 2) {
-			const cStart = primaryClosed.coordinates[0];
-			const cEnd =
-				primaryClosed.coordinates[primaryClosed.coordinates.length - 1];
-			// Pick the far end of the closed road + slight continuation
-			const farEnd =
-				haversineDistanceMeters(userLocation, cEnd) >=
-				haversineDistanceMeters(userLocation, cStart)
-					? cEnd
-					: cStart;
-			const dx = farEnd[0] - userLocation[0];
-			const dy = farEnd[1] - userLocation[1];
-			const len = Math.hypot(dx, dy) || 1;
-			const candidateDest: [number, number] = [
-				Number((lastAlt[0] + (dx / len) * 0.0008).toFixed(6)),
-				Number((lastAlt[1] + (dy / len) * 0.0008).toFixed(6)),
-			];
-			destination = isWithinBaliBounds(candidateDest)
-				? candidateDest
-				: lastAlt;
-		} else {
-			destination = lastAlt;
-		}
-	}
-
-	// Build full waypoint chain: userLocation -> altWaypoints -> destination
-	const fullChain: Array<[number, number]> = [
-		userLocation,
-		...altWaypoints,
-		...(haversineDistanceMeters(
-			altWaypoints[altWaypoints.length - 1] ?? userLocation,
-			destination,
-		) > 25
-			? [destination]
-			: []),
-	];
-
-	const snapped = await snapCoordinatesToRoad(fullChain, signal);
-
-	// Safety check: if OSRM snapped route accidentally cuts across the closed segment,
-	// stitch leg-by-leg so the middle strictly follows the open alternative route corridor
-	const hitsClosed =
-		primaryClosed?.coordinates?.length >= 2 &&
-		doesPathIntersectCorridor(
-			snapped.coordinates,
-			primaryClosed.coordinates,
-			22,
-		);
-
-	let finalCoords = snapped.coordinates;
-	let finalDistance = snapped.distanceMeters;
-	let finalDuration = snapped.durationSeconds;
-	let finalSource = snapped.source;
-
-	if (hitsClosed && altWaypoints.length >= 2) {
-		const leg1 = await snapCoordinatesToRoad(
-			[userLocation, altWaypoints[0]],
-			signal,
-		);
-		const legMid = buildFallbackRoadGeometry(altWaypoints);
-		const leg2 = await snapCoordinatesToRoad(
-			[altWaypoints[altWaypoints.length - 1], destination],
-			signal,
-		);
-		finalCoords = [
-			...leg1.coordinates,
-			...legMid.coordinates.slice(1),
-			...leg2.coordinates.slice(1),
-		];
-		finalDistance = Math.round(polylineLengthMeters(finalCoords));
-		finalDuration = Math.max(30, Math.round(finalDistance / 7.8));
-		finalSource = leg1.source;
+	const fullChain = [userLocation, ...candidate.coordinates, destination];
+	const snapped = await snapCoordinatesToRoad(fullChain, signal, { cache: false });
+	if (
+		snapped.source !== "osrm" ||
+		snapped.coordinates.length < 2 ||
+		!isClearOfClosedRoads(snapped.coordinates, closedSegments)
+	) {
+		return null;
 	}
 
 	return {
 		origin: userLocation,
 		destination,
-		waypoints: altWaypoints,
-		coordinates: finalCoords,
-		distanceMeters: finalDistance,
-		durationSeconds: finalDuration,
-		estimatedMinutes: Math.max(1, Math.round(finalDuration / 60)),
+		isSimulation: ceremony.isSimulation !== false,
+		waypoints: candidate.coordinates,
+		coordinates: snapped.coordinates,
+		distanceMeters: snapped.distanceMeters,
+		durationSeconds: snapped.durationSeconds,
+		estimatedMinutes: Math.max(1, Math.round(snapped.durationSeconds / 60)),
 		avoidedRoadName,
 		avoidedRoadNames,
-		routeName: activeAltName,
-		viaRouteName: activeAltName,
+		routeName: candidate.route.name,
+		viaRouteName: candidate.route.name,
 		googleMapsUrl: buildGoogleMapsNavigationUrl(
 			userLocation,
 			destination,
-			altWaypoints,
+			candidate.coordinates,
 		),
-		source: finalSource,
+		source: snapped.source,
 	};
 }

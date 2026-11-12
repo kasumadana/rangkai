@@ -476,7 +476,7 @@ export function OrganizerAlternativeRoutesManager({
 										cx={previewSvg.start.split(",")[0]}
 										cy={previewSvg.start.split(",")[1]}
 										r="4"
-										fill="#5C8437"
+										fill="#4D702F"
 									/>
 									{/* End dot (red) */}
 									<circle

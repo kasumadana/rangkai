@@ -71,7 +71,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				center: [115.2625, -8.5069],
 				hasCeremony: false,
 				ceremonyCount: 0,
-				borderColor: "#9E2A2B",
+				borderColor: "#B91C1C",
 				fillColor: "rgba(158, 42, 43, 0.28)",
 				colorName: "Merah Terakota",
 				description:
@@ -365,7 +365,7 @@ export const BALI_DISTRICTS_DATA: BaliDistrictFeatureCollection = {
 				center: [115.115, -8.555],
 				hasCeremony: false,
 				ceremonyCount: 0,
-				borderColor: "#5C8437",
+				borderColor: "#4D702F",
 				fillColor: "rgba(92, 132, 55, 0.28)",
 				colorName: "Hijau Lumbung",
 				description:

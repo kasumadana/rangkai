@@ -34,12 +34,8 @@ test("registration creates an identity and an organization with a persistent ses
 		expect(membershipsResponse.status()).toBe(200);
 		const membershipsData = await membershipsResponse.json() as { organizations: Array<{ name: string; role: string }> };
 		expect(membershipsData.organizations).toContainEqual(expect.objectContaining({ name: orgName, role: "organizer" }));
-		await expect(page.locator("select").filter({ has: page.locator("option", { hasText: orgName }) }).first()).toBeVisible();
-		// The compact header intentionally hides this label on narrow screens;
-		// membership and role are verified through the persisted API response above.
-		const roleLabel = page.getByText("Panitia Desa (Organizer)");
-		if ((page.viewportSize()?.width ?? 0) <= 960) await expect(roleLabel).toBeHidden();
-		else await expect(roleLabel).toBeVisible();
+		await expect(page.getByText(`${orgName} - Panitia`)).toBeVisible();
+		await expect(page.getByRole("heading", { name: "Ringkasan" })).toBeVisible();
 		await expect(page.getByText("Sedang memuat dan memvalidasi data terverifikasi dari server.").first()).toBeHidden();
 		await page.screenshot({ path: "./.scratch/production-readiness/correction-evidence/registration-settled.png", fullPage: true });
 	} finally {

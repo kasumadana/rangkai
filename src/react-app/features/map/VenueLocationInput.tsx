@@ -59,6 +59,7 @@ export function VenueLocationInput({
 	const [error, setError] = useState(false);
 	const [mapAttempt, setMapAttempt] = useState(0);
 	const [baseStyle, setBaseStyle] = useState<"street" | "satellite">("street");
+	const baseStyleRef = useRef(baseStyle);
 
 	useEffect(() => {
 		changeRef.current = onChange;
@@ -75,7 +76,7 @@ export function VenueLocationInput({
 				container: container.current,
 				center: [115.1889, -8.4095],
 				zoom: 9.2,
-				style: VENUE_SATELLITE_STYLE,
+				style: baseStyleRef.current === "street" ? VENUE_STREET_STYLE : VENUE_SATELLITE_STYLE,
 			});
 			mapRef.current = map;
 			map.addControl(new maplibregl.NavigationControl(), "top-right");
@@ -136,7 +137,7 @@ export function VenueLocationInput({
 		) {
 			return;
 		}
-		markerRef.current = new maplibregl.Marker({ color: "#5C8437" })
+		markerRef.current = new maplibregl.Marker({ color: "#4D702F" })
 			.setLngLat([lng, lat])
 			.addTo(mapRef.current);
 		if (!focusedRef.current) {
@@ -147,6 +148,7 @@ export function VenueLocationInput({
 
 	const lngNum = Number(longitude);
 	const latNum = Number(latitude);
+	const hasAnyCoord = Boolean(longitude.trim() || latitude.trim());
 	const hasCoords = Boolean(longitude.trim() && latitude.trim());
 	const isValidBaliCoord =
 		hasCoords &&
@@ -178,15 +180,15 @@ export function VenueLocationInput({
 					className={`venue-location-status-pill ${
 						isValidBaliCoord
 							? "is-set"
-							: hasCoords
+							: hasAnyCoord
 								? "is-invalid"
 								: "is-empty"
 					}`}
 				>
 					{isValidBaliCoord
 						? `Titik Terpilih (${latNum.toFixed(4)}°, ${lngNum.toFixed(4)}°)`
-						: hasCoords
-							? "Koordinat di luar wilayah Bali"
+						: hasAnyCoord
+							? hasCoords ? "Koordinat di luar wilayah Bali" : "Lengkapi kedua koordinat"
 							: "Titik lokasi belum ditentukan"}
 				</span>
 			</div>
@@ -249,6 +251,7 @@ export function VenueLocationInput({
 						type="button"
 						onClick={() => {
 							const next = baseStyle === "street" ? "satellite" : "street";
+							baseStyleRef.current = next;
 							setBaseStyle(next);
 							mapRef.current?.setStyle(
 								next === "satellite"

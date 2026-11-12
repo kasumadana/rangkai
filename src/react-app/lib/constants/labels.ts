@@ -18,7 +18,7 @@ export const ROAD_STATUS_LABELS = {
 		label: "Lancar",
 		fullLabel: "Lancar / Dibuka",
 		description: "Ruas jalan dapat dilalui secara normal",
-		badgeBg: "#F0F4EB",
+		badgeBg: "#EBF0E6",
 		badgeText: "#4D702F",
 		badgeBorder: "#C6D5B8",
 	},

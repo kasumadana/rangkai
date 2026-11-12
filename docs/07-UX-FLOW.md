@@ -91,6 +91,18 @@ Show:
 
 Primary CTA: Create Event.
 
+Ringkasan menampilkan kegiatan yang perlu ditindaklanjuti dan kegiatan terdekat
+dalam kartu dengan aksi langsung ke route kerja terkait. Pada layar kecil, aksi
+utama mengambil lebar penuh.
+
+### C1. Field Task Flow
+
+Daftar tugas menampilkan setiap penugasan sebagai kartu dengan tombol `Buka tugas`.
+Pada route tugas, tautan `Kembali ke daftar tugas` tetap tersedia.
+Petugas yang berizin pada tahap lalu lintas dan kebersihan dapat berpindah tahap
+dari kontrol di dalam konten; aksi simpan status jalan dan catatan sampah tetap
+menggunakan tombol simpan yang sudah ada dan memberi konfirmasi server.
+
 ### D. Create Event Wizard (4 Steps)
 
 Step 1: Surat Edaran & AI (Unggah berkas edaran dan ekstraksi Gemini multimodal).
@@ -101,7 +113,9 @@ Step 4: Verifikasi Prajuru & Penerbitan Resmi (Tinjauan akhir human-in-the-loop 
 
 *Catatan: Modul penugasan petugas lapangan (`team`) dan pencatatan kebersihan pasca-acara (`cleanup`) dikelola melalui dasbor operasional kegiatan setelah draf disimpan.*
 
-Allow save as draft at every step.
+Allow save as draft once the organization and event name are valid. Keep the
+Back and Next controls below each applicable step; on the first step, Back
+returns to the dashboard and Next opens event details.
 
 ### E. AI Review Screen
 

@@ -18,28 +18,28 @@ export interface StatusPresentation {
 export const ROAD_STATUS_MAP: Record<OperationalRoadStatus, StatusPresentation> = {
 	open: {
 		code: "OPEN",
-		label: "DIBUKA (OPEN)",
+		label: "Dibuka",
 		tokenColor: "green",
 		dotVariant: "success",
 		summary: "Dapat dilalui; tidak menjamin bebas kepadatan lalu lintas.",
 	},
 	intermittent: {
 		code: "INTERMITTENT",
-		label: "BUKA-TUTUP (INTERMITTENT)",
+		label: "Buka-tutup",
 		tokenColor: "orange",
 		dotVariant: "warning",
 		summary: "Arus diatur bergantian atau tertahan sementara saat prosesi berlangsung.",
 	},
 	closed: {
 		code: "CLOSED",
-		label: "DITUTUP (CLOSED)",
+		label: "Ditutup",
 		tokenColor: "red",
 		dotVariant: "error",
 		summary: "Ruas ditutup sementara untuk kegiatan. Gunakan jalur lain.",
 	},
 	unknown: {
 		code: "UNKNOWN",
-		label: "BELUM DIKETAHUI (UNKNOWN)",
+		label: "Belum terkonfirmasi",
 		tokenColor: "gray",
 		dotVariant: "neutral",
 		summary: "Belum ada laporan status lapangan terverifikasi pada ruas ini.",

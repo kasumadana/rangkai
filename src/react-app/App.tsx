@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
-import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider } from "react-router";
+import { useLayoutEffect, useState } from "react";
+import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider, useLocation } from "react-router";
 import {
 	PublicShellLayout,
 	WorkspaceShellLayout,
@@ -24,9 +24,18 @@ import {
 import { SettingsPage } from "./pages/SettingsPage";
 import { AssistantWidget } from "./features/assistant/AssistantWidget";
 import { PublicAssistantPage } from "./pages/PublicAssistantPage";
+import { RequireSession } from "./components/layout/RequireSession";
+
+function RouteScrollReset() {
+	const { pathname, hash } = useLocation();
+	useLayoutEffect(() => {
+		if (!hash) window.scrollTo(0, 0);
+	}, [pathname, hash]);
+	return null;
+}
 
 function RootLayout() {
-	return <><AssistantWidget /><Outlet /></>;
+	return <><RouteScrollReset /><AssistantWidget /><Outlet /></>;
 }
 
 const router = createBrowserRouter(createRoutesFromElements(
@@ -51,10 +60,9 @@ const router = createBrowserRouter(createRoutesFromElements(
 								/>
 								<Route path="/login" element={<LoginPage />} />
 								<Route path="/register" element={<RegisterPage />} />
-								<Route
-									path="/onboarding/organization"
-									element={<OrganizationOnboardingPage />}
-								/>
+								<Route element={<RequireSession />}>
+									<Route path="/onboarding/organization" element={<OrganizationOnboardingPage />} />
+								</Route>
 								<Route
 									path="/invite/:token"
 									element={<AcceptInvitationPage />}
@@ -62,7 +70,7 @@ const router = createBrowserRouter(createRoutesFromElements(
 							</Route>
 
 							{/* Authenticated Organizer & Field Officer Workspace */}
-							<Route element={<WorkspaceShellLayout />}>
+							<Route element={<RequireSession />}><Route element={<WorkspaceShellLayout />}>
 								<Route
 									path="/dashboard"
 									element={<OrganizerOverviewPage />}
@@ -154,7 +162,7 @@ const router = createBrowserRouter(createRoutesFromElements(
 								))}
 								<Route path="/settings" element={<SettingsPage />} />
 								<Route path="/ui-system" element={<Navigate to="/events" replace />} />
-							</Route>
+							</Route></Route>
 
 							<Route path="*" element={<Navigate to="/" replace />} />
 	</Route>

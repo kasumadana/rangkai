@@ -7,6 +7,7 @@ import {
 	deriveDefaultSimulatedUserOrigin,
 	doesPathIntersectCorridor,
 	generateBypassWaypointsForClosure,
+	isActiveRoadClosure,
 	isWithinBaliBounds,
 	snapCoordinatesToRoad,
 } from "../../src/react-app/lib/routing-engine";
@@ -124,6 +125,15 @@ describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 		);
 	});
 
+	it("treats confirmed open status as authoritative over planned closure impact", () => {
+		expect(
+			isActiveRoadClosure({ status: "open", impactType: "full_closure" }),
+		).toBe(false);
+		expect(
+			isActiveRoadClosure({ status: "unknown", impactType: "full_closure" }),
+		).toBe(true);
+	});
+
 	it("generates road-following bypass waypoints around a closed road segment", () => {
 		const closedCoords: Array<[number, number]> = [
 			[115.2167834, -8.6559512],
@@ -144,8 +154,7 @@ describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 		expect(isWithinBaliBounds(origin)).toBe(true);
 	});
 
-	it("calculates a green user bypass route that avoids closed roads and uses approved alternative routes", async () => {
-		// Stub fetch to simulate offline/fallback deterministic routing without external network flakiness
+	it("does not present fallback guidance when OSRM is unavailable", async () => {
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
 			.mockRejectedValue(new Error("offline"));
@@ -157,17 +166,258 @@ describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 				ceremony: mockCeremony,
 			});
 
-			expect(guidance.coordinates.length).toBeGreaterThanOrEqual(3);
-			expect(guidance.coordinates[0]).toEqual(userOrigin);
-			expect(guidance.avoidedRoadNames).toContain(
-				"[SIMULATED] Jl. Gajah Mada (Catur Muka - Pasar Badung)",
-			);
-			expect(guidance.routeName).toContain("Jalur Pengalihan");
-			expect(guidance.distanceMeters).toBeGreaterThan(100);
-			expect(guidance.estimatedMinutes).toBeGreaterThanOrEqual(1);
-			expect(guidance.googleMapsUrl).toContain(
-				"https://www.google.com/maps/dir/?api=1",
-			);
+			expect(guidance).toBeNull();
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("rejects a candidate that crosses a second closed road", async () => {
+		const userLocation: [number, number] = [115.214, -8.65];
+		const primaryClosed = {
+			...mockCeremony.roadSegments[0],
+			id: "road-primary-far",
+			coordinates: [
+				[115.25, -8.65],
+				[115.251, -8.65],
+			] as Array<[number, number]>,
+		};
+		const secondClosed = {
+			...mockCeremony.roadSegments[0],
+			id: "road-second-crossing",
+			roadName: "Jl. Penutup Kedua",
+			coordinates: [
+				[115.3, -8.7],
+				[115.31, -8.7],
+			] as Array<[number, number]>,
+			coordinateParts: [
+				[
+					[115.3, -8.7],
+					[115.31, -8.7],
+				],
+				[
+					[115.216, -8.6495],
+					[115.216, -8.6525],
+				],
+			] as Array<Array<[number, number]>>,
+		};
+		const candidateCoordinates: Array<[number, number]> = [
+			userLocation,
+			[115.215, -8.651],
+			[115.218, -8.652],
+		];
+		const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				code: "Ok",
+				routes: [
+					{
+						distance: 500,
+						duration: 90,
+						geometry: {
+							type: "LineString",
+							coordinates: candidateCoordinates,
+						},
+					},
+				],
+			}),
+		} as Response);
+
+		try {
+			const guidance = await calculateUserBypassRoute({
+				userLocation,
+				ceremony: {
+					...mockCeremony,
+					roadSegments: [primaryClosed, secondClosed],
+				},
+			});
+
+			expect(guidance).toBeNull();
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("does not provide guidance when the approved detour itself crosses a closure", async () => {
+		const closedRoad = mockCeremony.roadSegments[0];
+		const unsafeAlternative = {
+			id: "alt-crosses-closed-road",
+			name: "Jalur yang melintasi penutupan",
+			coordinates: closedRoad.coordinates,
+		};
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockImplementation(async (input) => {
+				const coordinatePath = new URL(String(input)).pathname.split(
+					"/driving/",
+				)[1];
+				const coordinates = coordinatePath
+					.split(";")
+					.map((pair) => pair.split(",").map(Number) as [number, number]);
+				return {
+					ok: true,
+					json: async () => ({
+						code: "Ok",
+						routes: [
+							{
+								distance: 500,
+								duration: 90,
+								geometry: { type: "LineString", coordinates },
+							},
+						],
+					}),
+				} as Response;
+			});
+
+		try {
+			const guidance = await calculateUserBypassRoute({
+				userLocation: deriveDefaultSimulatedUserOrigin(mockCeremony),
+				ceremony: {
+					...mockCeremony,
+					alternativeRoutes: [unsafeAlternative],
+				},
+			});
+
+			expect(guidance).toBeNull();
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("chooses the shortest safe approved bypass instead of the first listed route", async () => {
+		const longRoute = {
+			id: "alt-long",
+			name: "Jalur memutar",
+			coordinates: [
+				[115.221, -8.64],
+				[115.219, -8.638],
+				[115.214, -8.639],
+				[115.21, -8.643],
+				[115.21, -8.65],
+			] as Array<[number, number]>,
+		};
+		const shortRoute = {
+			id: "alt-short",
+			name: "Jalur pintas",
+			coordinates: [
+				[115.217, -8.6542],
+				[115.214, -8.6537],
+				[115.211, -8.6533],
+			] as Array<[number, number]>,
+		};
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockImplementation(async (input) => {
+				const coordinatePath = new URL(String(input)).pathname.split(
+					"/driving/",
+				)[1];
+				const coordinates = coordinatePath
+					.split(";")
+					.map((pair) => pair.split(",").map(Number) as [number, number]);
+				return {
+					ok: true,
+					json: async () => ({
+						code: "Ok",
+						routes: [
+							{
+								distance: 500,
+								duration: 90,
+								geometry: { type: "LineString", coordinates },
+							},
+						],
+					}),
+				} as Response;
+			});
+
+		try {
+			const guidance = await calculateUserBypassRoute({
+				userLocation: deriveDefaultSimulatedUserOrigin(mockCeremony),
+				ceremony: {
+					...mockCeremony,
+					alternativeRoutes: [longRoute, shortRoute],
+				},
+			});
+
+			expect(guidance?.routeName).toBe(shortRoute.name);
+		} finally {
+			fetchSpy.mockRestore();
+		}
+	});
+
+	it("returns a network route along the nearest approved bypass and beyond the closure", async () => {
+		const userLocation: [number, number] = [115.205, -8.652];
+		const closedRoad = {
+			...mockCeremony.roadSegments[0],
+			coordinates: [
+				[115.21, -8.65],
+				[115.22, -8.65],
+			] as Array<[number, number]>,
+		};
+		const bypass = {
+			id: "alt-north-bypass",
+			name: "Jalur pintas sisi utara",
+			coordinates: [
+				[115.21, -8.648],
+				[115.215, -8.6475],
+				[115.22, -8.648],
+			] as Array<[number, number]>,
+		};
+		const networkCoordinates: Array<[number, number]> = [
+			userLocation,
+			[115.207, -8.651],
+			...bypass.coordinates,
+			[115.2208, -8.65],
+		];
+		const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+			ok: true,
+			json: async () => ({
+				code: "Ok",
+				routes: [
+					{
+						distance: 2200,
+						duration: 270,
+						geometry: {
+							type: "LineString",
+							coordinates: networkCoordinates,
+						},
+					},
+				],
+			}),
+		} as Response);
+
+		try {
+			const guidance = await calculateUserBypassRoute({
+				userLocation,
+				ceremony: {
+					...mockCeremony,
+					roadSegments: [closedRoad],
+					alternativeRoutes: [bypass],
+				},
+			});
+			const repeatedGuidance = await calculateUserBypassRoute({
+				userLocation,
+				ceremony: {
+					...mockCeremony,
+					roadSegments: [closedRoad],
+					alternativeRoutes: [bypass],
+				},
+			});
+
+			expect(guidance).not.toBeNull();
+			expect(repeatedGuidance).not.toBeNull();
+			expect(fetchSpy).toHaveBeenCalledTimes(2);
+			expect(guidance?.origin).toEqual(userLocation);
+			expect(guidance?.routeName).toBe(bypass.name);
+			expect(guidance?.isSimulation).toBe(true);
+			expect(guidance?.destination[0]).toBeGreaterThan(115.22);
+			expect(guidance?.source).toBe("osrm");
+			expect(
+				doesPathIntersectCorridor(
+					guidance?.coordinates ?? [],
+					closedRoad.coordinates,
+					22,
+				),
+			).toBe(false);
 		} finally {
 			fetchSpy.mockRestore();
 		}

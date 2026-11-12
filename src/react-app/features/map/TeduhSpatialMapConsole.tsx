@@ -2,12 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import {
 	ArrowRight,
 	Clock,
-	Locate,
+	LocateFixed,
 	RotateCcw,
 	Search,
 	X,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import {
 	CeremonyDetailModal,
@@ -30,12 +30,28 @@ import {
 	roadImpactFeatureToRecord,
 	type RoadImpactRecord,
 } from "../../lib/events-api";
+import {
+	calculateUserBypassRoute,
+	haversineDistanceMeters,
+	type UserGuidanceRoute,
+} from "../../lib/routing-engine";
 import { useGsapPageReveal } from "../../lib/gsap-motion";
 import { BaliMapTilerView } from "./BaliMapTilerView";
+import { GpsControls } from "./GpsControls";
+import { useGpsTracking } from "./useGpsTracking";
 
 export function TeduhSpatialMapConsole() {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const mapViewportRef = useRef<HTMLDivElement>(null);
+	const gps = useGpsTracking();
+	const [spatialGuidanceRouteSnapshot, setSpatialGuidanceRouteSnapshot] =
+		useState<{
+			route: UserGuidanceRoute;
+			profile: BaliVillageCeremonyProfile;
+			alternatives: unknown;
+		} | null>(null);
+	const [spatialGuidanceStatus, setSpatialGuidanceStatus] =
+		useState<string | null>(null);
 
 	useGsapPageReveal(mapViewportRef, []);
 
@@ -75,11 +91,6 @@ export function TeduhSpatialMapConsole() {
 
 	// Guide panel dismissed state — defaults to false so it shows on initial visit; dismisses completely on X click
 	const [isGuideDismissed, setIsGuideDismissed] = useState<boolean>(false);
-
-	// Live coordinates status pill
-	const [cursorCoords, setCursorCoords] = useState<string>(
-		"8.4095° S, 115.1889° E",
-	);
 
 	// Sync URL param changes
 	const [prevRequestedParam, setPrevRequestedParam] = useState(requestedParam);
@@ -174,12 +185,12 @@ export function TeduhSpatialMapConsole() {
 						: (allImpactsByEvent.get(evt.id) ?? (evt.slug ? allImpactsByEvent.get(evt.slug) : undefined) ?? []))
 				: (allImpactsByEvent.get(evt.id) ?? (evt.slug ? allImpactsByEvent.get(evt.slug) : undefined) ?? []);
 			return mapPublicEventToCeremonyProfile(
-				evt,
+				isCurrent ? { ...evt, alternativeRoutes: altRoutesData?.alternativeRoutes ?? [] } : evt,
 				roads,
 				idx,
 			);
 		});
-	}, [liveEvents, activeBackendEvent, activeEventRoads, allImpactsByEvent]);
+	}, [liveEvents, activeBackendEvent, activeEventRoads, allImpactsByEvent, altRoutesData]);
 
 	const activeVillage = useMemo<BaliVillageCeremonyProfile | null>(() => {
 		if (allCeremonyProfiles.length === 0) return null;
@@ -191,6 +202,38 @@ export function TeduhSpatialMapConsole() {
 		}
 		return allCeremonyProfiles[0];
 	}, [allCeremonyProfiles, selectedEventKey]);
+
+	const setSpatialGuidanceRoute = useCallback(
+		(
+			route: UserGuidanceRoute | null,
+			profile: BaliVillageCeremonyProfile | null = activeVillage,
+		) => {
+			setSpatialGuidanceRouteSnapshot(
+				route && profile
+					? { route, profile, alternatives: altRoutesData }
+					: null,
+			);
+		},
+		[activeVillage, altRoutesData],
+	);
+	const spatialGuidanceRoute =
+		gps.active &&
+		gps.position?.coordinates &&
+		gps.position.accuracy <= 50 &&
+		activeVillage &&
+		spatialGuidanceRouteSnapshot?.profile === activeVillage &&
+		spatialGuidanceRouteSnapshot.alternatives === altRoutesData
+			? spatialGuidanceRouteSnapshot.route
+			: null;
+	const visibleSpatialGuidanceStatus = !gps.active
+		? null
+		: !gps.position?.coordinates
+			? "Menunggu lokasi GPS..."
+			: !activeVillage
+				? "Pilih kegiatan untuk menyusun rute pengalihan."
+				: gps.position.accuracy > 50
+					? "Menunggu lokasi yang lebih akurat untuk menyusun rute."
+					: spatialGuidanceStatus;
 
 	// Compute dynamic district features strictly from backend events
 	const districtFeaturesData = useMemo(
@@ -293,6 +336,99 @@ export function TeduhSpatialMapConsole() {
 		}
 	}
 
+	const lastCalcPosRef = useRef<[number, number] | null>(null);
+	const lastCalcTimeRef = useRef<number>(0);
+	const guidanceRequestIdRef = useRef(0);
+	const lastGuidanceProfileRef = useRef(activeVillage);
+	const lastGuidanceAlternativesRef = useRef(altRoutesData);
+
+	const handleCalculateDrawerRoute = useCallback(async (
+		targetVillage?: BaliVillageCeremonyProfile | null,
+	) => {
+		const v = targetVillage ?? activeVillage;
+		if (!v || !gps.position?.coordinates) {
+			setSpatialGuidanceStatus("Menunggu lokasi GPS dan kegiatan yang dipilih.");
+			return;
+		}
+		if (gps.position.accuracy > 50) {
+			guidanceRequestIdRef.current += 1;
+			setSpatialGuidanceRoute(null);
+			setSpatialGuidanceStatus("Menunggu lokasi yang lebih akurat untuk menyusun rute.");
+			return;
+		}
+		const requestId = ++guidanceRequestIdRef.current;
+		setSpatialGuidanceRoute(null);
+		setSpatialGuidanceStatus("Menyusun rute melalui jalur alternatif yang disetujui...");
+		try {
+			const route = await calculateUserBypassRoute({
+				userLocation: gps.position.coordinates,
+				ceremony: v,
+				alternativeRoutes: altRoutesData?.alternativeRoutes ?? [],
+			});
+			if (requestId !== guidanceRequestIdRef.current) return;
+			setSpatialGuidanceRoute(route, v);
+			setSpatialGuidanceStatus(
+				route
+					? `Panduan melalui ${route.viaRouteName || route.routeName} siap${route.isSimulation ? " (SIMULASI)" : ""}.`
+					: "Rute aman belum dapat dipastikan dari data jalur yang tersedia; garis rute tidak ditampilkan.",
+			);
+		} catch {
+			if (requestId !== guidanceRequestIdRef.current) return;
+			setSpatialGuidanceRoute(null);
+			setSpatialGuidanceStatus("Rute belum dapat dihitung. Jalur rute tidak ditampilkan.");
+		}
+	}, [activeVillage, gps.position, altRoutesData, setSpatialGuidanceRoute]);
+
+	useEffect(() => {
+		const routingInputsChanged =
+			lastGuidanceProfileRef.current !== activeVillage ||
+			lastGuidanceAlternativesRef.current !== altRoutesData;
+		if (routingInputsChanged) {
+			lastGuidanceProfileRef.current = activeVillage;
+			lastGuidanceAlternativesRef.current = altRoutesData;
+			guidanceRequestIdRef.current += 1;
+			lastCalcPosRef.current = null;
+			lastCalcTimeRef.current = 0;
+		}
+		if (!gps.active) {
+			guidanceRequestIdRef.current += 1;
+			lastCalcPosRef.current = null;
+			return;
+		}
+		if (!gps.position?.coordinates) {
+			guidanceRequestIdRef.current += 1;
+			return;
+		}
+		if (!activeVillage) {
+			guidanceRequestIdRef.current += 1;
+			return;
+		}
+
+		if (gps.position.accuracy > 50) {
+			guidanceRequestIdRef.current += 1;
+			return;
+		}
+
+		const now = Date.now();
+		const coords = gps.position.coordinates;
+		const lastPos = lastCalcPosRef.current;
+		const lastTime = lastCalcTimeRef.current;
+
+		if (lastPos) {
+			const movedMeters = haversineDistanceMeters(lastPos, coords);
+			const elapsedSec = (now - lastTime) / 1000;
+			if (movedMeters < 30 || elapsedSec < 15) {
+				return;
+			}
+		}
+
+		lastCalcPosRef.current = coords;
+		lastCalcTimeRef.current = now;
+		// GPS changes start an asynchronous routing request and publish its result.
+		// eslint-disable-next-line react-hooks/set-state-in-effect
+		void handleCalculateDrawerRoute(activeVillage);
+	}, [gps.active, gps.position, activeVillage, altRoutesData, handleCalculateDrawerRoute]);
+
 	// Handle selection of a specific ceremony
 	function handleSelectCeremony(
 		v: BaliVillageCeremonyProfile,
@@ -307,6 +443,12 @@ export function TeduhSpatialMapConsole() {
 		setSearchParams({ village: key });
 		if (openDrawer) {
 			setIsDrawerOpen(true);
+		}
+		// Reset previous route so old calculation never flashes on a new ceremony
+		setSpatialGuidanceRoute(null);
+		lastCalcPosRef.current = null;
+		if (gps.active && gps.position?.coordinates && gps.position.accuracy <= 50) {
+			void handleCalculateDrawerRoute(v);
 		}
 	}
 
@@ -355,7 +497,7 @@ export function TeduhSpatialMapConsole() {
 										fontSize: 11,
 										fontWeight: 500,
 										color: "#4D702F",
-										background: "#F0F4EB",
+										background: "#EBF0E6",
 										padding: "2px 8px",
 										borderRadius: 9999,
 									}}
@@ -579,35 +721,12 @@ export function TeduhSpatialMapConsole() {
 						<RotateCcw size={18} />
 					</button>
 				)}
-				<button
-					type="button"
-					className="map-gps-btn"
-					onClick={() => {
-						if (navigator.geolocation) {
-							navigator.geolocation.getCurrentPosition(
-								(pos) => {
-									setCursorCoords(
-										`${pos.coords.latitude.toFixed(4)}° S, ${pos.coords.longitude.toFixed(4)}° E`,
-									);
-								},
-								() => {
-									setCursorCoords("8.4095° S, 115.1889° E");
-								},
-							);
-						}
-					}}
-					title="Pusatkan ke Lokasi Saya"
-					aria-label="Pusatkan Peta ke Lokasi Saya"
-				>
-					<Locate size={20} />
-				</button>
 			</div>
+			<GpsControls gps={gps} fullMap />
 
 			{/* 5. BOTTOM STATUSBAR PILL */}
 			<div className="map-statusbar">
 				<div className="map-status-pill tabular-nums">
-					<span>{cursorCoords}</span>
-					<span>•</span>
 					<span>WITA (UTC+8)</span>
 					{allRoadImpactsData?.pagination?.truncated ? (
 						<>
@@ -626,6 +745,12 @@ export function TeduhSpatialMapConsole() {
 						</>
 					) : null}
 				</div>
+				{visibleSpatialGuidanceStatus ? (
+					<div className="map-routing-status" role="status" aria-live="polite">
+						{visibleSpatialGuidanceStatus}
+						<small>Koordinat GPS dikirim ke layanan OSRM saat rute dihitung.</small>
+					</div>
+				) : null}
 			</div>
 
 			{/* 6. FULLSCREEN MAPLIBRE CANVAS */}
@@ -634,6 +759,7 @@ export function TeduhSpatialMapConsole() {
 					village={activeVillage}
 					allVillages={allCeremonyProfiles}
 					alternativeRoutes={altRoutesData?.alternativeRoutes ?? []}
+					showAlternativeRoutes={!gps.active}
 					selectedRegionName={selectedRegionName}
 					onSelectRegion={(regName, district) => {
 						handleSelectDistrict(regName, district);
@@ -647,6 +773,8 @@ export function TeduhSpatialMapConsole() {
 					selectedSegmentId={selectedSegmentId}
 					onSelectSegment={(segId) => setSelectedSegmentId(segId)}
 					showAllVillagesMarkers={true}
+					userLocation={gps.position?.coordinates ?? null}
+					userGuidanceRoute={spatialGuidanceRoute}
 					onOpenCeremonyDetail={(c) => {
 						// Step 2: Clicking "Lihat Detail" on the popup opens the full bottom-up content sheet
 						const found = allCeremonyProfiles.find(
@@ -659,6 +787,7 @@ export function TeduhSpatialMapConsole() {
 						}
 					}}
 					minimalControls={true}
+					cooperativeGestures={false}
 					height="100%"
 				/>
 			</div>
@@ -681,18 +810,17 @@ export function TeduhSpatialMapConsole() {
 						<div className="drawer-header">
 							<div style={{ flex: 1, minWidth: 0 }}>
 								<div className="mb-1.5">
-									<div className="flex flex-wrap items-center gap-1">
+									<div className="flex flex-wrap items-center gap-1.5">
 										<span className="drawer-location-tag">
-											{activeVillage.desaAdatName} • {activeVillage.kabupaten}
+											{activeVillage.desaAdatName.replace(/\s*\([Ss]imulasi\)/g, "").trim()} • {activeVillage.kabupaten}
 										</span>
 										{activeVillage.isSimulation !== false ? (
 											<span className="map-popup-badge simulation-token">SIMULASI</span>
 										) : null}
-										<RoadStatusBadge status={activeVillage.primaryStatus} />
 									</div>
 								</div>
 								<h3 className="drawer-title">
-									{activeVillage.ceremonyTitle}
+									{activeVillage.ceremonyTitle.replace(/^\[SIMULATED\]\s*/i, "").trim()}
 								</h3>
 							</div>
 
@@ -710,7 +838,7 @@ export function TeduhSpatialMapConsole() {
 						<div className="drawer-body">
 							{/* 1. Ceremony Info Card */}
 							<div className="drawer-info-card">
-								<div className="drawer-info-row">
+								<div className="drawer-info-row" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
 									<div className="drawer-info-item">
 										<span className="drawer-info-label">Pusat Upacara</span>
 										<span className="drawer-info-value">{activeVillage.sacredCenterName}</span>
@@ -736,6 +864,47 @@ export function TeduhSpatialMapConsole() {
 								)}
 							</div>
 
+							{gps.active && gps.position && gps.position.accuracy > 50 && (
+								<div
+									role="status"
+									style={{
+										background: "#FEF3C7",
+										border: "1px solid #F59E0B",
+										borderRadius: 4,
+										padding: "10px 14px",
+										fontSize: 13,
+										color: "#92400E",
+										fontWeight: 500,
+									}}
+								>
+									Menunggu lokasi lebih akurat (±{Math.round(gps.position.accuracy)}m)
+								</div>
+							)}
+
+							{spatialGuidanceRoute && (
+								<div
+									style={{
+										background: "#EFF6FF",
+										border: "1px solid #93C5FD",
+										borderRadius: 4,
+										padding: "12px 16px",
+										display: "flex",
+										flexDirection: "column",
+										gap: 4,
+									}}
+								>
+									<span style={{ fontSize: 13, fontWeight: 600, color: "#1D4ED8" }}>
+										Panduan Jalur Alternatif
+									</span>
+									<span style={{ fontSize: 13.5, color: "#1E293B", lineHeight: 1.4 }}>
+										Lewat: <strong>{spatialGuidanceRoute.viaRouteName || spatialGuidanceRoute.routeName}</strong>
+										{spatialGuidanceRoute.distanceMeters > 0
+											? ` (${(spatialGuidanceRoute.distanceMeters / 1000).toFixed(1)} km, ~${Math.max(1, Math.round(spatialGuidanceRoute.durationSeconds / 60))} mnt)`
+											: ""}
+									</span>
+								</div>
+							)}
+
 							{/* 2. Verified Road Segments Section */}
 							<div className="drawer-roads-section">
 								<div
@@ -748,9 +917,6 @@ export function TeduhSpatialMapConsole() {
 								>
 									<span style={{ fontSize: 14, fontWeight: 600, color: "#181B20" }}>
 										Ruas Jalan Terdampak Terverifikasi ({activeVillage.roadSegments.length})
-									</span>
-									<span style={{ fontSize: 12, color: "#64748B" }}>
-										Verifikasi Pecalang
 									</span>
 								</div>
 
@@ -785,7 +951,7 @@ export function TeduhSpatialMapConsole() {
 																color: "#181B20",
 															}}
 														>
-															{idx + 1}. {seg.roadName}
+															{idx + 1}. {seg.roadName.replace(/^\[SIMULATED\]\s*/i, "").trim()}
 														</span>
 														<RoadStatusBadge status={seg.status} />
 													</div>
@@ -828,17 +994,34 @@ export function TeduhSpatialMapConsole() {
 						<div className="drawer-footer">
 							<button
 								type="button"
-								onClick={() => setIsDrawerOpen(false)}
-								className="drawer-btn-secondary"
+								onClick={() => {
+									if (gps.active) {
+						guidanceRequestIdRef.current += 1;
+										gps.stop();
+										setSpatialGuidanceRoute(null);
+									} else {
+										gps.start();
+									}
+								}}
+								className={`drawer-btn-secondary ${gps.active ? "is-tracking" : ""}`}
+								style={{
+									borderColor: gps.active ? "#B91C1C" : "#4D702F",
+									color: gps.active ? "#B91C1C" : "#4D702F",
+									fontWeight: 600,
+									display: "inline-flex",
+									alignItems: "center",
+									gap: 6,
+								}}
 							>
-								Tutup
+								<LocateFixed size={16} />
+								<span>{gps.active ? "Hentikan tracking" : "Track lokasi"}</span>
 							</button>
 
 							<Link
 								to={`/events/${activeVillage.slug || activeVillage.id}`}
 								className="drawer-btn-primary"
 							>
-								<span>Buka Halaman Detail Lengkap</span>
+								<span>Buka Halaman Detail</span>
 								<ArrowRight size={15} />
 							</Link>
 						</div>

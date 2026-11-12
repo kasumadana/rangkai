@@ -12,10 +12,10 @@ import {
 	Copy,
 	FileText,
 	Info,
+	LocateFixed,
 	MapPin,
 	MapPinned,
 	Milestone,
-	Navigation,
 	PackageCheck,
 	PenTool,
 	Plus,
@@ -31,13 +31,14 @@ import {
 	UserPlus,
 	Users,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
 	ImpactPlannerPanel,
 	PublicNoticeDraftPanel,
 } from "../components/rangkai/AdvisoryPanels";
 import { WasteScenarioPanel } from "../components/rangkai/WasteScenarioPanel";
+import { PublicMobileBottomNav } from "../components/ui/PublicHeader";
 import {
 	OrganizerAlternativeRoutesManager,
 	PublicAlternativeRoutesList,
@@ -51,6 +52,12 @@ import {
 	RoadStatusBadge,
 } from "../components/rangkai";
 import { BaliMapTilerView } from "../features/map/BaliMapTilerView";
+import { useGpsTracking } from "../features/map/useGpsTracking";
+import {
+	calculateUserBypassRoute,
+	haversineDistanceMeters,
+	type UserGuidanceRoute,
+} from "../lib/routing-engine";
 import { DashboardRoadMapInput } from "../features/map/DashboardRoadMapInput";
 import { VenueLocationInput } from "../features/map/VenueLocationInput";
 import { RoadStatusConfirmDialog } from "../components/rangkai/RoadStatusConfirmDialog";
@@ -136,6 +143,7 @@ export function PublicEventsListPage() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [statusFilter, setStatusFilter] = useState<string>("all");
 	const pageRef = useRef<HTMLElement>(null);
+	const navigate = useNavigate();
 
 	const publicEventsQuery = useQuery({
 		queryKey: ["public", "events", statusFilter],
@@ -287,17 +295,8 @@ export function PublicEventsListPage() {
 						) : (
 							<Link
 								to="/peta"
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									gap: 8,
-									background: "#4D702F",
-									color: "#FFFFFF",
-									padding: "10px 20px",
-									borderRadius: 9999,
-									fontSize: 14,
-									textDecoration: "none",
-								}}
+								className="ui-button ui-button-primary"
+								style={{ gap: 8 }}
 							>
 								<span>Buka Peta Kawasan Bali</span>
 								<ArrowRight size={15} />
@@ -329,8 +328,13 @@ export function PublicEventsListPage() {
 							return (
 								<article
 									key={evt.id}
-									className="schedule-card"
+									className="schedule-card schedule-card-clickable"
 									data-gsap="scroll-card"
+									onClick={(e) => {
+										if (!(e.target as HTMLElement).closest("a, button")) {
+											navigate(`/events/${eventSlug}`);
+										}
+									}}
 								>
 									<div>
 										<div className="schedule-card-header">
@@ -338,7 +342,7 @@ export function PublicEventsListPage() {
 												{evt.organizationName || evt.village} •{" "}
 												{evt.district || "Bali"}
 											</span>
-											<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+											<div className="schedule-card-badges">
 												{evt.isSimulation ? (
 													<span className="map-popup-badge simulation-token">SIMULASI</span>
 												) : null}
@@ -350,13 +354,20 @@ export function PublicEventsListPage() {
 											</div>
 										</div>
 
-										<h2 className="schedule-card-title">{evt.title}</h2>
+										<h2 className="schedule-card-title">
+											<Link
+												to={`/events/${eventSlug}`}
+												className="schedule-card-title-link"
+											>
+												{evt.title}
+											</Link>
+										</h2>
 
 										{evt.description ? (
 											<p
 												style={{
 													margin: "0 0 14px 0",
-													fontSize: 14.5,
+													fontSize: "1rem",
 													color: "#545B67",
 													lineHeight: 1.55,
 												}}
@@ -367,13 +378,13 @@ export function PublicEventsListPage() {
 
 										<div className="schedule-card-meta">
 											<div className="schedule-meta-row">
-												<Calendar size={15} color="#64748B" />
+												<Calendar size={16} color="#4D702F" style={{ flexShrink: 0 }} />
 												<span style={{ fontVariantNumeric: "tabular-nums" }}>
 													{schedule.dateLabel} • {schedule.windowWita}
 												</span>
 											</div>
 											<div className="schedule-meta-row">
-												<MapPin size={15} color="#64748B" />
+												<MapPin size={16} color="#4D702F" style={{ flexShrink: 0 }} />
 												<span>
 													{evt.venueName ||
 														evt.village ||
@@ -386,21 +397,18 @@ export function PublicEventsListPage() {
 									<div className="schedule-card-footer">
 										<Link
 											to={`/peta?village=${eventSlug}`}
-											style={{
-												fontSize: 13.5,
-												color: "#4D702F",
-												textDecoration: "none",
-												fontWeight: 500,
-											}}
+											className="btn-schedule-map"
+											onClick={(e) => e.stopPropagation()}
 										>
-											Lihat di Peta →
+											<span>Lihat di Peta</span>
 										</Link>
 										<Link
 											to={`/events/${eventSlug}`}
 											className="btn-schedule-detail"
+											onClick={(e) => e.stopPropagation()}
 										>
 											<span>Rincian Lengkap</span>
-											<ArrowRight size={14} />
+											<ArrowRight size={15} />
 										</Link>
 									</div>
 								</article>
@@ -484,6 +492,131 @@ export function PublicEventDetailPage({
 		return mapPublicEventToCeremonyProfile(apiEvent, rawRoads, 0);
 	}, [apiEvent, rawRoads]);
 
+	const gps = useGpsTracking();
+	const [eventBasemapStyle, setEventBasemapStyle] =
+		useState<"osm" | "satellite">("satellite");
+	const [detailGuidanceRouteSnapshot, setDetailGuidanceRouteSnapshot] =
+		useState<{
+			route: UserGuidanceRoute;
+			profile: BaliVillageCeremonyProfile;
+			alternatives: unknown;
+		} | null>(null);
+	const [detailGuidanceStatus, setDetailGuidanceStatus] =
+		useState<string | null>(null);
+	const setDetailGuidanceRoute = useCallback((route: UserGuidanceRoute | null) => {
+		setDetailGuidanceRouteSnapshot(
+			route && spatialProfile
+				? {
+					route,
+					profile: spatialProfile,
+					alternatives: alternativeRoutesQuery.data,
+				}
+				: null,
+		);
+	}, [spatialProfile, alternativeRoutesQuery.data]);
+	const detailGuidanceRoute =
+		gps.active &&
+		gps.position?.coordinates &&
+		gps.position.accuracy <= 50 &&
+		spatialProfile &&
+		detailGuidanceRouteSnapshot?.profile === spatialProfile &&
+		detailGuidanceRouteSnapshot.alternatives === alternativeRoutesQuery.data
+			? detailGuidanceRouteSnapshot.route
+			: null;
+	const visibleDetailGuidanceStatus = !gps.active
+		? null
+		: !spatialProfile || !gps.position?.coordinates
+			? "Menunggu lokasi GPS dan data kegiatan..."
+			: gps.position.accuracy > 50
+				? "Menunggu lokasi yang lebih akurat untuk menyusun rute."
+				: detailGuidanceStatus;
+	const lastCalcPosRef = useRef<[number, number] | null>(null);
+	const lastCalcTimeRef = useRef<number>(0);
+	const detailGuidanceRequestIdRef = useRef(0);
+	const lastDetailGuidanceProfileRef = useRef(spatialProfile);
+	const lastDetailGuidanceAlternativesRef = useRef(alternativeRoutesQuery.data);
+
+	const handleCalculateDetailAlternativeRoute = useCallback(async () => {
+		if (!spatialProfile || !gps.position?.coordinates) {
+			setDetailGuidanceStatus("Menunggu lokasi GPS...");
+			return;
+		}
+		if (gps.position.accuracy > 50) {
+											detailGuidanceRequestIdRef.current += 1;
+			setDetailGuidanceRoute(null);
+			setDetailGuidanceStatus("Menunggu lokasi yang lebih akurat untuk menyusun rute.");
+			return;
+		}
+		const requestId = ++detailGuidanceRequestIdRef.current;
+		setDetailGuidanceRoute(null);
+		setDetailGuidanceStatus("Menyusun rute melalui jalur alternatif yang disetujui...");
+		try {
+			const route = await calculateUserBypassRoute({
+				userLocation: gps.position.coordinates,
+				ceremony: spatialProfile,
+				alternativeRoutes:
+					alternativeRoutesQuery.data?.alternativeRoutes ?? [],
+			});
+			if (requestId !== detailGuidanceRequestIdRef.current) return;
+			setDetailGuidanceRoute(route);
+			setDetailGuidanceStatus(
+				route
+					? `Panduan melalui ${route.viaRouteName || route.routeName} siap${route.isSimulation ? " (SIMULASI)" : ""}.`
+					: "Rute aman belum dapat dipastikan dari data jalur yang tersedia; garis rute tidak ditampilkan.",
+			);
+		} catch {
+			if (requestId !== detailGuidanceRequestIdRef.current) return;
+			setDetailGuidanceRoute(null);
+			setDetailGuidanceStatus("Rute belum dapat dihitung. Jalur rute tidak ditampilkan.");
+		}
+	}, [spatialProfile, gps.position, alternativeRoutesQuery.data, setDetailGuidanceRoute]);
+
+	useEffect(() => {
+		const routingInputsChanged =
+			lastDetailGuidanceProfileRef.current !== spatialProfile ||
+			lastDetailGuidanceAlternativesRef.current !== alternativeRoutesQuery.data;
+		if (routingInputsChanged) {
+			lastDetailGuidanceProfileRef.current = spatialProfile;
+			lastDetailGuidanceAlternativesRef.current = alternativeRoutesQuery.data;
+			detailGuidanceRequestIdRef.current += 1;
+			lastCalcPosRef.current = null;
+			lastCalcTimeRef.current = 0;
+		}
+		if (!gps.active) {
+			detailGuidanceRequestIdRef.current += 1;
+			lastCalcPosRef.current = null;
+			return;
+		}
+		if (!spatialProfile || !gps.position?.coordinates) {
+			detailGuidanceRequestIdRef.current += 1;
+			return;
+		}
+
+		if (gps.position.accuracy > 50) {
+			detailGuidanceRequestIdRef.current += 1;
+			return;
+		}
+
+		const now = Date.now();
+		const coords = gps.position.coordinates;
+		const lastPos = lastCalcPosRef.current;
+		const lastTime = lastCalcTimeRef.current;
+
+		if (lastPos) {
+			const movedMeters = haversineDistanceMeters(lastPos, coords);
+			const elapsedSec = (now - lastTime) / 1000;
+			if (movedMeters < 30 || elapsedSec < 15) {
+				return;
+			}
+		}
+
+		lastCalcPosRef.current = coords;
+		lastCalcTimeRef.current = now;
+		// GPS changes start an asynchronous routing request and publish its result.
+		// eslint-disable-next-line react-hooks/set-state-in-effect
+		void handleCalculateDetailAlternativeRoute();
+	}, [gps.active, gps.position, spatialProfile, alternativeRoutesQuery.data, handleCalculateDetailAlternativeRoute]);
+
 	useGsapPageReveal(detailRef, [
 		slug,
 		Boolean(apiEvent),
@@ -545,34 +678,16 @@ export function PublicEventDetailPage({
 						>
 							<Link
 								to="/events"
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									gap: 8,
-									background: "#4D702F",
-									color: "#FFFFFF",
-									padding: "10px 20px",
-									borderRadius: 9999,
-									fontSize: 14,
-									textDecoration: "none",
-								}}
+								className="ui-button ui-button-primary"
+								style={{ gap: 8 }}
 							>
 								<ArrowLeft size={15} />
 								<span>Kembali ke Jadwal Upacara</span>
 							</Link>
 							<Link
 								to="/peta"
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									gap: 8,
-									background: "#F4F4F3",
-									color: "#181B20",
-									padding: "10px 20px",
-									borderRadius: 9999,
-									fontSize: 14,
-									textDecoration: "none",
-								}}
+								className="ui-button"
+								style={{ gap: 8 }}
 							>
 								<span>Buka Peta Kawasan</span>
 							</Link>
@@ -589,7 +704,7 @@ export function PublicEventDetailPage({
 
 	if (mapOnly) {
 		return (
-			<div style={{ width: "100%", height: "100dvh", position: "relative" }}>
+			<div className="public-event-map-shell">
 				<div
 					style={{
 						position: "absolute",
@@ -604,19 +719,8 @@ export function PublicEventDetailPage({
 				>
 					<Link
 						to={`/events/${spatialProfile.slug}`}
-						style={{
-							display: "inline-flex",
-							alignItems: "center",
-							gap: 8,
-							background: "rgba(255, 255, 255, 0.96)",
-							color: "#181B20",
-							padding: "10px 18px",
-							borderRadius: 9999,
-							fontSize: 13.5,
-							fontWeight: 500,
-							textDecoration: "none",
-							boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
-						}}
+						className="ui-button"
+						style={{ gap: 8 }}
 					>
 						<ArrowLeft size={15} />
 						<span>Kembali ke Rincian Acara</span>
@@ -627,15 +731,14 @@ export function PublicEventDetailPage({
 							style={{
 								display: "inline-flex",
 								alignItems: "center",
-								background: "#D97706",
+								background: "#92400E",
 								color: "#FFFFFF",
-								padding: "10px 18px",
-								borderRadius: 9999,
-								fontSize: 12,
+								padding: "8px 14px",
+								borderRadius: 4,
+								fontSize: "0.875rem",
 								fontWeight: 700,
 								textTransform: "uppercase",
-								letterSpacing: "0.05em",
-								boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
+								letterSpacing: "0.04em",
 							}}
 						>
 							SIMULASI
@@ -647,13 +750,13 @@ export function PublicEventDetailPage({
 							style={{
 								display: "inline-flex",
 								alignItems: "center",
-								background: "rgba(255, 255, 255, 0.96)",
+								background: "#FFFFFF",
+								border: "1px solid var(--color-border)",
 								color: "#181B20",
-								padding: "10px 18px",
-								borderRadius: 9999,
-								fontSize: 13,
+								padding: "8px 14px",
+								borderRadius: 4,
+								fontSize: "0.9375rem",
 								fontWeight: 600,
-								boxShadow: "0 4px 14px rgba(0,0,0,0.08)",
 							}}
 						>
 							{spatialProfile.roadSegments[0].roadName}
@@ -669,8 +772,10 @@ export function PublicEventDetailPage({
 					alternativeRoutes={alternativeRoutesQuery.isError ? [] : alternativeRoutesQuery.data?.alternativeRoutes}
 					selectedSegmentId={activeSegmentId}
 					onSelectSegment={setSelectedSegmentId}
+					minimalControls={true}
 					height="100%"
 				/>
+				<PublicMobileBottomNav />
 			</div>
 		);
 	}
@@ -685,8 +790,7 @@ export function PublicEventDetailPage({
 						<span>Kembali ke Jadwal Upacara</span>
 					</Link>
 
-					<div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-						<Link to={`/tanya?event=${encodeURIComponent(spatialProfile.slug)}`} className="teduh-pill-action">Tanya tentang kegiatan</Link>
+					<div className="teduh-detail-nav-actions">
 						<Link
 							to={`/peta?village=${spatialProfile.slug}`}
 							className="teduh-pill-action"
@@ -699,32 +803,14 @@ export function PublicEventDetailPage({
 
 				{/* 2. HERO HEADER SURFACE */}
 				<section className="teduh-detail-hero" data-gsap="reveal">
-					<div
-						style={{
-							display: "flex",
-							justifyContent: "space-between",
-							alignItems: "center",
-							flexWrap: "wrap",
-							gap: 10,
-							marginBottom: 12,
-						}}
-					>
+					<div className="teduh-detail-hero-top">
 						<span className="schedule-village-label">
 							{apiEvent.organizationName} • {apiEvent.village},{" "}
 							{apiEvent.district}
 						</span>
-						<div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+						<div className="teduh-detail-hero-badges">
 							{apiEvent.category ? (
-								<span
-									style={{
-										background: "#F4F4F3",
-										color: "#545B67",
-										padding: "4px 12px",
-										borderRadius: 9999,
-										fontSize: 12.5,
-										fontWeight: 500,
-									}}
-								>
+								<span className="teduh-category-badge">
 									{apiEvent.category}
 								</span>
 							) : null}
@@ -733,9 +819,11 @@ export function PublicEventDetailPage({
 					</div>
 
 					{apiEvent.isSimulation ? (
-						<section className="mb-4 rounded-xl bg-amber-50 p-4 text-amber-950" aria-label="Informasi simulasi">
+						<section className="teduh-simulation-banner" aria-label="Informasi simulasi">
 							<strong>SIMULASI — Bukan Penutupan Jalan Sebenarnya</strong>
-							<p>Kegiatan ini dipublikasikan dalam mode simulasi atau latihan koordinasi desa adat. Ruas jalan dan status buka-tutup tidak mencerminkan penutupan operasional resmi di lapangan.</p>
+							<p>
+								Kegiatan ini dipublikasikan dalam mode simulasi atau latihan koordinasi desa adat. Ruas jalan dan status buka-tutup tidak mencerminkan penutupan operasional resmi di lapangan.
+							</p>
 						</section>
 					) : null}
 
@@ -754,31 +842,19 @@ export function PublicEventDetailPage({
 						</div>
 
 						<div className="teduh-meta-block">
-							<span className="teduh-meta-label">Lokasi & Wilayah Adat</span>
+							<span className="teduh-meta-label">Pusat Upacara & Lokasi</span>
 							<div className="teduh-meta-value">
 								<MapPin size={16} color="#4D702F" />
-								<span>
-									{apiEvent.venueName || apiEvent.village || apiEvent.organizationName}
-								</span>
+								<span>{apiEvent.venueName || "Lokasi belum ditentukan"}</span>
 							</div>
 						</div>
 
 						<div className="teduh-meta-block">
-							<span className="teduh-meta-label">Penyelenggara Terverifikasi</span>
+							<span className="teduh-meta-label">Penyelenggara</span>
 							<div className="teduh-meta-value">
 								<ShieldCheck size={16} color="#4D702F" />
 								<span>
 									{apiEvent.organizerName || apiEvent.organizationName}
-								</span>
-							</div>
-						</div>
-
-						<div className="teduh-meta-block">
-							<span className="teduh-meta-label">Ruas Jalan Terdampak</span>
-							<div className="teduh-meta-value">
-								<Navigation size={16} color="#4D702F" />
-								<span>
-									{liveRoadsQuery.isLoading || liveRoadsQuery.isError ? "Data ruas belum tersedia" : `${rawRoads.length} Ruas (${spatialProfile.primaryStatus === "closed" ? "Tutup Total" : spatialProfile.primaryStatus === "intermittent" ? "Buka-Tutup" : spatialProfile.primaryStatus === "open" ? "Dibuka" : "Belum Dikonfirmasi"})`}
 								</span>
 							</div>
 						</div>
@@ -834,21 +910,15 @@ export function PublicEventDetailPage({
 
 				{/* 4. MAP & VERIFIED AFFECTED ROAD SEGMENTS */}
 				<section className="teduh-detail-section" data-gsap="scroll-section">
-					<div
-						style={{
-							display: "flex",
-							justifyContent: "space-between",
-							alignItems: "baseline",
-							flexWrap: "wrap",
-							gap: 12,
-							marginBottom: 20,
-						}}
-					>
+					<div className="teduh-roads-header">
 						<div>
 							<h2 className="teduh-section-heading">
-								Peta Lokasi & Ruas Jalan Terdampak{!liveRoadsQuery.isLoading && !liveRoadsQuery.isError ? ` (${rawRoads.length})` : ""}
+								Peta Lokasi & Ruas Jalan Terdampak
+								{!liveRoadsQuery.isLoading && !liveRoadsQuery.isError
+									? ` (${rawRoads.length})`
+									: ""}
 							</h2>
-							<p style={{ margin: 0, fontSize: 15, color: "#545B67" }}>
+							<p style={{ margin: "6px 0 0 0", fontSize: "1rem", color: "#545B67" }}>
 								Klik salah satu ruas jalan di daftar untuk menyorot koridor pada
 								peta.
 							</p>
@@ -865,12 +935,21 @@ export function PublicEventDetailPage({
 						<div className="teduh-roads-list">
 							{liveRoadsQuery.isLoading ? (
 								<div className="teduh-surface-card">
-									<p style={{ margin: 0, fontSize: 15, color: "#545B67" }}>
+									<p style={{ margin: 0, fontSize: "1rem", color: "#545B67" }}>
 										Memuat data ruas jalan terverifikasi...
 									</p>
 								</div>
 							) : liveRoadsQuery.isError ? (
-								<p role="alert">Data ruas jalan belum dapat dimuat. <button type="button" className="teduh-btn-secondary" onClick={() => void liveRoadsQuery.refetch()}>Coba lagi</button></p>
+								<p role="alert">
+									Data ruas jalan belum dapat dimuat.{" "}
+									<button
+										type="button"
+										className="teduh-btn-secondary"
+										onClick={() => void liveRoadsQuery.refetch()}
+									>
+										Coba lagi
+									</button>
+								</p>
 							) : rawRoads.length === 0 ? (
 								<div className="teduh-surface-card">
 									<h3 className="teduh-card-label">
@@ -887,8 +966,15 @@ export function PublicEventDetailPage({
 										road.plannedFrom,
 										road.plannedTo,
 									);
+									const expiresAt = Date.parse(
+										road.operationalStatus?.expiresAt ?? "",
+									);
 									const effStatus =
-										road.operationalStatus?.isStale || road.operationalStatus?.effectiveStatus === "unconfirmed"
+										road.operationalStatus?.isStale ||
+										!Number.isFinite(expiresAt) ||
+										expiresAt <=
+											Math.max(statusClock, liveRoadsQuery.dataUpdatedAt) ||
+										road.operationalStatus?.effectiveStatus === "unconfirmed"
 											? "unknown"
 											: ((road.operationalStatus?.effectiveStatus ??
 													"unknown") as OperationalRoadStatus);
@@ -899,24 +985,11 @@ export function PublicEventDetailPage({
 											key={road.id}
 											onClick={() => setSelectedSegmentId(road.id)}
 											className={`teduh-road-item ${isSelected ? "is-selected" : ""}`}
+											aria-pressed={isSelected}
 											data-gsap="scroll-card"
 										>
-											<div
-												style={{
-													display: "flex",
-													justifyContent: "space-between",
-													alignItems: "center",
-													gap: 10,
-													marginBottom: 8,
-												}}
-											>
-												<span
-													style={{
-														fontSize: 16,
-														fontWeight: 500,
-														color: "#181B20",
-													}}
-												>
+											<div className="teduh-road-item-header">
+												<span className="teduh-road-item-title">
 													{idx + 1}. {road.displayName || "Ruas Jalan Terdampak"}
 												</span>
 												<RoadStatusBadge
@@ -925,48 +998,38 @@ export function PublicEventDetailPage({
 												/>
 											</div>
 
-											<div
-												style={{
-													fontSize: 14,
-													color: "#545B67",
-													marginBottom: 6,
-													lineHeight: 1.5,
-												}}
-											>
+											<div className="teduh-road-item-diversion">
 												Arahan Pengalihan:{" "}
-												<strong style={{ color: "#181B20", fontWeight: 500 }}>
-													{road.diversionNote ||
-														apiEvent.trafficImpactDescription ||
-														"Ikuti arahan petugas Pecalang di lapangan."}
+												<strong style={{ color: "#181B20", fontWeight: 600 }}>
+													{road.diversionNote || "Belum tersedia."}
 												</strong>
 											</div>
 
-											<div
-												style={{
-													fontSize: 13,
-													color: "#64748B",
-													fontVariantNumeric: "tabular-nums",
-												}}
-											>
+											<div className="teduh-road-item-schedule">
 												{road.coverageArea || apiEvent.village} • Berlaku:{" "}
 												{roadSchedule.dateLabel} ({roadSchedule.windowWita})
 											</div>
+
 											<div className="teduh-road-meta-grid">
-												<p className="teduh-road-meta-pill">
+												<span className="teduh-road-meta-pill">
 													Rencana: {getImpactTypeLabel(road.impactType)}
-												</p>
-												<p className="teduh-road-meta-pill">
+												</span>
+												<span className="teduh-road-meta-pill">
 													Pengamatan:{" "}
 													{road.operationalStatus?.observedAt
-														? formatWitaDateTime(road.operationalStatus.observedAt)
+														? formatWitaDateTime(
+																road.operationalStatus.observedAt,
+															)
 														: "Belum ada laporan"}
-												</p>
-												<p className="teduh-road-meta-pill">
+												</span>
+												<span className="teduh-road-meta-pill">
 													Berlaku sampai:{" "}
 													{road.operationalStatus?.expiresAt
-														? formatWitaDateTime(road.operationalStatus.expiresAt)
+														? formatWitaDateTime(
+																road.operationalStatus.expiresAt,
+															)
 														: "Belum ditentukan"}
-												</p>
+												</span>
 											</div>
 										</button>
 									);
@@ -974,19 +1037,185 @@ export function PublicEventDetailPage({
 							)}
 						</div>
 
-						{/* Right: Interactive Map Canvas */}
-						<div className="teduh-roads-map-box">
-							<BaliMapTilerView
-								village={spatialProfile}
-								allVillages={[spatialProfile]}
-								showAllVillagesMarkers={false}
-								showDistrictBoundaries={false}
-								fitDataReady={!liveRoadsQuery.isLoading && !alternativeRoutesQuery.isLoading}
-								alternativeRoutes={alternativeRoutesQuery.isError ? [] : alternativeRoutesQuery.data?.alternativeRoutes}
-								selectedSegmentId={activeSegmentId}
-								onSelectSegment={setSelectedSegmentId}
-								height="100%"
-							/>
+						{/* Right: Map Column with toolbar above, canvas in center, and legend below */}
+						<div className="teduh-roads-map-column">
+							{/* Toolbar outside map canvas */}
+							<div className="teduh-map-toolbar">
+								<div
+									role="group"
+									aria-label="Pilih tampilan peta dasar"
+									className="teduh-map-basemap-group"
+								>
+									<button
+										type="button"
+										onClick={() => setEventBasemapStyle("satellite")}
+										aria-pressed={eventBasemapStyle === "satellite"}
+										className={`teduh-map-toolbar-btn ${eventBasemapStyle === "satellite" ? "is-active" : ""}`}
+									>
+										Satelit
+									</button>
+									<button
+										type="button"
+										onClick={() => setEventBasemapStyle("osm")}
+										aria-pressed={eventBasemapStyle === "osm"}
+										className={`teduh-map-toolbar-btn ${eventBasemapStyle === "osm" ? "is-active" : ""}`}
+									>
+										Peta Jalan
+									</button>
+								</div>
+
+								<button
+									type="button"
+									onClick={() => {
+										if (gps.active) {
+											detailGuidanceRequestIdRef.current += 1;
+											gps.stop();
+											setDetailGuidanceRoute(null);
+										} else {
+											gps.start();
+										}
+									}}
+									className={`teduh-btn-alt-route ${gps.active ? "is-tracking" : ""}`}
+									style={{
+										display: "inline-flex",
+										alignItems: "center",
+										gap: 6,
+										...(gps.active
+											? { background: "#FFFFFF", borderColor: "#B91C1C", color: "#B91C1C" }
+											: {}),
+									}}
+								>
+									<LocateFixed size={16} />
+									<span>
+										{gps.active
+											? "Hentikan tracking"
+											: "Track lokasi"}
+									</span>
+								</button>
+							</div>
+
+							{gps.active && !gps.position && !gps.error && (
+								<div role="status" style={{ fontSize: 13, color: "#545B67", fontStyle: "italic" }}>
+									Mencari lokasi GPS...
+								</div>
+							)}
+							{gps.active && gps.position && gps.position.accuracy > 50 && (
+								<div
+									role="status"
+									style={{
+										background: "#FEF3C7",
+										border: "1px solid #F59E0B",
+										borderRadius: 4,
+										padding: "8px 12px",
+										fontSize: 13,
+										color: "#92400E",
+										fontWeight: 500,
+									}}
+								>
+									Menunggu lokasi lebih akurat (±{Math.round(gps.position.accuracy)}m)
+								</div>
+							)}
+							{gps.error && (
+								<div
+									role="alert"
+									style={{
+										background: "#FEF2F2",
+										border: "1px solid #F87171",
+										borderRadius: 4,
+										padding: "8px 12px",
+										fontSize: 13,
+										color: "#B91C1C",
+									}}
+								>
+									{gps.error}
+								</div>
+							)}
+
+							{/* Unobstructed Map Canvas Box */}
+							<div className="teduh-roads-map-box">
+								<BaliMapTilerView
+									village={spatialProfile}
+									allVillages={[spatialProfile]}
+									showAllVillagesMarkers={false}
+									showDistrictBoundaries={false}
+									fitDataReady={!liveRoadsQuery.isLoading && !alternativeRoutesQuery.isLoading}
+									alternativeRoutes={alternativeRoutesQuery.isError ? [] : alternativeRoutesQuery.data?.alternativeRoutes}
+									showAlternativeRoutes={!gps.active}
+									selectedSegmentId={activeSegmentId}
+									onSelectSegment={setSelectedSegmentId}
+									basemapStyle={eventBasemapStyle}
+									onBasemapStyleChange={setEventBasemapStyle}
+									userLocation={gps.position?.coordinates ?? null}
+									userGuidanceRoute={detailGuidanceRoute}
+									minimalControls={true}
+									height="100%"
+								/>
+							</div>
+
+							{/* Legend & Guidance Bar outside map canvas */}
+							<div className="teduh-map-legend-bar">
+				{visibleDetailGuidanceStatus ? (
+					<div className="teduh-guidance-status" role="status" aria-live="polite">
+						{visibleDetailGuidanceStatus}
+						<small>Koordinat GPS dikirim ke layanan OSRM saat rute dihitung.</small>
+					</div>
+				) : null}
+								<div className="teduh-legend-items">
+									<span className="teduh-legend-pill">
+										<span className="teduh-legend-color" style={{ background: "#C8322B" }} />
+										<span>Ditutup</span>
+									</span>
+									<span className="teduh-legend-pill">
+										<span className="teduh-legend-color" style={{ background: "#D97706" }} />
+										<span>Buka-Tutup</span>
+									</span>
+									<span className="teduh-legend-pill">
+										<span className="teduh-legend-color" style={{ background: "#4D702F" }} />
+										<span>Dibuka</span>
+									</span>
+									<span className="teduh-legend-pill">
+										<span className="teduh-legend-color" style={{ background: "#78716C" }} />
+										<span>Belum dikonfirmasi</span>
+									</span>
+									<span className="teduh-legend-pill">
+										<span className="teduh-legend-color" style={{ background: "#2563EB" }} />
+										<span>Jalur alternatif</span>
+									</span>
+									{spatialProfile.isSimulation !== false ? (
+										<span className="teduh-legend-pill" style={{ color: "#78716C", fontStyle: "italic" }}>
+											Garis putus: simulasi
+										</span>
+									) : null}
+								</div>
+
+								{detailGuidanceRoute && (
+									<div className="teduh-guidance-summary-card">
+										<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+							<strong style={{ color: "#2563EB", fontSize: 13 }}>
+								Panduan Jalur Alternatif{detailGuidanceRoute.isSimulation ? " (SIMULASI)" : ""}
+							</strong>
+											<button
+												type="button"
+												onClick={() => setDetailGuidanceRoute(null)}
+												style={{ background: "none", border: "none", color: "#64748B", cursor: "pointer", fontSize: 13 }}
+											>
+												✕
+											</button>
+										</div>
+										<div style={{ fontSize: 12.5, color: "#334155", lineHeight: 1.45 }}>
+											Menghindari: <strong>{detailGuidanceRoute.avoidedRoadNames.join(", ") || "Penutupan Ruas Jalan"}</strong>
+											<br />
+											Lewat: <strong>{detailGuidanceRoute.viaRouteName || detailGuidanceRoute.routeName}</strong>
+											{detailGuidanceRoute.distanceMeters > 0 && (
+												<span> • Jarak: {(detailGuidanceRoute.distanceMeters / 1000).toFixed(1)} km</span>
+											)}
+											{detailGuidanceRoute.durationSeconds > 0 && (
+												<span> • Estimasi: ~{Math.max(1, Math.round(detailGuidanceRoute.durationSeconds / 60))} mnt</span>
+											)}
+										</div>
+									</div>
+								)}
+							</div>
 						</div>
 					</div>
 				</section>
@@ -2040,7 +2269,7 @@ export function WorkflowRouteShellPage({
 						className="ui-button"
 					>
 						<ArrowLeft className="w-3.5 h-3.5" />
-						<span>{pathname.startsWith("/field") ? "Daftar tugas" : "Daftar Upacara"}</span>
+						<span>{pathname.startsWith("/field") ? "Kembali ke daftar tugas" : "Daftar Upacara"}</span>
 					</Link>
 
 				</div>
@@ -2122,11 +2351,11 @@ export function WorkflowRouteShellPage({
 								Periksa &amp; Konfirmasi Rincian Upacara
 							</h2>
 							{rawEvent?.verifiedAt ? (
-								<span className="px-2.5 py-1 rounded-full bg-white text-emerald-800 text-base font-bold">
+								<span className="px-2.5 py-1 rounded border border-emerald-300 bg-white text-emerald-800 text-base font-bold">
 									Terverifikasi Prajuru
 								</span>
 							) : (
-								<span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 text-base font-bold">
+								<span className="px-2.5 py-1 rounded border border-amber-300 bg-white text-amber-800 text-base font-bold">
 									Menunggu Konfirmasi
 								</span>
 							)}
@@ -3137,6 +3366,21 @@ export function WorkflowRouteShellPage({
 						</div>
 					) : null}
 				</div>
+			) : null}
+
+			{pathname.startsWith("/field") && currentTabValue === "field" && (isOrganizer || canTraffic) && (isOrganizer || canCleanup) ? (
+				<nav className="field-workflow-navigation" aria-label="Tahap tugas lapangan">
+					<Link className="ui-button ui-button-primary" to={`/field/events/${eventId}/cleanup`}>
+						Selanjutnya: Kebersihan
+					</Link>
+				</nav>
+			) : null}
+			{pathname.startsWith("/field") && currentTabValue === "cleanup" && (isOrganizer || canCleanup) && (isOrganizer || canTraffic) ? (
+				<nav className="field-workflow-navigation" aria-label="Tahap tugas lapangan">
+					<Link className="ui-button" to={`/field/events/${eventId}/traffic`}>
+						Kembali ke lalu lintas
+					</Link>
+				</nav>
 			) : null}
 
 			{/* =================================================================== */}

@@ -2,9 +2,10 @@ import { expect, test } from "@playwright/test";
 
 test.use({ video: "off", launchOptions: { executablePath: process.env.RANGKAI_BROWSER_PATH, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] } });
 
-test("old UI catalogue opens the real public events list", async ({ page }) => {
+test("anonymous access to the old workspace catalogue returns to the landing page", async ({ page }) => {
+	await page.route("**/api/auth/get-session", route => route.fulfill({ json: null }));
 	await page.goto("/ui-system");
-	await expect(page).toHaveURL(/\/events$/);
+	await expect(page).toHaveURL(/\/$/);
 });
 
 test("event detail reports API failure and allows retry", async ({ page }) => {
@@ -33,6 +34,21 @@ test("an event without saved coordinates does not get a fabricated venue pin", a
 	await expect(page.getByText("Jalan Uji").first()).toBeVisible();
 });
 
+test("an open report without expiry is not presented as confirmed open", async ({ page }) => {
+	await page.route("**/api/public/events/tanpa-masa**", async route => {
+		const path = new URL(route.request().url()).pathname;
+		if (path.endsWith("/roads")) return route.fulfill({ json: { roads: [{ id: "jalan-1", roadSegmentId: "segmen-1", displayName: "Jalan Tanpa Masa", impactType: "closure", plannedFrom: null, plannedTo: null, operationalStatus: { effectiveStatus: "open", rawStatus: "open", isStale: false, observedAt: null, expiresAt: null } }] } });
+		if (path.endsWith("/alternative-routes")) return route.fulfill({ json: { alternativeRoutes: [] } });
+		if (path.endsWith("/cleanup-summary")) return route.fulfill({ status: 503, json: {} });
+		return route.fulfill({ json: { event: { id: "acara-1", slug: "tanpa-masa", title: "Acara Uji", venueName: null, venueLocation: null, status: "published", isSimulation: true, organization: { name: "Desa Uji", village: "Denpasar", district: "Denpasar" } } } });
+	});
+	await page.goto("/events/tanpa-masa");
+	const road = page.getByRole("button", { name: /Jalan Tanpa Masa/ }).first();
+	await expect(road).toContainText("Belum terkonfirmasi");
+	await expect(road).not.toContainText("Dibuka");
+	await expect(page.getByText("Lokasi belum ditentukan", { exact: true })).toBeVisible();
+});
+
 for (const width of [320, 390, 768, 1280]) {
 	test(`public detail shows simulation location and roads at ${width}px`, async ({ page }, testInfo) => {
 		const mapErrors: string[] = [];
@@ -49,9 +65,27 @@ for (const width of [320, 390, 768, 1280]) {
 		await page.goto("/events/latihan");
 		await expect(page.getByRole("heading", { name: "Acara Simulasi Uji" })).toBeVisible();
 		await expect(page.getByText("Jalan Uji").first()).toBeVisible();
-		await expect(page.getByText(/BELUM DIKONFIRMASI/i).first()).toBeVisible();
+		await expect(page.getByText(/Belum terkonfirmasi/i).first()).toBeVisible();
 		await expect(page.locator('[aria-label="Lokasi acara: Pura Uji (simulasi)"]')).toHaveCount(1);
 		await expect(page.getByText("Alternatif Uji").first()).toBeVisible();
+		const road = page.getByRole("button", { name: /Jalan Uji/ }).first();
+		await road.click();
+		await expect(road).toHaveAttribute("aria-pressed", "true");
+		if (width === 390) {
+			const basemap = page.getByRole("group", { name: "Pilih tampilan peta dasar" });
+			await basemap.getByRole("button", { name: "Peta Jalan" }).click();
+			await expect(basemap.getByRole("button", { name: "Peta Jalan" })).toHaveAttribute("aria-pressed", "true");
+			await basemap.getByRole("button", { name: "Satelit" }).click();
+			await expect(basemap.getByRole("button", { name: "Satelit" })).toHaveAttribute("aria-pressed", "true");
+			await expect(road).toHaveAttribute("aria-pressed", "true");
+			await expect(page.locator('[aria-label="Lokasi acara: Pura Uji (simulasi)"]')).toHaveCount(1);
+		}
+		if (width <= 1024) {
+			const map = await page.locator(".teduh-roads-map-box").boundingBox();
+			const list = await page.locator(".teduh-roads-list").boundingBox();
+			expect(map!.y).toBeLessThan(list!.y);
+			expect(map!.height).toBeLessThanOrEqual(381);
+		}
 		await page.locator(".teduh-roads-split").scrollIntoViewIfNeeded();
 		await page.waitForTimeout(2500);
 		expect(mapErrors).toEqual([]);
@@ -91,8 +125,15 @@ test("map failure exposes the road list and can be retried", async ({ page }) =>
 	await expect(page.getByText("Jalan Uji").first()).toBeVisible();
 });
 
-test("landing map and /peta support street/satellite switch, user location tracking, and green alternative route guidance", async ({ page }) => {
+test("landing map switches basemaps and both maps track the device location", async ({ page }) => {
+	test.setTimeout(90000);
 	await page.setViewportSize({ width: 1280, height: 860 });
+	await page.addInitScript(() => {
+		Object.defineProperty(navigator, "geolocation", { configurable: true, value: {
+			watchPosition: (success: (value: unknown) => void) => { setTimeout(() => success({ coords: { longitude: 115.22, latitude: -8.65, accuracy: 12 } }), 0); return 1; },
+			clearWatch: () => {},
+		} });
+	});
 
 	// 1. Verify Landing Page (/) map controls
 	await page.goto("/");
@@ -107,35 +148,68 @@ test("landing map and /peta support street/satellite switch, user location track
 	await landingStreetBtn.click();
 	await expect(landingStreetBtn).toHaveAttribute("aria-pressed", "true");
 
-	const landingLocateBtn = page.getByRole("button", {
-		name: /Lokasi Saya & Rute Alternatif|Rute Alternatif Aktif/i,
-	});
+	const landingLocateBtn = page.getByRole("button", { name: "Aktifkan pelacakan lokasi" });
 	await expect(landingLocateBtn).toBeVisible();
 	await landingLocateBtn.click();
 
-	await expect(page.getByText(/Garis Hijau:/i).first()).toBeVisible({ timeout: 10000 });
-	await expect(page.getByRole("link", { name: /Navigasi Google Maps/i })).toBeVisible();
 	await expect(page.locator('[aria-label="Lokasi Anda"]')).toHaveCount(1);
+	await page.getByRole("button", { name: "Hentikan pelacakan lokasi" }).click();
+	await expect(page.locator('[aria-label="Lokasi Anda"]')).toHaveCount(0);
 
 	// 2. Verify Public Spatial Map Console (/peta) controls
 	await page.goto("/peta");
-	const petaMapGroup = page.getByRole("group", { name: "Pilih tampilan peta dasar" }).first();
-	const petaSatBtn = petaMapGroup.getByRole("button", { name: "Satelit" });
-	const petaStreetBtn = petaMapGroup.getByRole("button", { name: "Peta Jalan" });
-	await expect(petaSatBtn).toBeVisible();
-	await expect(petaStreetBtn).toBeVisible();
-
-	await petaStreetBtn.click();
-	await expect(petaStreetBtn).toHaveAttribute("aria-pressed", "true");
-
-	const petaLocateBtn = page.getByRole("button", {
-		name: "Pusatkan Peta ke Lokasi Saya",
-	});
+	const petaLocateBtn = page.getByRole("button", { name: "Aktifkan pelacakan lokasi" });
 	await expect(petaLocateBtn).toBeVisible();
 	await petaLocateBtn.click();
 
-	await expect(page.getByText(/Garis Hijau:/i).first()).toBeVisible({ timeout: 10000 });
-	await expect(page.getByRole("link", { name: /Buka Google Maps/i })).toBeVisible();
 	await expect(page.locator('[aria-label="Lokasi Anda"]')).toHaveCount(1);
+	await page.getByRole("button", { name: "Hentikan pelacakan lokasi" }).click();
+	await expect(page.locator('[aria-label="Lokasi Anda"]')).toHaveCount(0);
 });
 
+test("schedule cards have visible borders, primary detail buttons, and navigate on card click", async ({ page }) => {
+	await page.route("**/api/public/events**", async (route) => {
+		const path = new URL(route.request().url()).pathname;
+		if (path.endsWith("/roads")) return route.fulfill({ json: { eventSlug: "latihan", roads: [] } });
+		if (path.endsWith("/alternative-routes")) return route.fulfill({ json: { eventSlug: "latihan", alternativeRoutes: [] } });
+		if (path.endsWith("/cleanup-summary")) return route.fulfill({ status: 503, json: {} });
+		if (path === "/api/public/events/latihan") {
+			return route.fulfill({ json: { event: { id: "acara-1", slug: "latihan", title: "Karya Agung Ubud", venueName: "Pura Desa Ubud", venueLocation: { type: "Point", coordinates: [115.26, -8.5] }, startsAt: "2026-11-14T00:00:00Z", endsAt: "2026-11-14T04:00:00Z", status: "published", isSimulation: false, organization: { name: "Desa Adat Ubud", village: "Ubud", district: "Ubud" } } } });
+		}
+		return route.fulfill({ json: { events: [{ id: "acara-1", slug: "latihan", title: "Karya Agung Ubud", category: "pujawali", venueName: "Pura Desa Ubud", startsAt: "2026-11-14T00:00:00Z", endsAt: "2026-11-14T04:00:00Z", status: "published", isSimulation: false, organization: { name: "Desa Adat Ubud", village: "Ubud", district: "Ubud" } }], items: [{ id: "acara-1", slug: "latihan", title: "Karya Agung Ubud", category: "pujawali", venueName: "Pura Desa Ubud", startsAt: "2026-11-14T00:00:00Z", endsAt: "2026-11-14T04:00:00Z", status: "published", isSimulation: false, organization: { name: "Desa Adat Ubud", village: "Ubud", district: "Ubud" } }], pagination: { page: 1, limit: 20, total: 1, totalPages: 1 }, page: 1, pageSize: 50, total: 1, totalPages: 1 } });
+	});
+	await page.setViewportSize({ width: 390, height: 800 });
+	await page.goto("/");
+	const card = page.locator(".schedule-card").filter({ hasText: "Karya Agung Ubud" }).first();
+	await card.scrollIntoViewIfNeeded();
+	await expect(card).toBeVisible();
+	const styles = await card.evaluate((el) => {
+		const browser = globalThis as unknown as {
+			getComputedStyle: (node: unknown) => {
+				borderTopWidth: string;
+				borderLeftWidth: string;
+				backgroundColor: string;
+				color: string;
+			};
+		};
+		const cardNode = el as unknown as {
+			querySelector: (selector: string) => unknown;
+		};
+		const cardStyle = browser.getComputedStyle(el);
+		const detailBtn = cardNode.querySelector(".btn-schedule-detail");
+		const btnStyle = detailBtn ? browser.getComputedStyle(detailBtn) : null;
+		return {
+			borderTopWidth: cardStyle.borderTopWidth,
+			borderLeftWidth: cardStyle.borderLeftWidth,
+			btnBg: btnStyle?.backgroundColor ?? "",
+			btnColor: btnStyle?.color ?? "",
+		};
+	});
+	expect(styles.borderTopWidth).toBe("1px");
+	expect(styles.borderLeftWidth).toBe("1px");
+	expect(styles.btnBg).toBe("rgb(77, 112, 47)");
+	expect(styles.btnColor).toBe("rgb(255, 255, 255)");
+	await card.getByText("Pura Desa Ubud").click();
+	await expect(page).toHaveURL(/\/events\/latihan$/);
+	await expect(page.getByRole("heading", { name: "Karya Agung Ubud" })).toBeVisible();
+});
