@@ -190,3 +190,12 @@ test("account change clears private history", async ({ page }) => {
 });
 
 
+
+test("account change discards a pending private response", async ({ page }) => {
+ const org = "11111111-1111-4111-8111-111111111111", event = "22222222-2222-4222-8222-222222222222"; let account = "user-1"; let release: (() => void) | undefined; let posted = false;
+ await page.route("**/api/auth/get-session", route => route.fulfill({ json: { user: { id: account, name: "Test", email: "test@example.test", emailVerified: true }, session: { id: account, userId: account, expiresAt: "2099-01-01T00:00:00Z" } } }));
+ await page.route("**/api/organizations/my", route => route.fulfill({ json: { organizations: [{ id: org, name: "Organisasi", role: "organizer" }] } })); await page.route("**/api/events?**", route => route.fulfill({ json: { events: [{ id: event, title: "Kegiatan uji", organizationId: org }], pagination: {} } }));
+ await page.route("**/api/assistant/questions", async route => { posted = true; await new Promise<void>(resolve => { release = resolve; }); await route.fulfill({ json: { status: "answered", scope: "internal", intent: "event_lookup", answer: "LATE ACCOUNT ONE", sources: [], searchUrl: "/events" } }).catch(() => {}); });
+ await page.goto("/login"); await page.getByRole("button", { name: "Asisten" }).click(); const dialog = page.getByRole("dialog", { name: "Asisten" }); await dialog.getByLabel("Lingkup").selectOption("internal"); await dialog.getByLabel("Organisasi").selectOption(org); await dialog.getByRole("combobox", { name: "Kegiatan", exact: true }).selectOption(event); await dialog.getByLabel("Pertanyaan").fill("Status?"); await dialog.getByRole("button", { name: "Kirim pertanyaan" }).click(); await expect.poll(() => posted).toBe(true);
+ account = "user-2"; await page.evaluate('document.dispatchEvent(new Event("visibilitychange"))'); await expect(dialog.getByLabel("Lingkup")).toHaveValue("public"); release?.(); await expect(dialog.getByText("LATE ACCOUNT ONE")).toHaveCount(0);
+});
