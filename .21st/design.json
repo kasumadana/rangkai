@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "project": {
+    "name": "rangkai",
+    "productType": null,
+    "stack": [
+      "react",
+      "tailwind-v4",
+      "vite"
+    ]
+  },
+  "sources": {
+    "tokens": [],
+    "components": [],
+    "assets": [
+      "public/images"
+    ],
+    "instructions": [
+      "AGENTS.md"
+    ]
+  },
+  "design": {
+    "colorMode": "unknown",
+    "colors": {},
+    "typography": {},
+    "spacing": {},
+    "radius": {},
+    "shadows": {},
+    "motion": {},
+    "density": "unknown"
+  },
+  "components": {
+    "installed": [],
+    "preferredPrimitives": [],
+    "patterns": []
+  },
+  "constraints": {
+    "must": [
+      "Read docs/DESIGN.md as the normative TARGET before selecting inspiration; current CSS is not proof the target is implemented.",
+      "Use Lora for editorial serif and Plus Jakarta Sans for sans-serif UI.",
+      "Use white surfaces, small radii, thin overlay shadows, mobile-first field flows and readable controls.",
+      "Keep Ringkasan distinct from Kegiatan, stable sidebar, logo/profile navbar and new-event-only wizard.",
+      "Retain simulation, expiry, sources, permissions and truthful loading/error states.",
+      "Use existing React/Tailwind components and pnpm; inspect catalog before considering code retrieval."
+    ],
+    "avoid": [
+      "Cream, pastel surfaces, large radii, heavy shadows, decorative spark icons and badge-text-badge rows.",
+      "Automatic shadcn installs, unrelated dependencies, paid AI generation or code retrieval without a concrete need.",
+      "Sending private project data, credentials or user documents to design services."
+    ]
+  },
+  "decisions": [
+    {
+      "id": "rangkai-design-target",
+      "decision": "Preserve the product identity and simplify the existing UI using docs/DESIGN.md. Catalog results are inspiration, not permission to copy a whole dashboard or add KPI decoration.",
+      "source": "docs/DESIGN.md; user discussion 2026-11-12"
+    },
+    {
+      "id": "rangkai-assistant-scope",
+      "decision": "Global bottom-left read-only assistant. Private data strictly scoped to current session, organization membership and event permissions. No decorative spark icons. See canonical design for requirements; this is target, not implemented.",
+      "source": "docs/DESIGN.md; user decision 2026-11-12"
+    }
+  ],
+  "evidence": [
+    {
+      "fact": "project.instructions",
+      "source": "AGENTS.md"
+    },
+    {
+      "fact": "project.stack:react",
+      "source": "package.json"
+    },
+    {
+      "fact": "project.stack:tailwind-v4",
+      "source": "package.json"
+    },
+    {
+      "fact": "project.stack:vite",
+      "source": "package.json"
+    }
+  ],
+  "generatedAt": "2026-11-12T06:03:13.902Z"
+}
