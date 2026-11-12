@@ -526,3 +526,5 @@ PASS requires:
 - Test evidence is documented.
 
 Any failed critical security or integrity test blocks release.
+
+Authenticated assistant focused verification covers session denial, foreign organization/event, assignment and category permission denial, permission revocation during provider processing, forged sources, provider failures, privacy of metadata, stale road status, simulation labels, and distinct waste measurement methods. Provider tests use synthetic responses and are not live quality evidence. Production enablement remains a separate gate.

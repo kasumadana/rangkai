@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
-import { createBrowserRouter, createRoutesFromElements, Navigate, Route, RouterProvider } from "react-router";
+import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider } from "react-router";
 import {
 	PublicShellLayout,
 	WorkspaceShellLayout,
@@ -22,10 +22,15 @@ import {
 	WorkflowRouteShellPage,
 } from "./pages/RouteViews";
 import { SettingsPage } from "./pages/SettingsPage";
+import { AssistantWidget } from "./features/assistant/AssistantWidget";
 import { PublicAssistantPage } from "./pages/PublicAssistantPage";
 
+function RootLayout() {
+	return <><AssistantWidget /><Outlet /></>;
+}
+
 const router = createBrowserRouter(createRoutesFromElements(
-						<>
+	<Route element={<RootLayout />}>
 							{/* Public Information Architecture */}
 							<Route element={<PublicShellLayout />}>
 								<Route path="/" element={<PublicHomePage />} />
@@ -152,7 +157,7 @@ const router = createBrowserRouter(createRoutesFromElements(
 							</Route>
 
 							<Route path="*" element={<Navigate to="/" replace />} />
-						</>
+	</Route>
 ));
 
 export function App() {
@@ -161,3 +166,4 @@ export function App() {
 }
 
 export default App;
+

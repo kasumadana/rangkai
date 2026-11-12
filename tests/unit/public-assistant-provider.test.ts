@@ -35,3 +35,14 @@ describe("Gemini assistant fetch boundary", () => {
   expect(validateSelection({ intent: "event_lookup", sourceIds: [] }, [source])).toEqual({ intent: "event_lookup", sourceIds: [] });
  });
 });
+
+it("times out stalled requests and rejects thought-only output", async () => {
+ vi.useFakeTimers();
+ vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted"))))));
+ const pending = selectAssistantSources("question", [source], "key", "model");
+ await vi.advanceTimersByTimeAsync(20001);
+ expect(await pending).toBeNull();
+ vi.useRealTimers();
+ vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(selection), thought: true }] } }] })));
+ expect(await selectAssistantSources("question", [source], "key", "model")).toBeNull();
+});
