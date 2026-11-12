@@ -22,13 +22,22 @@ export function ProfileMenu() {
  }, []);
  useEffect(() => {
   if (!open) return;
-  const key = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); trigger.current?.focus(); } };
+  const focusable = () => Array.from(root.current?.querySelectorAll<HTMLElement>('.profile-popover a[href], .profile-popover button:not(:disabled), .profile-popover select:not(:disabled)') || []);
+  focusable()[0]?.focus();
+  const key = (event: KeyboardEvent) => {
+   if (event.key === "Escape") { event.preventDefault(); setOpen(false); trigger.current?.focus(); return; }
+   if (event.key !== "Tab") return;
+   const items = focusable();
+   if (!items.length) return;
+   if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
+   else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
+  };
   const outside = (event: MouseEvent) => { if (!root.current?.contains(event.target as Node)) setOpen(false); };
   document.addEventListener("keydown", key); document.addEventListener("mousedown", outside);
   return () => { document.removeEventListener("keydown", key); document.removeEventListener("mousedown", outside); };
  }, [open]);
  const items = organizations.data?.organizations || [];
- const active = items.find(org => org.id === orgId) || items[0];
+ const active = items.find(org => org.id === orgId) || items.find(org => org.role === "organizer") || items[0];
  async function logout() {
   setPending(true); setError("");
   try {
@@ -45,7 +54,7 @@ export function ProfileMenu() {
   {open && <div id="profile-menu" className="profile-popover">
    {session?.user ? <>
     <strong>{session.user.name}</strong><p>{session.user.email}</p>
-    {active && <p>{active.name} Â· {active.role === "organizer" ? "Panitia" : "Petugas"}</p>}
+    {active && <p>{active.name} - {active.role === "organizer" ? "Panitia" : "Petugas"}</p>}
     {items.length > 1 && <label>Organisasi<select value={active?.id || ""} onChange={e => { if (items.some(org => org.id === e.target.value)) saveOrganizationId(e.target.value); }}>{items.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>}
     <Link to={active?.role === "officer" ? "/field" : "/dashboard"} onClick={() => setOpen(false)}>Ruang kerja</Link>
     <Link to="/" onClick={() => setOpen(false)}>Portal publik</Link><Link to="/settings" onClick={() => setOpen(false)}>Pengaturan</Link>

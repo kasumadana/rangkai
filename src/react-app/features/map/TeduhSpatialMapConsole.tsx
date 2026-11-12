@@ -14,7 +14,7 @@ import {
 	RoadStatusBadge,
 	type CeremonyDetailItem,
 } from "../../components/rangkai";
-import { ProfileMenu } from "../../components/ui/ProfileMenu";
+import { PublicHeader } from "../../components/ui/PublicHeader";
 import type { BaliDistrictProperties } from "../../lib/bali-districts";
 import type {
 	BaliVillageCeremonyProfile,
@@ -72,7 +72,6 @@ export function TeduhSpatialMapConsole() {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
 	const searchDropdownRef = useRef<HTMLDivElement>(null);
-	const mobileSearchRef = useRef<HTMLDivElement>(null);
 
 	// Guide panel dismissed state — defaults to false so it shows on initial visit; dismisses completely on X click
 	const [isGuideDismissed, setIsGuideDismissed] = useState<boolean>(false);
@@ -253,11 +252,7 @@ export function TeduhSpatialMapConsole() {
 			const insideDesktop =
 				searchDropdownRef.current &&
 				searchDropdownRef.current.contains(target);
-			const insideMobile =
-				mobileSearchRef.current &&
-				mobileSearchRef.current.contains(target);
-
-			if (!insideDesktop && !insideMobile) {
+			if (!insideDesktop) {
 				setIsSearchDropdownOpen(false);
 			}
 		}
@@ -491,127 +486,12 @@ export function TeduhSpatialMapConsole() {
 			ref={mapViewportRef}
 			className={`map-viewport ${isDrawerOpen ? "has-drawer-open" : ""}`}
 		>
-			{/* 1. DESKTOP FLOATING SPLIT TOPBAR */}
-			<header
-				className="map-desktop-topbar"
-				aria-label="Bilah Navigasi Peta"
-				data-gsap="reveal"
-			>
-				{/* Left Capsule: Logo + Search Bar + Instant Dropdown */}
-				<div className="map-desktop-topbar-left" ref={searchDropdownRef}>
-					<Link to="/" className="navbar-brand" aria-label="Rangkai Beranda">
-						<img
-							src="/logo.png"
-							alt="Rangkai Logo"
-							className="navbar-brand-logo"
-						/>
-					</Link>
-
-					<div className="map-topbar-divider" />
-
-					<div className="map-search-input-wrap">
-						<Search size={15} color="#64748B" />
-						<input
-							type="text"
-							className="map-search-input"
-							placeholder="Cari kecamatan, desa, atau acara..."
-							value={searchQuery}
-							onChange={(e) => {
-								setSearchQuery(e.target.value);
-								setIsSearchDropdownOpen(true);
-							}}
-							onFocus={() => setIsSearchDropdownOpen(true)}
-						/>
-						{searchQuery && (
-							<button
-								type="button"
-								onClick={() => {
-									setSearchQuery("");
-									setIsSearchDropdownOpen(false);
-								}}
-								style={{
-									background: "none",
-									border: "none",
-									cursor: "pointer",
-									color: "#64748B",
-									padding: 2,
-								}}
-								aria-label="Bersihkan pencarian"
-							>
-								<X size={15} />
-							</button>
-						)}
-					</div>
-
-					{/* Live Dropdown Results (Desktop) */}
-					{searchDropdownNode}
-				</div>
-
-				<div className="map-desktop-topbar-right"><ProfileMenu /></div>
-			</header>
-
-			{/* 2. MOBILE TOP SEARCH CAPSULE (< 860px) WITH HAMBURGER MENU */}
-			<div
-				ref={mobileSearchRef}
-				className="map-mobile-search-capsule"
-				data-gsap="reveal"
-			>
-				<Link
-					to="/"
-					aria-label="Kembali ke Beranda"
-					style={{
-						display: "inline-flex",
-						alignItems: "center",
-						justifyContent: "center",
-						textDecoration: "none",
-						flexShrink: 0,
-					}}
-				>
-					<img
-						src="/logo.png"
-						alt="Rangkai"
-						style={{ width: 24, height: 24, objectFit: "contain" }}
-					/>
-				</Link>
-				<div className="map-topbar-divider" style={{ height: 18, margin: "0 2px" }} />
-				<Search size={16} color="#64748B" style={{ flexShrink: 0 }} />
-				<input
-					type="text"
-					placeholder="Cari kecamatan, desa, atau acara..."
-					value={searchQuery}
-					onChange={(e) => {
-						setSearchQuery(e.target.value);
-						setIsSearchDropdownOpen(true);
-					}}
-					onFocus={() => setIsSearchDropdownOpen(true)}
-					style={{
-						flex: 1,
-						border: "none",
-						outline: "none",
-						background: "transparent",
-						fontSize: 13.5,
-						color: "#181B20",
-						minWidth: 0,
-					}}
-				/>
-				{searchQuery && (
-					<button
-						type="button"
-						onClick={() => {
-							setSearchQuery("");
-							setIsSearchDropdownOpen(false);
-						}}
-						style={{ background: "none", border: "none", color: "#64748B", padding: 4 }}
-						aria-label="Bersihkan pencarian"
-					>
-						<X size={16} />
-					</button>
-				)}
-				<ProfileMenu />
-
-				{/* Live Dropdown Results (Mobile) */}
-				{searchDropdownNode}
-			</div>
+			<PublicHeader map />
+            <div className="map-search-control" ref={searchDropdownRef}>
+                <label htmlFor="map-search">Cari lokasi atau kegiatan</label>
+                <div className="map-search-control-input"><Search size={16} aria-hidden="true" /><input id="map-search" type="search" value={searchQuery} placeholder="Cari kecamatan, desa, atau acara" onChange={e => { setSearchQuery(e.target.value); setIsSearchDropdownOpen(true); }} onFocus={() => setIsSearchDropdownOpen(true)} />{searchQuery && <button type="button" onClick={() => { setSearchQuery(""); setIsSearchDropdownOpen(false); }} aria-label="Bersihkan pencarian"><X size={16} /></button>}</div>
+                {searchDropdownNode}
+            </div>
 
 			{/* 3. GUIDED 3-STEP EXPLORATION PANEL (Dismisses completely when X is clicked) */}
 			{!isGuideDismissed && (

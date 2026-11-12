@@ -11,6 +11,8 @@ import { useAuthSession, useMyOrganizationsQuery } from "../../lib/auth";
 import { fetchEventDetail, fetchFieldEventDetail, getSavedOrganizationId } from "../../lib/events-api";
 
 import { ProfileMenu } from "../ui/ProfileMenu";
+import { PublicHeader } from "../ui/PublicHeader";
+import { RangkaiPreloader } from "../rangkai";
 
 
 
@@ -22,9 +24,9 @@ export function PublicShellLayout() {
 
  const { pathname } = useLocation();
 
- if (pathname === "/peta" || pathname.endsWith("/map")) return <Outlet />;
+ if (pathname === "/peta" || pathname.endsWith("/map")) return <><RangkaiPreloader preloaderKey="peta" /><Outlet /></>;
 
- return <div className="public-shell"><header className="simple-topbar"><Link to="/" aria-label="Rangkai beranda"><img src="/logo.png" alt="Rangkai" /></Link><ProfileMenu /></header><main id="main-content"><Outlet /></main><footer className="simple-footer"><nav aria-label="Tautan publik"><Link to="/events">Jadwal kegiatan</Link><Link to="/peta">Peta kawasan</Link><Link to="/tanya">Tanya kegiatan</Link></nav><p>Rangkai membantu koordinasi dan bukan izin resmi penutupan jalan.</p></footer></div>;
+ return <div className="public-shell">{pathname === "/" && <RangkaiPreloader preloaderKey="landing" />}<PublicHeader /><main id="main-content"><Outlet /></main><footer className="simple-footer"><nav aria-label="Tautan publik"><Link to="/">Beranda</Link><Link to="/events">Jadwal kegiatan</Link><Link to="/peta">Peta kawasan</Link><Link to="/tanya">Tanya kegiatan</Link><Link to="/dashboard">Ruang kerja</Link><Link to="/field">Tugas lapangan</Link></nav><p>Rangkai membantu koordinasi dan bukan izin resmi penutupan jalan. Penyelesaian kebersihan tidak membuka jalan secara otomatis; pembaruan jalan dilakukan petugas berwenang.</p></footer></div>;
 
 }
 
@@ -41,6 +43,8 @@ export function WorkspaceShellLayout() {
  const trigger = useRef<HTMLButtonElement>(null);
 
  const drawer = useRef<HTMLElement>(null);
+ const content = useRef<HTMLElement>(null);
+ const previousPath = useRef(pathname);
 
  const { data: session } = useAuthSession();
 
@@ -50,7 +54,7 @@ export function WorkspaceShellLayout() {
 
  const active = orgs.find(org => org.id === orgId) || orgs.find(org => org.role === "organizer") || orgs[0];
 
- const organizer = active?.role !== "officer";
+ const organizer = active?.role === "organizer";
 
  const match = pathname.match(/^\/(dashboard|field)\/events\/([^/]+)/);
 
@@ -64,15 +68,17 @@ export function WorkspaceShellLayout() {
 
  useEffect(() => { const update = () => setOrgId(getSavedOrganizationId()); window.addEventListener("rangkai:organization-changed", update); return () => window.removeEventListener("rangkai:organization-changed", update); }, []);
 
+ useEffect(() => { if (previousPath.current !== pathname) content.current?.focus(); previousPath.current = pathname; }, [pathname]);
+
  useEffect(() => { if (!open) return; const nodes = () => Array.from(drawer.current?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled)') || []); nodes()[0]?.focus(); const key = (e: KeyboardEvent) => { if (e.key === "Escape") { setOpen(false); trigger.current?.focus(); } else if (e.key === "Tab") { const list = nodes(); if (e.shiftKey && document.activeElement === list[0]) { e.preventDefault(); list[list.length - 1]?.focus(); } else if (!e.shiftKey && document.activeElement === list[list.length - 1]) { e.preventDefault(); list[0]?.focus(); } } }; document.addEventListener("keydown", key); return () => document.removeEventListener("keydown", key); }, [open]);
 
- const link = (to: string, label: string, current: boolean) => <Link to={to} onClick={() => setOpen(false)} aria-current={current ? "page" : undefined} className={`teduh-sidebar-link ${current ? "is-active" : ""}`}>{label}</Link>;
+ const link = (to: string, label: string, current: boolean) => <Link key={to} to={to} onClick={() => setOpen(false)} aria-current={current ? "page" : undefined} className={`teduh-sidebar-link ${current ? "is-active" : ""}`}>{label}</Link>;
 
  return <div className="teduh-workspace-shell"><header className="teduh-workspace-topbar"><div className="teduh-workspace-topbar-left"><button ref={trigger} type="button" className="workspace-menu-toggle" aria-label={open ? "Tutup menu ruang kerja" : "Buka menu ruang kerja"} aria-expanded={open} aria-controls="workspace-navigation" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button><Link to="/" className="teduh-workspace-brand"><img src="/logo.png" alt="Rangkai" /></Link></div><ProfileMenu /></header>
 
  <div className="teduh-workspace-body">{open && <button type="button" className="workspace-menu-backdrop" aria-label="Tutup menu ruang kerja" onClick={() => { setOpen(false); trigger.current?.focus(); }} />}
 
- <aside ref={drawer} id="workspace-navigation" className={`teduh-workspace-sidebar ${open ? "is-open" : ""}`} aria-label="Menu ruang kerja"><nav className="stable-navigation">
+ <aside ref={drawer} id="workspace-navigation" className={`teduh-workspace-sidebar ${open ? "is-open" : ""}`} role={open ? "dialog" : undefined} aria-modal={open ? true : undefined} aria-label="Menu ruang kerja"><nav className="stable-navigation">
 
  {organizer && <>{link("/dashboard", "Ringkasan", pathname === "/dashboard")}{link("/dashboard/events", "Kegiatan", pathname.startsWith("/dashboard/events"))}</>}
 
@@ -84,7 +90,7 @@ export function WorkspaceShellLayout() {
 
  <div className="sidebar-bottom">{link("/settings", "Pengaturan", pathname === "/settings")}</div></nav></aside>
 
- <main className="teduh-workspace-main" id="main-content">{session?.user && active && <p className="workspace-context">{active.name} Â· {active.role === "organizer" ? "Panitia" : "Petugas"}</p>}<Outlet /></main></div></div>;
+ <main ref={content} tabIndex={-1} inert={open} className="teduh-workspace-main" id="main-content">{session?.user && active && <p className="workspace-context">{active.name} - {active.role === "organizer" ? "Panitia" : "Petugas"}</p>}<Outlet /></main></div></div>;
 
 }
 
