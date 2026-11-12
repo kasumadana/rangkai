@@ -5,7 +5,7 @@ import {
 	MapPin,
 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { BaliLandingSatelliteMap } from "../features/map/BaliLandingSatelliteMap";
 import {
 	fetchPublicEvents,
@@ -32,6 +32,7 @@ interface NormalizedLandingEvent {
 export function LandingPage() {
 	const [selectedRegencyFilter, setSelectedRegencyFilter] = useState("all");
 	const landingRef = useRef<HTMLDivElement>(null);
+	const navigate = useNavigate();
 
 	// Live API connection for published/active events and road impacts from backend
 	const { data: publicEventsData, isLoading: isEventsLoading, isError: isEventsError, refetch: refetchEvents } = useQuery({
@@ -137,10 +138,16 @@ export function LandingPage() {
 
 	return (
 		<div ref={landingRef} style={{ width: "100%", overflowX: "hidden" }}>
-			{/* 1. HERO SPLIT SECTION */}
+			{/* 1. HERO SPLIT SECTION WITH RESPONSIVE PHOTO FADE */}
 			<section className="hero">
-				<div className="hero-left">
-					<div className="hero-left-inner">
+				<img
+					src="/images/bali-culture-hero.webp"
+					alt="Pura Ulun Danu Beratan Bali"
+					className="hero-bg-img"
+				/>
+				<div className="hero-scrim" />
+				<div className="hero-content">
+					<div className="hero-content-inner">
 						<h1 className="hero-title" data-gsap="hero-item">
 							Koordinasi Upacara Adat & Jalur Publik Lebih Teratur
 						</h1>
@@ -160,15 +167,6 @@ export function LandingPage() {
 						</div>
 					</div>
 				</div>
-
-				<div className="hero-right">
-					<div className="hero-fade-overlay" />
-					<img
-						src="/images/bali-culture-hero.webp"
-						alt="Pura Ulun Danu Beratan Bali"
-						className="hero-full-img"
-					/>
-				</div>
 			</section>
 
 			{/* 2. PETA MAP FULL SECTION SCREEN DENGAN MARGIN RINGAN */}
@@ -178,7 +176,7 @@ export function LandingPage() {
 						Peta Wilayah Upacara & Rekayasa Jalur Bali
 					</h2>
 					{isRoadsError ? (
-						<p style={{ fontSize: 13, color: "#DC2626", marginTop: 4 }}>
+						<p style={{ fontSize: "1rem", color: "#B91C1C", marginTop: 4 }}>
 							Sebagian data ruas jalan belum dapat dimuat.{" "}
 							<button
 								type="button"
@@ -187,7 +185,7 @@ export function LandingPage() {
 									textDecoration: "underline",
 									background: "none",
 									border: "none",
-									color: "#DC2626",
+									color: "#B91C1C",
 									cursor: "pointer",
 									fontWeight: 600,
 								}}
@@ -196,7 +194,7 @@ export function LandingPage() {
 							</button>
 						</p>
 					) : roadImpactsData?.pagination?.truncated ? (
-						<p style={{ fontSize: 13, color: "#D97706", marginTop: 4 }}>
+						<p style={{ fontSize: "1rem", color: "#92400E", marginTop: 4 }}>
 							Menampilkan {roadImpactsData.features.length} dari {roadImpactsData.pagination.total} ruas jalan terdampak di Bali.
 						</p>
 					) : null}
@@ -212,7 +210,7 @@ export function LandingPage() {
 					<h2 className="hd">
 						Jadwal Upacara & Rekayasa Jalur Terkini
 					</h2>
-					<p style={{ fontSize: 16, color: "#545B67", marginTop: 8 }}>
+					<p style={{ fontSize: "1rem", color: "#545B67", marginTop: 8 }}>
 						Pilih kabupaten/kota untuk melihat agenda prosesi adat terpublikasi, waktu pelaksanaan dalam WITA, dan lokasi kegiatan.
 					</p>
 				</div>
@@ -241,19 +239,25 @@ export function LandingPage() {
 					<div
 						style={{
 							background: "#FFFFFF",
-							borderRadius: 16,
+							border: "1px solid var(--color-border)",
+							borderRadius: 4,
 							padding: "48px 24px",
 							textAlign: "center",
 							color: "#545B67",
 						}}
 					>
-						<p style={{ margin: 0, fontSize: 15 }}>
+						<p style={{ margin: 0, fontSize: "1rem" }}>
 							Memuat jadwal upacara terpublikasi dari server...
 						</p>
 					</div>
 				) : isEventsError ? (
-                    <div role="alert"><p>Gagal memuat jadwal kegiatan.</p><button className="ui-button" type="button" onClick={() => void refetchEvents()}>Coba lagi</button></div>
-                ) : filteredEvents.length > 0 ? (
+					<div role="alert" className="teduh-empty-surface">
+						<p>Gagal memuat jadwal kegiatan.</p>
+						<button className="ui-button" type="button" onClick={() => void refetchEvents()}>
+							Coba lagi
+						</button>
+					</div>
+				) : filteredEvents.length > 0 ? (
 					<div className="schedule-grid">
 						{filteredEvents.map((evt: NormalizedLandingEvent) => {
 							let statusClass = "status-intermittent";
@@ -270,15 +274,20 @@ export function LandingPage() {
 							}
 
 							return (
-								<div
+								<article
 									key={evt.id}
-									className="schedule-card"
+									className="schedule-card schedule-card-clickable"
 									data-gsap="scroll-card"
+									onClick={(e) => {
+										if (!(e.target as HTMLElement).closest("a, button")) {
+											navigate(`/events/${evt.slug}`);
+										}
+									}}
 								>
 									<div>
 										<div className="schedule-card-header">
-											<span className="schedule-village-label">{evt.village} • {evt.regency}</span>
-											<div className="flex flex-wrap items-center gap-1">
+											<span className="schedule-village-label">{evt.village.replace(/\s*\([Ss]imulasi\)/g, "").trim()} • {evt.regency}</span>
+											<div className="schedule-card-badges">
 												{evt.isSimulation !== false ? (
 													<span className="simulation-label">SIMULASI</span>
 												) : null}
@@ -288,32 +297,47 @@ export function LandingPage() {
 											</div>
 										</div>
 
-										<h3 className="schedule-card-title">{evt.title}</h3>
+										<h3 className="schedule-card-title">
+											<Link
+												to={`/events/${evt.slug}`}
+												className="schedule-card-title-link"
+											>
+												{evt.title.replace(/^\[SIMULATED\]\s*/i, "").trim()}
+											</Link>
+										</h3>
 
 										<div className="schedule-card-meta">
 											<div className="schedule-meta-row">
-												<Calendar size={15} color="#64748B" />
+												<Calendar size={16} color="#4D702F" style={{ flexShrink: 0 }} />
 												<span style={{ fontVariantNumeric: "tabular-nums" }}>
 													{evt.timeLabel}
 												</span>
 											</div>
 											<div className="schedule-meta-row">
-												<MapPin size={15} color="#64748B" />
+												<MapPin size={16} color="#4D702F" style={{ flexShrink: 0 }} />
 												<span>{evt.roadName}</span>
 											</div>
 										</div>
 									</div>
 
 									<div className="schedule-card-footer">
-										<Link to={`/peta?village=${evt.slug}`} style={{ fontSize: 13, color: "#4D702F", textDecoration: "none", fontWeight: 500 }}>
-											Lihat di Peta →
+										<Link
+											to={`/peta?village=${evt.slug}`}
+											className="btn-schedule-map"
+											onClick={(e) => e.stopPropagation()}
+										>
+											<span>Lihat di Peta</span>
 										</Link>
-										<Link to={`/events/${evt.slug}`} className="btn-schedule-detail">
+										<Link
+											to={`/events/${evt.slug}`}
+											className="btn-schedule-detail"
+											onClick={(e) => e.stopPropagation()}
+										>
 											<span>Rincian Upacara</span>
-											<ArrowRight size={14} />
+											<ArrowRight size={15} />
 										</Link>
 									</div>
-								</div>
+								</article>
 							);
 						})}
 					</div>
@@ -322,31 +346,23 @@ export function LandingPage() {
 						data-gsap="scroll-card"
 						style={{
 							background: "#FFFFFF",
-							borderRadius: 16,
+							border: "1px solid var(--color-border)",
+							borderRadius: 4,
 							padding: "48px 24px",
 							textAlign: "center",
 							color: "#545B67",
 						}}
 					>
-						<p style={{ margin: "0 0 12px 0", fontSize: 16, color: "#181B20" }}>
+						<p style={{ margin: "0 0 12px 0", fontSize: "1rem", color: "#181B20", fontWeight: 600 }}>
 							Belum ada jadwal upacara terpublikasi untuk wilayah ini.
 						</p>
-						<p style={{ margin: "0 0 20px 0", fontSize: 14, color: "#545B67" }}>
+						<p style={{ margin: "0 0 20px 0", fontSize: "1rem", color: "#545B67" }}>
 							Jadwal hanya ditampilkan setelah panitia desa adat memverifikasi dan memublikasikan pengumuman resmi.
 						</p>
 						<Link
 							to="/events"
-							style={{
-								display: "inline-flex",
-								alignItems: "center",
-								gap: 8,
-								background: "#4D702F",
-								color: "#FFFFFF",
-								padding: "10px 20px",
-								borderRadius: 9999,
-								fontSize: 14,
-								textDecoration: "none",
-							}}
+							className="ui-button ui-button-primary"
+							style={{ gap: 8 }}
 						>
 							<span>Buka Direktori Jadwal Upacara</span>
 							<ArrowRight size={15} />

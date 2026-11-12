@@ -1,7 +1,46 @@
 import * as maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { MapPin, Trash2 } from "lucide-react";
+import { Layers, MapPin, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+
+const VENUE_STREET_STYLE: maplibregl.StyleSpecification = {
+	version: 8,
+	sources: {
+		osm: {
+			type: "raster",
+			tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+			tileSize: 256,
+			attribution: "© OpenStreetMap contributors",
+		},
+	},
+	layers: [{ id: "osm", type: "raster", source: "osm" }],
+};
+
+const VENUE_SATELLITE_STYLE: maplibregl.StyleSpecification = {
+	version: 8,
+	sources: {
+		"satellite-tiles": {
+			type: "raster",
+			tiles: [
+				"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+			],
+			tileSize: 256,
+			attribution: "Source: Esri, Maxar, Earthstar Geographics",
+		},
+	},
+	layers: [
+		{
+			id: "satellite-bg",
+			type: "background",
+			paint: { "background-color": "#151E28" },
+		},
+		{
+			id: "satellite-layer",
+			type: "raster",
+			source: "satellite-tiles",
+		},
+	],
+};
 
 export function VenueLocationInput({
 	longitude,
@@ -19,6 +58,8 @@ export function VenueLocationInput({
 	const changeRef = useRef(onChange);
 	const [error, setError] = useState(false);
 	const [mapAttempt, setMapAttempt] = useState(0);
+	const [baseStyle, setBaseStyle] = useState<"street" | "satellite">("street");
+	const baseStyleRef = useRef(baseStyle);
 
 	useEffect(() => {
 		changeRef.current = onChange;
@@ -35,18 +76,7 @@ export function VenueLocationInput({
 				container: container.current,
 				center: [115.1889, -8.4095],
 				zoom: 9.2,
-				style: {
-					version: 8,
-					sources: {
-						osm: {
-							type: "raster",
-							tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-							tileSize: 256,
-							attribution: "© OpenStreetMap contributors",
-						},
-					},
-					layers: [{ id: "osm", type: "raster", source: "osm" }],
-				},
+				style: baseStyleRef.current === "street" ? VENUE_STREET_STYLE : VENUE_SATELLITE_STYLE,
 			});
 			mapRef.current = map;
 			map.addControl(new maplibregl.NavigationControl(), "top-right");
@@ -107,7 +137,7 @@ export function VenueLocationInput({
 		) {
 			return;
 		}
-		markerRef.current = new maplibregl.Marker({ color: "#5C8437" })
+		markerRef.current = new maplibregl.Marker({ color: "#4D702F" })
 			.setLngLat([lng, lat])
 			.addTo(mapRef.current);
 		if (!focusedRef.current) {
@@ -118,6 +148,7 @@ export function VenueLocationInput({
 
 	const lngNum = Number(longitude);
 	const latNum = Number(latitude);
+	const hasAnyCoord = Boolean(longitude.trim() || latitude.trim());
 	const hasCoords = Boolean(longitude.trim() && latitude.trim());
 	const isValidBaliCoord =
 		hasCoords &&
@@ -149,15 +180,15 @@ export function VenueLocationInput({
 					className={`venue-location-status-pill ${
 						isValidBaliCoord
 							? "is-set"
-							: hasCoords
+							: hasAnyCoord
 								? "is-invalid"
 								: "is-empty"
 					}`}
 				>
 					{isValidBaliCoord
 						? `Titik Terpilih (${latNum.toFixed(4)}°, ${lngNum.toFixed(4)}°)`
-						: hasCoords
-							? "Koordinat di luar wilayah Bali"
+						: hasAnyCoord
+							? hasCoords ? "Koordinat di luar wilayah Bali" : "Lengkapi kedua koordinat"
 							: "Titik lokasi belum ditentukan"}
 				</span>
 			</div>
@@ -215,6 +246,27 @@ export function VenueLocationInput({
 					/>
 				</label>
 				<div className="venue-location-actions">
+					<button
+						className="teduh-btn-secondary"
+						type="button"
+						onClick={() => {
+							const next = baseStyle === "street" ? "satellite" : "street";
+							baseStyleRef.current = next;
+							setBaseStyle(next);
+							mapRef.current?.setStyle(
+								next === "satellite"
+									? VENUE_SATELLITE_STYLE
+									: VENUE_STREET_STYLE,
+							);
+						}}
+					>
+						<Layers size={14} aria-hidden="true" />
+						<span>
+							{baseStyle === "street"
+								? "Tampilan Satelit"
+								: "Tampilan Peta Jalan"}
+						</span>
+					</button>
 					<button
 						className="teduh-btn-secondary venue-location-clear-btn"
 						type="button"

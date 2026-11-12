@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
-import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider } from "react-router";
+import { useLayoutEffect, useState } from "react";
+import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider, useLocation } from "react-router";
 import {
 	PublicShellLayout,
 	WorkspaceShellLayout,
@@ -30,9 +30,18 @@ import {
 import { SettingsPage } from "./pages/SettingsPage";
 import { AssistantWidget } from "./features/assistant/AssistantWidget";
 import { PublicAssistantPage } from "./pages/PublicAssistantPage";
+import { RequireSession } from "./components/layout/RequireSession";
+
+function RouteScrollReset() {
+	const { pathname, hash } = useLocation();
+	useLayoutEffect(() => {
+		if (!hash) window.scrollTo(0, 0);
+	}, [pathname, hash]);
+	return null;
+}
 
 function RootLayout() {
-	return <><AssistantWidget /><Outlet /></>;
+	return <><RouteScrollReset /><AssistantWidget /><Outlet /></>;
 }
 
 const router = createBrowserRouter(createRoutesFromElements(
@@ -57,25 +66,23 @@ const router = createBrowserRouter(createRoutesFromElements(
 								/>
 								<Route path="/login" element={<LoginPage />} />
 								<Route path="/register" element={<RegisterPage />} />
-								<Route
-									path="/onboarding/organization"
-									element={<OrganizationOnboardingPage />}
-								/>
+								<Route element={<RequireSession />}>
+									<Route path="/onboarding/organization" element={<OrganizationOnboardingPage />} />
+								</Route>
 								<Route path="/onboarding/status" element={<OrganizationOnboardingPage />} />
 								<Route path="/admin/organizations" element={<AdminOrganizationsPage />} />
 								<Route path="/admin/users" element={<AdminUsersPage />} />
 								<Route path="/admin/reviewers" element={<AdminReviewersPage />} />
 								<Route path="/reviewer/road-requests" element={<ReviewerQueuePage />} />
 								<Route path="/admin/territories" element={<AdminTerritoriesPage />} />
-								<Route path="/activate/:token" element={<ActivationPage />} />
-								<Route
+								<Route path="/activate/:token" element={<ActivationPage />} />								<Route
 									path="/invite/:token"
 									element={<AcceptInvitationPage />}
 								/>
 							</Route>
 
 							{/* Authenticated Organizer & Field Officer Workspace */}
-							<Route element={<WorkspaceShellLayout />}>
+							<Route element={<RequireSession />}><Route element={<WorkspaceShellLayout />}>
 								<Route
 									path="/dashboard"
 									element={<OrganizerOverviewPage />}
@@ -167,7 +174,7 @@ const router = createBrowserRouter(createRoutesFromElements(
 								))}
 								<Route path="/settings" element={<SettingsPage />} />
 								<Route path="/ui-system" element={<Navigate to="/events" replace />} />
-							</Route>
+							</Route></Route>
 
 							<Route path="*" element={<Navigate to="/" replace />} />
 	</Route>

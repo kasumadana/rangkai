@@ -35,12 +35,16 @@ describe("B01 Frontend Foundation & Rangkai UI Domain Helpers", () => {
 		const road = { id: "road", roadSegmentId: "segment", plannedFrom: null, plannedTo: null, impactType: "closure" as const, diversionNote: null, geometry: { type: "MultiLineString", coordinates: [[[115.1, -8.1], [115.2, -8.2]], [[115.3, -8.3], [115.4, -8.4]], [[115.5, -8.5], [null, -8.6], [115.7, -8.7]]] } };
 		const segment = mapPublicEventToCeremonyProfile(event, [road]).roadSegments[0];
 		expect(segment.coordinateParts).toEqual([[[115.1, -8.1], [115.2, -8.2]], [[115.3, -8.3], [115.4, -8.4]]]);
+		const profile = mapPublicEventToCeremonyProfile(event, [road]);
+		expect(profile.alternativeRoutes).toEqual([]);
+		expect(profile.alternativeRouteSummary).toBe("Belum ada informasi jalur alternatif.");
 	});
 	it("does not summarize mixed open and unconfirmed roads as open", () => {
 		const event = { id: "event", title: "Latihan", slug: "latihan", category: null, description: null, venueName: null, startsAt: null, endsAt: null, status: "active", publishedAt: null, organizationName: "Organisasi", village: "Bali", district: "Bali" };
-		const road = { id: "open", roadSegmentId: "road", plannedFrom: null, plannedTo: null, impactType: "closure" as const, diversionNote: null, operationalStatus: { effectiveStatus: "open" as const, rawStatus: "open" as const, isStale: false, observedAt: null, expiresAt: null } };
+		const road = { id: "open", roadSegmentId: "road", plannedFrom: null, plannedTo: null, impactType: "closure" as const, diversionNote: null, operationalStatus: { effectiveStatus: "open" as const, rawStatus: "open" as const, isStale: false, observedAt: null, expiresAt: "2099-01-01T00:00:00Z" } };
 		expect(mapPublicEventToCeremonyProfile(event, [road]).primaryStatus).toBe("open");
 		expect(mapPublicEventToCeremonyProfile(event, [road, { ...road, id: "stale", operationalStatus: { ...road.operationalStatus, isStale: true } }]).primaryStatus).toBe("unknown");
+		expect(mapPublicEventToCeremonyProfile(event, [{ ...road, operationalStatus: { ...road.operationalStatus, expiresAt: null } }]).primaryStatus).toBe("unknown");
 	});
 	it("keeps missing or stale status unconfirmed and treats missing mode as simulation", () => {
 		const event = { id: "event", title: "Latihan", slug: "latihan", category: null, description: null, venueName: null, startsAt: null, endsAt: null, status: "active", publishedAt: null, organizationName: "Organisasi", village: "Bali", district: "Bali" };

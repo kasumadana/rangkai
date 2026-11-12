@@ -53,8 +53,8 @@ export function WasteMeasurementBadge({
 	const methodInfo = METHOD_CONFIG[method];
 	return (
 		<span className="inline-flex flex-wrap items-center gap-2">
-			<span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-800"><Scale size={14} aria-hidden="true" />{CATEGORY_LABELS[category]}: {quantity} {unit}</span>
-			<span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${methodInfo.color}`}>{methodInfo.label}</span>
+			<span className="inline-flex items-center gap-1 rounded-[4px] bg-stone-100 px-2.5 py-1 text-xs font-semibold text-stone-800"><Scale size={14} aria-hidden="true" />{CATEGORY_LABELS[category]}: {quantity} {unit}</span>
+			<span className={`rounded-[4px] px-2.5 py-1 text-xs font-semibold ${methodInfo.color}`}>{methodInfo.label}</span>
 			<small>({methodInfo.note})</small>
 		</span>
 	);

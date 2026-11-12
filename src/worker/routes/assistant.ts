@@ -7,6 +7,7 @@ import { sendError } from "../lib/errors";
 import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rate-limit";
 import { freshRoadStatus, selectAssistantSources, validateSelection, type AssistantSource } from "../services/public-assistant";
+import { assistantHelp } from "../services/assistant-help";
 import type { AppVariables, Env } from "../types";
 import { GEMINI_MODEL_NAME } from "../validators/extractions";
 
@@ -18,11 +19,6 @@ export type AssistantSourceFact =
  | { sourceId: string; url: string; kind: "help"; title: string; facts: Record<string, never> };
 
 const inputSchema = z.object({ question: z.string().trim().min(1).max(500), organizationId: z.uuid().optional(), eventId: z.uuid().optional(), helpTopic: z.enum(["event", "traffic", "cleanup"]).optional() }).strict();
-const help = {
- event: { answer: "Buka kegiatan untuk membuat atau meninjau informasi sebelum publikasi.", url: "/dashboard/events" },
- traffic: { answer: "Buka penugasan untuk mencatat pengamatan status jalan sesuai izin Anda.", url: "/field" },
- cleanup: { answer: "Buka penugasan untuk mencatat tugas kebersihan sesuai izin Anda. Verifikasi kebersihan tidak membuka jalan.", url: "/field" },
-} as const;
 
 export const assistantRouter = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 assistantRouter.onError((_error, c) => sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten sementara tidak tersedia.", 503));
@@ -37,7 +33,7 @@ assistantRouter.post("/questions", async c => {
  const { question, organizationId, eventId, helpTopic } = parsed.data;
  if (helpTopic && (organizationId || eventId)) return sendError(c, "VALIDATION_FAILED", "Help does not accept event context.", 422);
  if (helpTopic) {
-  const item = help[helpTopic];
+  const item = assistantHelp[helpTopic];
   return c.json({ status: "answered", scope: "help", intent: "help", answer: item.answer, sources: [{ sourceId: `help:${helpTopic}`, url: item.url, kind: "help", title: "Panduan penggunaan", facts: {} }], searchUrl: item.url });
  }
  const db = c.get("db");

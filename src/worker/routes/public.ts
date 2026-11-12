@@ -117,6 +117,56 @@ publicRouter.get("/events", async (c) => {
 		.limit(limit)
 		.offset(offset);
 
+	const altRoutesByEventId = new Map<
+		string,
+		Array<{
+			id: string;
+			name: string;
+			description: string | null;
+			approvedAt: string;
+			geometry: Record<string, unknown>;
+		}>
+	>();
+
+	if (rows.length > 0) {
+		const eventIdsSql = sql.join(
+			rows.map((r) => sql`${r.id}::uuid`),
+			sql`, `,
+		);
+		const altRes = await db.execute(sql`
+			SELECT
+				id,
+				event_id AS "eventId",
+				name,
+				description,
+				approved_at AS "approvedAt",
+				ST_AsGeoJSON(geom)::json AS geometry
+			FROM event_alternative_routes
+			WHERE event_id IN (${eventIdsSql})
+				AND status = 'approved'
+				AND (expires_at IS NULL OR expires_at > NOW())
+			ORDER BY approved_at ASC;
+		`);
+		for (const row of altRes.rows as Array<{
+			id: string;
+			eventId: string;
+			name: string;
+			description: string | null;
+			approvedAt: string | Date;
+			geometry: Record<string, unknown>;
+		}>) {
+			const list = altRoutesByEventId.get(row.eventId) ?? [];
+			list.push({
+				id: row.id,
+				name: row.name,
+				description: row.description,
+				approvedAt: new Date(row.approvedAt).toISOString(),
+				geometry: row.geometry,
+			});
+			altRoutesByEventId.set(row.eventId, list);
+		}
+	}
+
 	return c.json(
 		{
 			events: rows.map((r) => ({
@@ -133,6 +183,7 @@ publicRouter.get("/events", async (c) => {
 				status: r.status,
 				isSimulation: r.isSimulation !== false,
 				publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+				alternativeRoutes: altRoutesByEventId.get(r.id) ?? [],
 				organization: {
 					name: r.organizationName,
 					village: r.village,

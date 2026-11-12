@@ -347,6 +347,7 @@ export interface PublicEventItem {
 	village: string;
 	district: string;
 	isSimulation?: boolean;
+	alternativeRoutes?: AlternativeRouteRecord[];
 	organization?: {
 		name: string;
 		village: string;
@@ -969,6 +970,7 @@ interface RawPublicEventPayload {
 	village?: string;
 	district?: string;
 	isSimulation?: boolean;
+	alternativeRoutes?: AlternativeRouteRecord[];
 	organization?: {
 		name?: string;
 		village?: string;
@@ -1011,6 +1013,9 @@ function normalizePublicEvent(raw: RawPublicEventPayload): PublicEventItem & {
 		village,
 		district,
 		isSimulation: raw.isSimulation !== false,
+		alternativeRoutes: Array.isArray(raw.alternativeRoutes)
+			? raw.alternativeRoutes
+			: [],
 		organization: {
 			name: orgName,
 			village,
@@ -1468,7 +1473,8 @@ export function mapPublicEventToCeremonyProfile(
 		const effStatus = r.operationalStatus?.effectiveStatus;
 		const normalizedImpact = normalizeRoadImpactType(r.impactType);
 		let roadStatus: OperationalRoadStatus = "unknown";
-		if (!r.operationalStatus?.isStale && (effStatus === "closed" || effStatus === "intermittent" || effStatus === "open")) {
+		const expiry = Date.parse(r.operationalStatus?.expiresAt ?? "");
+		if (!r.operationalStatus?.isStale && Number.isFinite(expiry) && expiry > Date.now() && (effStatus === "closed" || effStatus === "intermittent" || effStatus === "open")) {
 			roadStatus = effStatus;
 		}
 
@@ -1499,10 +1505,7 @@ export function mapPublicEventToCeremonyProfile(
 			lastConfirmedLabel: r.operationalStatus?.observedAt
 				? formatWitaEventSchedule(r.operationalStatus.observedAt, null).dateLabel
 				: "Belum dikonfirmasi",
-			guidanceNote:
-				r.diversionNote ||
-				evt.trafficImpactDescription ||
-				"Ikuti arahan petugas pecalang di simpang jalan.",
+			guidanceNote: r.diversionNote || "Arahan pengalihan belum tersedia.",
 			coordinates: coords,
 			coordinateParts,
 			svgPath: "M 180 260 L 760 260",
@@ -1536,6 +1539,25 @@ export function mapPublicEventToCeremonyProfile(
 		primaryStatus = "open";
 	}
 
+	const mappedAlternativeRoutes: Array<{
+		id: string;
+		name: string;
+		description?: string;
+		coordinates: Array<[number, number]>;
+	}> = (evt.alternativeRoutes ?? [])
+		.filter(
+			(ar) =>
+				ar.geometry &&
+				Array.isArray(ar.geometry.coordinates) &&
+				ar.geometry.coordinates.length >= 2,
+		)
+		.map((ar) => ({
+			id: ar.id,
+			name: ar.name,
+			description: ar.description ?? undefined,
+			coordinates: ar.geometry.coordinates,
+		}));
+
 	return {
 		id: evt.id,
 		isSimulation: evt.isSimulation !== false,
@@ -1545,8 +1567,8 @@ export function mapPublicEventToCeremonyProfile(
 		kecamatan: matchedDistrict?.name || villageName,
 		ceremonyTitle: evt.title,
 		yadnyaCategory: evt.category || "Upacara Adat",
-		sacredCenterName: evt.venueName || orgName,
-		destinationName: evt.venueName || orgName,
+		sacredCenterName: evt.venueName || "Lokasi belum ditentukan",
+		destinationName: evt.venueName || "Lokasi belum ditentukan",
 		participatingBanjars: [villageName],
 		scheduleDateLabel: schedule.dateLabel,
 		scheduleWindowWita: schedule.windowWita,
@@ -1556,14 +1578,9 @@ export function mapPublicEventToCeremonyProfile(
 		},
 		coordinatorName: evt.organizerName || orgName,
 		primaryStatus,
-		overview:
-			evt.description ||
-			evt.processionDescription ||
-			`Pelaksanaan ${evt.title} oleh ${orgName}.`,
+		overview: evt.description || evt.processionDescription || "",
 		alternativeRouteSummary:
-			evt.trafficImpactDescription ||
-			mappedRoads[0]?.guidanceNote ||
-			"Penyesuaian arus lalu lintas mengikuti arahan petugas di lapangan.",
+			mappedAlternativeRoutes[0]?.description || "Belum ada informasi jalur alternatif.",
 		mapCenter: evt.venueLocation?.coordinates ?? derivedCenter,
 		venueLocation: evt.venueLocation?.coordinates ?? null,
 		mapZoom: 14.2,
@@ -1578,6 +1595,7 @@ export function mapPublicEventToCeremonyProfile(
 			description: evt.processionDescription || evt.title,
 		},
 		roadSegments: mappedRoads,
+		alternativeRoutes: mappedAlternativeRoutes,
 		parkingLots: [],
 		pecalangPosts: [],
 		communityNotices: [],

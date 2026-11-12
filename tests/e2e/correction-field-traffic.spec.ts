@@ -248,7 +248,7 @@ test.describe("Journey 4: Field Officer Traffic Update -> Public Live Status & U
 
 			// Public user reloads page
 			await publicPage.reload();
-			await expect(publicPage.getByText(/BELUM DIKONFIRMASI ULANG/i).first()).toBeVisible();
+			await expect(publicPage.getByText(/Belum terkonfirmasi/i).first()).toBeVisible();
 
 			await publicPage.screenshot({
 				path: "./.scratch/production-readiness/correction-evidence/journey4-public-status-stale.png",

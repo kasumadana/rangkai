@@ -11,7 +11,7 @@ const STATUS_COLOR_CLASSES: Record<StatusColor, string> = {
 };
 
 function StatusLabel({ color, label }: { color: StatusColor; label: string }) {
-	return <span className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_COLOR_CLASSES[color]}`}>{label}</span>;
+	return <span className={`inline-flex max-w-full items-center rounded-[4px] px-2.5 py-1 text-xs font-semibold ${STATUS_COLOR_CLASSES[color]}`}>{label}</span>;
 }
 
 /**

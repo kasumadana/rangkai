@@ -127,6 +127,15 @@ Do not equate:
 - "CLOSED" with an official police order.
 - "Verified by organizer" with legal certification.
 
+### GPS route guidance privacy
+
+The browser requests location only after the user starts tracking. When it calculates
+personal route guidance, the current GPS coordinate and approved route waypoints are
+sent to the external OSRM endpoint at `router.project-osrm.org`. The application does
+not need to persist these coordinates. Tell users about this transfer while tracking
+is active, and do not log or store precise GPS coordinates. The provider's retention
+terms have not been verified in this project; review them before production use.
+
 ## 8. Audit Logs
 
 Audit:

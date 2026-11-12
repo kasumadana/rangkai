@@ -609,11 +609,11 @@ export function PublicNoticeDraftPanel({
 					<div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded bg-white border border-stone-200 text-base">
 						<div className="flex items-center gap-2 flex-wrap">
 							{displayedNotice.isCorrectedVersion ? (
-								<span className="px-2.5 py-0.5 rounded-full bg-white border border-emerald-200 text-emerald-800 font-semibold text-[11px]">
+								<span className="px-2.5 py-0.5 rounded-[4px] bg-white border border-emerald-200 text-emerald-800 font-semibold text-[11px]">
 									Versi Terkoreksi (Disetujui Prajuru)
 								</span>
 							) : (
-								<span className="px-2.5 py-0.5 rounded-full bg-white border border-stone-200 text-stone-600 text-[11px]">
+								<span className="px-2.5 py-0.5 rounded-[4px] bg-white border border-stone-200 text-stone-600 text-[11px]">
 									Draf Rekomendasi Sistem
 								</span>
 							)}

@@ -6,6 +6,7 @@ const source = z.union([
  base.extend({ sourceId: z.string().startsWith("event:"), startsAt: z.string().nullable(), endsAt: z.string().nullable() }),
  base.extend({ sourceId: z.string().startsWith("road:"), eventStatus: z.string(), startsAt: z.string().nullable().optional(), endsAt: z.string().nullable().optional() }),
  base.extend({ sourceId: z.string().startsWith("cleanup:"), summary: z.object({ totalTasks: z.number(), verifiedTasks: z.number(), submittedTasks: z.number(), inProgressTasks: z.number(), todoTasks: z.number(), reopenedTasks: z.number() }) }),
+ z.object({ sourceId: z.string().startsWith("help:"), kind: z.literal("help"), title: z.string(), url: z.enum(["/events", "/peta", "/dashboard/events", "/field"]), answer: z.string() }),
 ]);
 const response = z.object({ status: z.enum(["answered", "abstained"]), intent: z.string(), answer: z.string(), sources: z.array(source), searchUrl: z.literal("/events"), mapUrl: z.literal("/peta").optional() });
 export type AssistantQuestion = { question: string; eventSlug?: string; location?: string };

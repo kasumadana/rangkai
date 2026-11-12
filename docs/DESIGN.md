@@ -220,13 +220,28 @@ mandiri, bukan untuk membungkus setiap label, metrik, atau baris.
 
 Navbar workspace memiliki logo dan tombol profil sebagai komponen utama.
 Navbar publik dan peta mempertahankan navigasi situs yang berbeda: logo, tautan
-Beranda/Kegiatan/Peta, serta akses akun. Pada layar sempit tautan publik tersedia
-melalui drawer yang dapat diakses dengan keyboard; pencarian peta tetap berada
-di kontrol peta. Keputusan publik ini mengikuti koreksi pengguna terbaru.
+Beranda/Kegiatan/Peta, serta akses akun. Pada desktop, logo berada di kiri, tautan
+berada tepat di tengah viewport, dan akses akun berada di kanan. Header landing
+transparan di atas hero lalu berubah menjadi putih polos saat halaman digulir;
+header peta selalu putih polos agar teks tetap terbaca di atas warna peta yang
+berubah-ubah. Navbar tidak memakai border atau shadow.
+
+Pada mobile, logo dan akses akun tetap di header atas. Navigasi utama muncul
+sebagai bar tetap di bawah dengan tautan Beranda, Kegiatan, dan Peta serta
+label yang terlihat. Bar menghormati safe area perangkat. Pada halaman peta,
+kanvas dimulai di bawah header dan berakhir sebelum bar navigasi bawah; kontrol
+peta diposisikan di dalam ruang kanvas yang tersisa. Pencarian peta tetap berada
+di kontrol peta.
 
 Role, nama organisasi, nama pengguna, Portal Publik, pengaturan akun, dan Keluar
 berada di menu profil. Pengunjung anonim mendapat akses Masuk atau Daftar.
 Tautan publik juga tetap tersedia melalui CTA landing dan footer.
+
+Footer publik memakai susunan lama: identitas Rangkai dan deskripsi singkat di
+sisi kiri, grup tautan Jelajahi, Panduan, dan Ruang kerja di sisi kanan, lalu
+catatan batas penggunaan di bawah. Permukaannya putih dengan pemisah tipis dan
+token teks saat ini; pada layar sempit kolom ditumpuk agar tautan tetap mudah
+dibaca dan disentuh.
 
 Konteks organisasi yang menentukan data/aksi tetap jelas dalam area konten.
 Label simulasi tetap melekat pada data terkait walaupun ringkasan profil ditutup.
@@ -239,7 +254,7 @@ Bagian kontekstual berada di bawah Kegiatan/Tugas Saya, bukan mengganti sidebar.
 
 | Menu organizer | Route | Isi |
 |---|---|---|
-| Ringkasan | `/dashboard` | Pekerjaan yang perlu ditindaklanjuti, kegiatan terdekat, aksi berikutnya |
+| Ringkasan | `/dashboard` | Pekerjaan yang perlu ditindaklanjuti, kegiatan terdekat, petugas terdekat, tugas kebersihan menunggu verifikasi |
 | Kegiatan | `/dashboard/events` | Daftar, pencarian, filter, dan buat kegiatan |
 | Operasional Lapangan | `/field` | Penugasan yang boleh diakses pengguna |
 | Pengaturan | `/settings` | Preferensi/akun/organisasi yang dapat dikelola |
@@ -266,9 +281,12 @@ adalah aksi organizer dalam konteks kegiatan. Link tersimpan dan browser Back
 harus tetap bekerja; route aktif ditandai secara spesifik, bukan semua menu
 Kegiatan sekaligus.
 
-Officer membuka `/field/events/:id` dengan submenu sesuai `traffic:update` dan
-`cleanup:update`. Detail traffic/cleanup memakai shell yang sama, termasuk saat
-membuka `/field/events/:id/cleanup/:taskId` atau kembali ke Pengaturan.
+Officer membuka `/field/events/:id` dari daftar tugas. Menu utama tetap stabil
+di semua route tugas lapangan; navigasi antara lalu lintas dan kebersihan berada
+di dalam halaman tugas dan hanya muncul bila izin pengguna mencakup kedua tahap.
+Setiap tahap menyediakan aksi penyimpanan yang sudah dikonfirmasi server dan
+tautan kembali ke daftar tugas. Ini juga berlaku saat membuka
+`/field/events/:id/cleanup/:taskId` atau kembali ke Pengaturan.
 
 ### Wizard baru dan pengelolaan kegiatan
 
@@ -280,9 +298,10 @@ sadar. Kelanjutan draft tidak boleh kehilangan isian.
 
 Empat tahap tetap: Dokumen & AI; Detail & Jadwal; Peta & Ruas Jalan; Tinjau &
 Publikasi. Di atas formulir cukup teks “Langkah 1 dari 4 — Dokumen & AI”.
-Navigasi Kembali/Lanjutkan berada di bawah formulir; tahap akhir menawarkan
-Simpan draf atau publikasi sesuai izin dan kelengkapan review. Manual fallback
-memungkinkan kelanjutan ketika dokumen/AI tidak tersedia.
+Navigasi Kembali/Lanjutkan berada di bawah formulir. Simpan draf tersedia setelah
+organisasi dan nama kegiatan valid; tahap akhir menawarkan simpan draf atau
+publikasi sesuai izin dan kelengkapan review. Manual fallback memungkinkan
+kelanjutan ketika dokumen/AI tidak tersedia.
 
 Hapus deretan pill “Ringkasan/Wizard · Dokumen & AI · ...”, kartu empat langkah
 besar, serta tombol Tim yang menduplikasi sidebar. Di halaman kegiatan tersimpan,
@@ -440,12 +459,37 @@ Gunakan “Draf”, bukan “DRAF (DRAFT)”, serta satu istilah Tim & Petugas d
 ### Asisten global, hanya baca
 
 **DECISION:** asisten hadir sebagai widget di seluruh halaman, termasuk landing,
-workspace, dan peta. Tombol teks “Asisten” berada di kiri bawah, tanpa spark atau
+workspace, dan peta. Tombol ikon logo Rangkai berada di kanan bawah, tanpa teks atau
 animasi penarik perhatian. Saat tertutup tombol tidak menutupi navigasi mobile,
 safe area, kontrol peta, dan aksi formulir; tempatkan kontrol yang bersaing di
 area lain saat implementasi, bukan menumpuknya. Desktop memakai panel ringkas;
-mobile memakai bottom sheet yang dapat diperluas dan tetap ramah keyboard.
-Panel hanya terbuka atas tindakan pengguna. Escape/tutup mengembalikan fokus.
+mobile memakai bottom sheet dengan percakapan yang dapat digulir dan footer tetap
+terlihat. Header menunjukkan nama Asisten Rangkai dan tombol tutup berikon X.
+Pesan pengguna dan jawaban tampil sebagai bubble; kolom ketik dan tombol kirim
+bersebelahan pada footer. Panel hanya terbuka atas tindakan pengguna.
+Escape/tutup mengembalikan fokus.
+
+Jangan tampilkan pemilih lingkup atau kolom kode kegiatan. Pertanyaan umum memakai
+proyeksi publik. Pada route kegiatan internal, konteks organisasi dan kegiatan
+diambil dari pilihan organisasi aktif dan route setelah pemeriksaan sesi,
+membership, penugasan, dan izin server. Route `/tanya?event=...` tetap membaca
+slug kegiatan untuk konteks publik. Letakkan pemberitahuan singkat tentang
+pemrosesan oleh layanan AI eksternal dan larangan mengirim data pribadi dekat
+kolom pesan; jangan menampilkan nama provider pada widget.
+
+Kontrol lokasi menggunakan tombol ikon berlabel aksesibel pada sudut kanan bawah
+peta. Pelacakan dimulai hanya atas tindakan pengguna; izin ditolak, GPS tidak
+tersedia, dan lokasi di luar cakupan Bali ditampilkan dengan jelas. Pengguna
+dapat menghentikan pelacakan dan kembali mengikuti lokasi setelah menggeser peta.
+Pada halaman peta publik, tombol pelacakan berada tepat di atas tombol asisten.
+Peta dapat digeser dengan satu jari dan diperbesar dengan pinch dua jari tanpa
+Ctrl. Saat panel detail menutupi kontrol peta, kontrol tersebut disembunyikan.
+Saat tracking aktif, garis alternatif statis disembunyikan dan hanya garis rute
+personal yang lolos pemeriksaan seluruh ruas tertutup yang ditampilkan. Jika
+tidak ada jalur manual yang disetujui atau rute jaringan gagal divalidasi,
+tampilkan status bahwa rute tidak tersedia dan jangan menggambar garis tebakan.
+Beritahu pengguna bahwa koordinat GPS dikirim ke OSRM saat rute dihitung.
+Pusat peta bukan pengganti lokasi pengguna ketika GPS tidak tersedia.
 
 Pengunjung membaca informasi publik dan panduan penggunaan. Pengguna login juga
 dapat membaca data organisasi/tugas yang boleh diakses: organizer pada organisasi
@@ -477,8 +521,9 @@ identitas/cakupan izin tetap sama. Role/izin tetap diperiksa ulang server.
 
 Route `/tanya` dipertahankan sebagai akses kompatibilitas yang membuka widget;
 parameter konteks kegiatan tetap dibaca setelah pemeriksaan izin. Aplikasi
-tetap dapat digunakan bila asisten dinonaktifkan, timeout, atau Gemini gagal.
-Tampilkan error/retry dan link alur manual, bukan jawaban sukses buatan.
+tetap dapat digunakan bila asisten dinonaktifkan, timeout, atau provider gagal.
+Tampilkan error/retry dan tautan daftar kegiatan hanya saat terjadi error,
+bukan sebagai tautan permanen di footer.
 Fitur AI lain tetap mengikuti review manusia dan batas enablement masing-masing;
 permintaan membuat widget tidak otomatis mengaktifkan penilaian foto produksi.
 

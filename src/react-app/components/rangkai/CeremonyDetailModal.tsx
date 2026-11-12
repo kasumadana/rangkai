@@ -103,24 +103,33 @@ export function CeremonyDetailModal({
 					</button>
 				</div>
 
-				<div className="flex flex-wrap items-center gap-1">
+				<div className="flex flex-wrap items-center gap-2">
 					<span className={`map-popup-badge ${statusBadge.className}`}>
 						{statusBadge.label}
 					</span>
 					{ceremony.isSimulation !== false ? (
 						<span className="map-popup-badge simulation-token">SIMULASI</span>
 					) : null}
-					<span className="text-xs text-stone-500 font-medium">
-						{ceremony.windowWita}
-						{ceremony.dateLabel ? ` • ${ceremony.dateLabel}` : ""}
-					</span>
 				</div>
 
 				<div className="map-detail-summary-list">
 					<div className="map-detail-summary-item">
-						<span className="map-detail-summary-label">Lokasi & Koridor</span>
+						<span className="map-detail-summary-label">Pusat Upacara</span>
 						<span className="map-detail-summary-val">
-							{ceremony.sacredCenterName} • {ceremony.roadName || "Ruas belum ditentukan"}
+							{ceremony.sacredCenterName}
+						</span>
+					</div>
+					<div className="map-detail-summary-item">
+						<span className="map-detail-summary-label">Jadwal Pelaksanaan</span>
+						<span className="map-detail-summary-val tabular-nums">
+							{ceremony.dateLabel ? `${ceremony.dateLabel} • ` : ""}
+							{ceremony.windowWita}
+						</span>
+					</div>
+					<div className="map-detail-summary-item">
+						<span className="map-detail-summary-label">Ruas Jalan Terdampak</span>
+						<span className="map-detail-summary-val">
+							{ceremony.roadName || "Ruas belum ditentukan"}
 						</span>
 					</div>
 					<div className="map-detail-summary-item">
