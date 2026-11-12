@@ -362,9 +362,7 @@ Frontend hasil merge memakai komponen sendiri. Perubahan berikutnya menggunakan
 primitive bersama untuk Button, Field/Input/Select/Textarea, ProfileMenu,
 Dialog/Drawer, Feedback/Toast, dan List/Table sesuai kebutuhan yang sudah ada.
 Ini kontrak target, bukan klaim semua primitive sudah diekstrak. Hindari menyalin
-seluruh API Astryx atau membuat framework UI baru. Dependency/aturan Astryx yang
-masih tertinggal memerlukan pekerjaan penyelarasan terpisah; dokumen ini tidak
-mengubah AGENTS atau menghapus package secara otomatis.
+seluruh API Astryx atau membuat framework UI baru. Dependency dan aturan Astryx yang tidak digunakan telah dihapus dari proyek.
 
 ### Button
 

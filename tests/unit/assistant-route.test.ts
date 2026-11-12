@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { cleanupTasks, eventAssignments, events, memberships, roadImpacts, roadStatusUpdates, wasteRecords } from "../../src/db/schema";
 import { assistantRouter, type AssistantSourceFact } from "../../src/worker/routes/assistant";
@@ -95,7 +95,3 @@ describe("authenticated assistant", () => {
   const f = vi.fn(); vi.stubGlobal("fetch", f); expect((await harness(state()).request(input, {})).status).toBe(503); expect(f).not.toHaveBeenCalled();
  });
 });
-
-
-
-

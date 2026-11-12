@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { Link, useLocation } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -69,8 +69,3 @@ export function AssistantWidget() {
  {visible.map((entry, index) => <section key={index} className="assistant-answer"><p><strong>Anda:</strong> {entry.question}</p><p><strong>{"scope" in entry.response && entry.response.scope === "help" ? "Panduan penggunaan" : mode === "public" ? "Informasi publik" : "Data internal"}:</strong> {entry.response.answer}</p>{entry.response.sources.map(source => <article key={source.sourceId}><Link to={"url" in source ? source.url : source.publicUrl} onClick={close}>{source.title}</Link>{"facts" in source ? <><p>{source.facts.isSimulation ? "Simulasi · " : ""}{source.kind === "road" && (!source.facts.expiresAt || !Number.isFinite(Date.parse(source.facts.expiresAt)) || Date.parse(source.facts.expiresAt) <= clock) ? "Belum terkonfirmasi" : ("status" in source.facts ? statusLabel(source.facts.status) : "")}</p>{source.kind === "event" && <p>Mulai: {date(source.facts.startsAt)}; selesai: {date(source.facts.endsAt)}</p>}{source.kind === "road" && <p>Diamati: {date(source.facts.observedAt)}; berlaku sampai: {date(source.facts.expiresAt)}</p>}{source.kind === "cleanup" && <p>Tenggat: {date(source.facts.dueAt)}</p>}{source.kind === "waste" && <p>{String(source.facts.category)} · {String(source.facts.measurementMethod)} · {String(source.facts.quantityKg ?? "—")} kg · {String(source.facts.sackCount ?? "—")} karung</p>}</> : <><p>{source.isSimulation ? "Simulasi · " : ""}{source.sourceId.startsWith("road:") && (!source.expiresAt || !Number.isFinite(Date.parse(source.expiresAt)) || Date.parse(source.expiresAt) <= clock) ? "Belum terkonfirmasi" : statusLabel(source.status)}</p>{source.observedAt && <p>Diamati: {date(source.observedAt)}; berlaku sampai: {date(source.expiresAt)}</p>}{"startsAt" in source && <p>Mulai: {date(source.startsAt)}; selesai: {date(source.endsAt)}</p>}{"summary" in source && <p>Tugas diverifikasi: {source.summary.verifiedTasks} dari {source.summary.totalTasks}</p>}</>}</article>)}</section>)}
  <form onSubmit={submit}><label>Pertanyaan<textarea value={draft} onChange={e => setDraft(e.target.value)} maxLength={500} rows={3} /></label>{error && <p role="alert">{error}</p>}<button type="submit" className="teduh-btn-primary" disabled={pending}>{pending ? "Mencari jawaban…" : error ? "Coba lagi" : "Kirim pertanyaan"}</button></form><Link to="/events" onClick={close}>Cari kegiatan secara manual</Link></div></div></div>}</>, document.body);
 }
-
-
-
-
-

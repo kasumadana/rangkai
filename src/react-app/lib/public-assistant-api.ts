@@ -12,4 +12,3 @@ export type AssistantQuestion = { question: string; eventSlug?: string; location
 export async function askPublicAssistant(body: AssistantQuestion, signal?: AbortSignal) {
  return response.parse(await apiFetch<unknown>("/api/public/assistant/questions", { method: "POST", body, signal }));
 }
-

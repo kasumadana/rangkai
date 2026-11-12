@@ -32,7 +32,7 @@ Generated from project sources at 2026-11-12T06:03:13.902Z.
 - Read docs/DESIGN.md as the normative TARGET before selecting inspiration; current CSS is not proof the target is implemented.
 - Use Lora for editorial serif and Plus Jakarta Sans for sans-serif UI.
 - Use white surfaces, small radii, thin overlay shadows, mobile-first field flows and readable controls.
-- Keep Ringkasan distinct from Kegiatan, stable sidebar, logo/profile navbar and new-event-only wizard.
+- Keep Ringkasan distinct from Kegiatan, stable sidebar, workspace logo/profile navbar, public site navigation and new-event-only wizard.
 - Retain simulation, expiry, sources, permissions and truthful loading/error states.
 - Use existing React/Tailwind components and pnpm; inspect catalog before considering code retrieval.
 

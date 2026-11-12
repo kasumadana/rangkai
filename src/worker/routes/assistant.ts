@@ -1,4 +1,4 @@
-﻿import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
@@ -99,8 +99,3 @@ assistantRouter.post("/questions", async c => {
  if (!base.sources.length) return c.json(base);
  return c.json({ ...base, status: "answered", answer: selected.intent === "road_status" ? "Status kedaluwarsa tidak terkonfirmasi; jalan terbuka belum tentu lancar." : selected.intent === "cleanup_summary" ? "Berikut catatan kebersihan dan sampah. Verifikasi kebersihan tidak membuka jalan." : "Berikut data kegiatan yang dipilih." });
 });
-
-
-
-
-

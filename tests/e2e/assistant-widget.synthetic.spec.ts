@@ -13,7 +13,7 @@ test("public widget opens from compatibility URL and keeps draft across routes",
  await dialog.getByLabel("Pertanyaan").fill("Kapan kegiatan?");
  await page.keyboard.press("Escape");
  await expect(page.getByRole("button", { name: "Asisten" })).toBeFocused();
- await page.getByRole("link", { name: /masuk/i }).first().click();
+ await page.getByRole("navigation", { name: "Navigasi publik" }).getByRole("link", { name: "Kegiatan" }).click();
  await page.getByRole("button", { name: "Asisten" }).click();
  await expect(dialog.getByLabel("Pertanyaan")).toHaveValue("Kapan kegiatan?");
  await dialog.getByRole("button", { name: "Kirim pertanyaan" }).click();

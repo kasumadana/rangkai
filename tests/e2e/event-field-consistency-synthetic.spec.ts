@@ -52,6 +52,7 @@ test("unsaved wizard blocks links and browser Back, including after failed save"
  await page.locator("#wizard-org-select").selectOption(org);
  await page.getByRole("button", { name: /Lewati.*Manual/ }).first().click();
  await page.getByPlaceholder("Contoh: Karya Pujawali & Prosesi Melasti Pura Dalem Ubud").fill("Belum tersimpan");
+ await page.getByRole("button", { name: "Asisten" }).click(); await page.getByRole("dialog", { name: "Asisten" }).getByLabel("Pertanyaan").fill("Draf asisten"); await page.keyboard.press("Escape");
  const backDialog = page.waitForEvent("dialog");
  await page.evaluate(() => (globalThis as unknown as { history: { back: () => void } }).history.back());
  await (await backDialog).dismiss();
@@ -61,6 +62,7 @@ test("unsaved wizard blocks links and browser Back, including after failed save"
  await page.getByRole("button", { name: "Simpan Rincian" }).click(); await expect(page.getByText("Belum Dapat Menyimpan")).toBeVisible();
  const linkDialog = page.waitForEvent("dialog"); await page.getByRole("link", { name: "Daftar Upacara" }).click(); await (await linkDialog).dismiss(); await expect(page).toHaveURL(/\/dashboard\/events\/new$/);
  const discardDialog = page.waitForEvent("dialog"); await page.getByRole("link", { name: "Daftar Upacara" }).click(); await (await discardDialog).accept(); await expect(page).toHaveURL(/\/dashboard$/);
+ await page.getByRole("button", { name: "Asisten" }).click(); await expect(page.getByRole("dialog", { name: "Asisten" }).getByLabel("Pertanyaan")).toHaveValue("Draf asisten");
 });
 
 test("AI failure retains wizard and manual entry remains available", async ({ page }) => {

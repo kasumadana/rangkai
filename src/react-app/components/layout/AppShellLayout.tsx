@@ -94,6 +94,3 @@ export function WorkspaceShellLayout() {
  <main ref={content} tabIndex={-1} inert={open} className="teduh-workspace-main" id="main-content">{session?.user && active && <p className="workspace-context">{active.name} - {active.role === "organizer" ? "Panitia" : "Petugas"}</p>}<Outlet /></main></div></div>;
 
 }
-
-
-
