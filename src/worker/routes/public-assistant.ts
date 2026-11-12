@@ -49,8 +49,7 @@ publicAssistantRouter.post("/questions", async c => {
     return c.json({ status: evidence.rows.length ? "answered" : "abstained", intent: "route_help", answer: `Lokasi yang cocok: ${evidence.originLabel} ke ${evidence.destinationLabel}. Periksa kecocokan lokasi ini. ${evidence.rows.length ? "Berikut ruas publik yang berpotongan dengan rute tersebut." : "Tidak ditemukan persilangan pada data publik yang tersedia; kondisi jalan tidak dapat dipastikan."} ${evidence.truncated ? "Hasil dibatasi dan tidak lengkap. " : ""}${warning}`, sources: evidence.rows, searchUrl: "/events", mapUrl: "/peta" });
    }
   }
-  const current = await retrieve();
-  const matched = current.filter(s => selected.sourceIds.includes(s.sourceId) || [selected.origin, selected.destination].some(p => p && [s.title, s.venueName, s.village, s.district].some(f => f?.toLowerCase().includes(p.toLowerCase()))));
+  const matched = sources.filter(s => selected.sourceIds.includes(s.sourceId) || [selected.origin, selected.destination].some(p => p && [s.title, s.venueName, s.village, s.district].some(f => f?.toLowerCase().includes(p.toLowerCase()))));
   if (matched.length) return c.json({ status: "answered", intent: "route_help", answer: "Perhitungan rute otomatis belum tersedia; berikut data kegiatan publik terkait. Periksa peta dan konfirmasi kondisi jalan kepada petugas setempat.", sources: matched, searchUrl: "/events", mapUrl: "/peta" });
   return abstain("Pemeriksaan rute belum tersedia. Periksa peta dan konfirmasi kondisi kepada petugas setempat.");
  }

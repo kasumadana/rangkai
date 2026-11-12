@@ -19,6 +19,7 @@ export const EVENT_CATEGORIES = [
 ] as const;
 
 export const GEMINI_MODEL_NAME = "gemini-3.5-flash-lite";
+export const GEMINI_FALLBACK_MODEL_NAME = "gemini-3.6-flash";
 export const GEMINI_PROMPT_VERSION = "v1.1";
 export const GEMINI_SCHEMA_VERSION = "1.0";
 

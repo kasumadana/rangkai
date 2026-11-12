@@ -663,9 +663,6 @@ export function EventWizardPage() {
 			if (!startsIso || !endsIso || Date.parse(endsIso) <= Date.parse(startsIso)) {
 				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
 			}
-			if (!startsIso || !endsIso || Date.parse(endsIso) <= Date.parse(startsIso)) {
-				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
-			}
 
 			const payload = {
 				displayName: newSegmentName.trim(),
@@ -725,9 +722,6 @@ export function EventWizardPage() {
 				impactFromWita || formState.startsAtWita,
 			);
 			const endsIso = toWitaIsoTimestamp(impactToWita || formState.endsAtWita);
-			if (!startsIso || !endsIso || Date.parse(endsIso) <= Date.parse(startsIso)) {
-				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
-			}
 			if (!startsIso || !endsIso || Date.parse(endsIso) <= Date.parse(startsIso)) {
 				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
 			}
@@ -992,10 +986,11 @@ export function EventWizardPage() {
 			</div>
 
 			<nav aria-label="Langkah pembuatan kegiatan" className="mb-6 flex flex-wrap gap-2">
-				{WIZARD_STEPS.map((step) => (
+				{WIZARD_STEPS.map((step, idx) => (
 					<button
 						key={step.id}
 						type="button"
+						disabled={idx > 0 && !routeEventId}
 						onClick={() => setActiveStep(step.id)}
 						aria-current={activeStep === step.id ? "step" : undefined}
 						className={`ui-button ${activeStep === step.id ? "ui-button-primary" : ""}`}
@@ -1410,7 +1405,7 @@ export function EventWizardPage() {
 								{fieldErrors.venueLongitude ? <p role="alert">{fieldErrors.venueLongitude}</p> : null}
 								<div className="space-y-1.5">
 									<label className="block text-base font-semibold text-[#181817]">
-										Waktu Mulai (WITA • UTC+8)
+										Waktu Mulai (WITA • UTC+8) <span className="text-red-600" aria-hidden="true">*</span>
 									</label>
 									<input
 										type="datetime-local"
@@ -1425,7 +1420,7 @@ export function EventWizardPage() {
 								{/* Waktu Selesai WITA */}
 								<div className="space-y-1.5">
 									<label className="block text-base font-semibold text-[#181817]">
-										Waktu Selesai (WITA • UTC+8)
+										Waktu Selesai (WITA • UTC+8) <span className="text-red-600" aria-hidden="true">*</span>
 									</label>
 									<input
 										type="datetime-local"

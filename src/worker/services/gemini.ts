@@ -1,4 +1,5 @@
 import {
+	GEMINI_FALLBACK_MODEL_NAME,
 	GEMINI_MODEL_NAME,
 	GEMINI_PROMPT_VERSION,
 	GEMINI_SCHEMA_VERSION,
@@ -228,9 +229,46 @@ export async function extractDocumentWithGemini(
 			signal: controller.signal,
 		});
 
+		const finalResponse =
+			(response.status === 404 || response.status === 503) &&
+			modelName !== GEMINI_FALLBACK_MODEL_NAME
+				? await fetch(
+						`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+							GEMINI_FALLBACK_MODEL_NAME,
+						)}:generateContent`,
+						{
+							method: "POST",
+							headers: {
+								"Content-Type": "application/json",
+								"x-goog-api-key": params.apiKey.trim(),
+							},
+							body: JSON.stringify({
+								systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+								contents: [
+									{
+										role: "user",
+										parts: [
+											{
+												text: "Extract the Balinese cultural event details from this uploaded document into the required JSON structure. Only extract facts explicitly present in the document. Mark uncertain or missing fields clearly.",
+											},
+											{ inlineData: { mimeType: params.mimeType, data: base64Data } },
+										],
+									},
+								],
+								generationConfig: {
+									temperature: 0.1,
+									responseMimeType: "application/json",
+									responseJsonSchema: EXTRACTION_RESPONSE_JSON_SCHEMA,
+								},
+							}),
+							signal: controller.signal,
+						},
+					)
+				: response;
+
 		const latencyMs = Date.now() - startTime;
 
-		if (!response.ok) {
+		if (!finalResponse.ok) {
 			return {
 				ok: false,
 				modelName,
