@@ -118,7 +118,61 @@ test("assigned cleanup task shows context and starting it does not update roads"
  await page.route(`**/api/events/${id}/cleanup-tasks`, route => route.fulfill({ json: { cleanupTasks: [task] } }));
  await page.route(`**/api/cleanup-tasks/${taskId}`, route => route.fulfill({ json: { task: { ...task, status: "in_progress" } } }));
  page.on("request", request => { if (request.method() !== "GET" && request.url().includes("road")) roadWrites++; });
- await page.goto(`/field/events/${id}/cleanup/${taskId}`);
+ await page.setViewportSize({ width: 390, height: 900 }); await page.goto(`/field/events/${id}/cleanup/${taskId}`);
  await expect(page.getByRole("heading", { name: /Kegiatan sintetis.*Bersihkan area sintetis/ })).toBeVisible();
+ await page.screenshot({ path: "test-results/C2-task-390.png", fullPage: true });
+ await page.setViewportSize({ width: 1440, height: 900 }); await page.screenshot({ path: "test-results/C2-task-1440.png", fullPage: true });
  await page.getByRole("button", { name: "Mulai Kerjakan" }).click(); await expect(page.getByText("Tugas dimulai.")).toBeVisible(); expect(roadWrites).toBe(0);
+});
+
+test("saving one cleanup group preserves another dirty group and failed saves", async ({ page }) => {
+ await setup(page); let failWaste = true;
+ await page.route(`**/api/events/${id}/waste-records`, route => route.request().method() === "POST" ? route.fulfill(failWaste ? { status: 500, json: { error: { message: "Gagal sintetis" } } } : { json: { wasteRecord: {} } }) : route.fulfill({ json: { wasteRecords: [] } }));
+ await page.route(`**/api/events/${id}/cleanup-tasks`, route => route.request().method() === "POST" ? route.fulfill({ json: { task: {} } }) : route.fulfill({ json: { cleanupTasks: [] } }));
+ await page.goto(`/dashboard/events/${id}/cleanup`);
+ await page.getByRole("button", { name: "Tambah Tugas" }).click();
+ await page.getByPlaceholder("Contoh: Pembersihan Sisa Canang & Sampah Plastik Catus Pata").fill("Tugas belum disimpan");
+ await page.getByPlaceholder("Berat (Kg)").first().fill("2");
+ await page.getByRole("button", { name: "Simpan Catatan Sampah" }).click(); await expect(page.getByText(/Gagal sintetis/)).toBeVisible();
+ let dialogPromise = page.waitForEvent("dialog"); await page.getByRole("link", { name: "Daftar Upacara" }).click(); await (await dialogPromise).dismiss(); await expect(page).toHaveURL(/cleanup$/);
+ failWaste = false; await page.getByRole("button", { name: "Simpan Catatan Sampah" }).click(); await expect(page.getByText(/Catatan timbunan sampah pasca-upacara berhasil disimpan/)).toBeVisible();
+ dialogPromise = page.waitForEvent("dialog"); await page.getByRole("link", { name: "Daftar Upacara" }).click(); await (await dialogPromise).dismiss(); await expect(page.getByPlaceholder("Contoh: Pembersihan Sisa Canang & Sampah Plastik Catus Pata")).toHaveValue("Tugas belum disimpan");
+ await page.getByRole("button", { name: "Simpan Tugas" }).click(); await expect(page.getByText("Tugas kebersihan baru berhasil ditambahkan.")).toBeVisible();
+ await page.getByRole("link", { name: "Daftar Upacara" }).click(); await expect(page).toHaveURL(/\/dashboard$/);
+});
+
+test("owned workflow surfaces reflow with shared controls", async ({ page }) => {
+ await setup(page);
+ for (const width of [320, 390, 1440]) {
+  await page.setViewportSize({ width, height: 900 });
+  for (const [name, path] of [["new", "/dashboard/events/new"], ["document", `/dashboard/events/${id}/document`], ["review", `/dashboard/events/${id}/review`], ["roads", `/dashboard/events/${id}/roads`], ["cleanup", `/dashboard/events/${id}/cleanup`], ["team", `/dashboard/events/${id}/team`], ["field", `/field/events/${id}`]] as const) {
+   await page.goto(path); await expect(page.locator(".workflow-page")).toBeVisible();
+   expect(await page.evaluate(() => { const g = globalThis as unknown as { document: { documentElement: { scrollWidth: number } }; innerWidth: number }; return g.document.documentElement.scrollWidth <= g.innerWidth; }), `${name} at ${width}`).toBeTruthy();
+   if (width !== 320) await page.screenshot({ path: `test-results/C2-${name}-${width}.png`, fullPage: true });
+  }
+ }
+});
+
+
+test("wizard and field reflow at 200 percent CSS zoom approximation", async ({ page }) => {
+ await setup(page); await page.setViewportSize({ width: 390, height: 900 });
+ for (const path of ["/dashboard/events/new", `/field/events/${id}`]) {
+  await page.goto(path);
+  await page.evaluate(() => { (globalThis as unknown as { document: { body: { style: { zoom: string } } } }).document.body.style.zoom = "200%"; });
+  expect(await page.evaluate(() => { const g = globalThis as unknown as { document: { documentElement: { scrollWidth: number } }; innerWidth: number }; return g.document.documentElement.scrollWidth <= g.innerWidth; })).toBeTruthy();
+ }
+});
+
+test("newer wizard edits stay dirty when an earlier save finishes", async ({ page }) => {
+ await setup(page); let release: (() => void) | undefined;
+ const hold = new Promise<void>(resolve => { release = resolve; });
+ await page.route(`**/api/events/${id}/extracted-fields`, async route => { await hold; await route.fulfill({ json: { event } }); });
+ await page.goto("/dashboard/events/new"); await page.locator("#wizard-org-select").selectOption(org);
+ await page.getByRole("button", { name: /Lewati.*Manual/ }).first().click();
+ const title = page.getByPlaceholder("Contoh: Karya Pujawali & Prosesi Melasti Pura Dalem Ubud");
+ await title.fill("Versi pertama"); await page.getByRole("button", { name: "Simpan Rincian" }).click();
+ await title.fill("Perubahan terbaru"); release?.();
+ await expect(page.getByText(/perubahan terbaru belum disimpan/i)).toBeVisible();
+ const dialog = page.waitForEvent("dialog"); await page.getByRole("link", { name: "Daftar Upacara" }).click(); await (await dialog).dismiss();
+ await expect(title).toHaveValue("Perubahan terbaru");
 });
