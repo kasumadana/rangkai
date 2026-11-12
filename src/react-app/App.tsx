@@ -21,6 +21,7 @@ import {
 	WorkflowRouteShellPage,
 } from "./pages/RouteViews";
 import { SettingsPage } from "./pages/SettingsPage";
+import { AssistantWidget } from "./features/assistant/AssistantWidget";
 import { PublicAssistantPage } from "./pages/PublicAssistantPage";
 
 export function App() {
@@ -29,7 +30,8 @@ export function App() {
 	return (
 				<QueryClientProvider client={queryClient}>
 					<BrowserRouter>
-						<Routes>
+						<AssistantWidget />
+<Routes>
 							{/* Public Information Architecture */}
 							<Route element={<PublicShellLayout />}>
 								<Route path="/" element={<PublicHomePage />} />
@@ -163,3 +165,4 @@ export function App() {
 }
 
 export default App;
+
