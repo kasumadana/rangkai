@@ -34,6 +34,14 @@ Authenticated:
 - /field/events/:id
 - /settings
 
+Platform administration (active superadmin only):
+
+- /admin/organizations — review organization applications.
+- /admin/users — create one-use activation links and revoke pending links.
+- /activate/:token — review invitation scope, register or sign in with the invited email, then accept.
+
+Reviewer activation displays that jurisdiction assignment is still pending. Do not present reviewer access as an official road permit or a completed government approval. Invitation delivery is manual; the admin copies the link and sends it through an approved channel.
+
 ## 3. Main Screens
 
 ### A. Public Event List
@@ -316,3 +324,7 @@ The frontend is standardized on Astryx (`@astryxdesign/core`, `@astryxdesign/the
 ### Event creation and saved sections
 
 The four-step creation flow stays at `/dashboard/events/new` after a draft is created. Saving is server-confirmed; a locally retained draft supports recovery and is not an autosave. Existing events use the summary route and contextual sidebar links for document upload, review, roads, cleanup, and team. Unsaved changes trigger a confirmation before in-app navigation or browser Back, and a browser warning before a reload or tab close. AI document processing requires consent and manual entry remains available when extraction fails.
+
+## Organization governance (approved 2026-11-12)
+
+After signup, applicants submit organization details, see their own status and rejection reason, and may submit a revised application after rejection. Pending status refreshes every 60 seconds only while visible; a manual refresh is available. Login without a membership routes to status. Administrators use the paginated organization queue to approve or reject with a reason. Approval creates organizer access only; simulation is labeled as such and real operational authority requires separate verification. Loading, failure, empty and retry states remain visible.

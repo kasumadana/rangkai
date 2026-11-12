@@ -1,3 +1,4 @@
+import { approveSyntheticOrganization } from "./approval-fixture";
 import { test, expect } from "@playwright/test";
 import { and, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -22,9 +23,7 @@ for (const role of ["officer", "organizer"] as const) {
 		try {
 			const signup = await sender.request.post(`${baseURL}/api/auth/sign-up/email`, { data: { name: "Synthetic Sender", email: senderEmail, password: "SyntheticBrowserPass123!" } });
 			expect(signup.status()).toBe(200);
-			const orgRes = await sender.request.post(`${baseURL}/api/organizations`, { data: { name: orgName, village: "Wilayah uji", district: "Gianyar" } });
-			expect(orgRes.status()).toBe(201);
-			const org = await orgRes.json() as { organization: { id: string } };
+			const org = await approveSyntheticOrganization(browser, sender.request, baseURL, { name: orgName, village: "Wilayah uji", district: "Gianyar" });
 			const eventRes = await sender.request.post(`${baseURL}/api/events`, { data: { organizationId: org.organization.id, title: `Synthetic event ${key}` } });
 			expect(eventRes.status()).toBe(201);
 			const event = await eventRes.json() as { event: { id: string } };

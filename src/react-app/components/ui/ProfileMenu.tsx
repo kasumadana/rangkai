@@ -37,6 +37,9 @@ export function ProfileMenu() {
   return () => { document.removeEventListener("keydown", key); document.removeEventListener("mousedown", outside); };
  }, [open]);
  const items = organizations.data?.organizations || [];
+ const platformRoles = organizations.data?.platformRoles || [];
+ const isSuperadmin = platformRoles.includes("superadmin");
+ const isReviewer = platformRoles.includes("government_reviewer");
  const active = items.find(org => org.id === orgId) || items.find(org => org.role === "organizer") || items[0];
  async function logout() {
   setPending(true); setError("");
@@ -55,7 +58,11 @@ export function ProfileMenu() {
    {session?.user ? <>
     <strong>{session.user.name}</strong><p>{session.user.email}</p>
     {active && <p>{active.name} - {active.role === "organizer" ? "Panitia" : "Petugas"}</p>}
+    {isSuperadmin && <p>Peran: Superadmin Platform</p>}
+    {isReviewer && <p>Peran: Polisi / Reviewer Pemerintah</p>}
     {items.length > 1 && <label>Organisasi<select value={active?.id || ""} onChange={e => { if (items.some(org => org.id === e.target.value)) saveOrganizationId(e.target.value); }}>{items.map(org => <option key={org.id} value={org.id}>{org.name}</option>)}</select></label>}
+    {isSuperadmin && <Link to="/admin/organizations" onClick={() => setOpen(false)}>Panel Superadmin</Link>}
+    {isReviewer && <Link to="/reviewer/road-requests" onClick={() => setOpen(false)}>Antrean Tinjauan Polisi</Link>}
     <Link to={active?.role === "officer" ? "/field" : "/dashboard"} onClick={() => setOpen(false)}>Ruang kerja</Link>
     <Link to="/" onClick={() => setOpen(false)}>Portal publik</Link><Link to="/settings" onClick={() => setOpen(false)}>Pengaturan</Link>
     <button type="button" disabled={pending} onClick={() => void logout()}>{pending ? "Sedang keluar..." : "Keluar"}</button>

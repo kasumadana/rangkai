@@ -1,3 +1,4 @@
+import { validateCleanupPhoto } from "./cleanup-input";
 import {
 	apiFetch,
 	type EventLifecycleStatus,
@@ -208,6 +209,9 @@ export interface RoadImpactRecord {
 	diversionNote: string | null;
 	displayName?: string;
 	coverageArea?: string;
+	sourceType?: string;
+	reviewStatus?: "pending" | "approved" | "rejected" | "superseded" | null;
+	reviewReason?: string | null;
 	segment?: {
 		id: string;
 		displayName: string;
@@ -795,6 +799,16 @@ export async function deleteRoadImpact(
 	);
 }
 
+export async function submitRoadImpactForReview(
+	eventId: string,
+	impactId: string,
+): Promise<{ request: { id: string; status: string }; duplicate?: boolean }> {
+	return apiFetch<{ request: { id: string; status: string }; duplicate?: boolean }>(
+		`/api/events/${encodeURIComponent(eventId)}/road-impacts/${encodeURIComponent(impactId)}/review`,
+		{ method: "POST", body: {} },
+	);
+}
+
 export async function updateRoadStatus(
 	impactId: string,
 	payload: UpdateRoadStatusPayload,
@@ -852,6 +866,7 @@ export async function uploadCleanupEvidence(
 	photoFile: File,
 	stage: "before" | "after",
 ): Promise<{ evidence: CleanupEvidenceRecord }> {
+	validateCleanupPhoto(photoFile);
 	const formData = new FormData();
 	formData.append("file", photoFile);
 	formData.append("stage", stage);

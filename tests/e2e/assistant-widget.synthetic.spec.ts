@@ -199,3 +199,11 @@ test("account change discards a pending private response", async ({ page }) => {
  await page.goto("/login"); await page.getByRole("button", { name: "Asisten" }).click(); const dialog = page.getByRole("dialog", { name: "Asisten" }); await dialog.getByLabel("Lingkup").selectOption("internal"); await dialog.getByLabel("Organisasi").selectOption(org); await dialog.getByRole("combobox", { name: "Kegiatan", exact: true }).selectOption(event); await dialog.getByLabel("Pertanyaan").fill("Status?"); await dialog.getByRole("button", { name: "Kirim pertanyaan" }).click(); await expect.poll(() => posted).toBe(true);
  account = "user-2"; await page.evaluate('document.dispatchEvent(new Event("visibilitychange"))'); await expect(dialog.getByLabel("Lingkup")).toHaveValue("public"); release?.(); await expect(dialog.getByText("LATE ACCOUNT ONE")).toHaveCount(0);
 });
+
+test("public route evidence shows simulation, expired status and map link", async ({ page }) => {
+ await page.addInitScript(() => sessionStorage.setItem("rangkai:preloader-shown", "1"));
+ await page.route("**/api/public/assistant/questions", route => route.fulfill({ json: { status: "answered", intent: "route_help", answer: "Rute sintetis, bukan navigasi aman.", mapUrl: "/peta", searchUrl: "/events", sources: [{ sourceId: "road:test", publicUrl: "/events/test", title: "Ruas sintetis", status: "unconfirmed", eventStatus: "active", isSimulation: true, startsAt: "2030-01-01T00:00:00Z", endsAt: "2030-01-01T01:00:00Z", observedAt: "2020-01-01T00:00:00Z", expiresAt: "2020-01-01T01:00:00Z" }] } }));
+ await page.goto("/"); await page.getByRole("button", { name: "Asisten" }).click();
+ const dialog = page.getByRole("dialog", { name: "Asisten" }); await dialog.getByLabel("Pertanyaan").fill("Dari Ubung ke Sanur?"); await dialog.getByRole("button", { name: "Kirim pertanyaan" }).click();
+ await expect(dialog.getByText("Ruas sintetis")).toBeVisible(); await expect(dialog.getByText(/Simulasi.*Belum terkonfirmasi/)).toBeVisible(); await expect(dialog.getByRole("link", { name: "Buka peta" })).toHaveAttribute("href", "/peta");
+});

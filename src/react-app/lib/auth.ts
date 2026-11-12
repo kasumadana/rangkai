@@ -97,28 +97,13 @@ export interface UserOrganization {
 	hasOperationalAuthority?: boolean;
 }
 
-export interface CreateOrganizationInput {
-	name: string;
-	village?: string;
-	district?: string;
-}
-
-export async function createOrganization(
-	input: CreateOrganizationInput,
-): Promise<{ organization: UserOrganization; membership: { id: string; role: string } }> {
-	return apiFetch<{
-		organization: UserOrganization;
-		membership: { id: string; role: string };
-	}>("/api/organizations", {
-		method: "POST",
-		body: input,
-	});
-}
+export type PlatformRole = "superadmin" | "government_reviewer";
 
 export async function fetchMyOrganizations(): Promise<{
 	organizations: UserOrganization[];
+	platformRoles?: PlatformRole[];
 }> {
-	return apiFetch<{ organizations: UserOrganization[] }>(
+	return apiFetch<{ organizations: UserOrganization[]; platformRoles?: PlatformRole[] }>(
 		"/api/organizations/my",
 		{ method: "GET" },
 	);
@@ -183,18 +168,6 @@ export function useSignUpMutation() {
 		mutationFn: signUpWithEmail,
 		onSuccess: async () => {
 			await queryClient.invalidateQueries({ queryKey: AUTH_SESSION_QUERY_KEY });
-			await queryClient.invalidateQueries({ queryKey: ["events"] });
-		},
-	});
-}
-
-export function useCreateOrganizationMutation() {
-	const queryClient = useQueryClient();
-	return useMutation({
-		mutationFn: createOrganization,
-		onSuccess: async () => {
-			await queryClient.invalidateQueries({ queryKey: AUTH_SESSION_QUERY_KEY });
-			await queryClient.invalidateQueries({ queryKey: ["organizations", "my"] });
 			await queryClient.invalidateQueries({ queryKey: ["events"] });
 		},
 	});

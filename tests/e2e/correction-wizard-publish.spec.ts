@@ -1,3 +1,4 @@
+import { approveSyntheticOrganization } from "./approval-fixture";
 import { test, expect } from "@playwright/test";
 import { eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -6,7 +7,7 @@ import { getDb } from "../../src/db";
 import { account, session, user } from "../../src/db/auth-schema";
 import { auditLogs, events, memberships, organizations, roadImpacts, roadSegments } from "../../src/db/schema";
 
-test.use({ video: "off", launchOptions: { executablePath: process.env.RANGKAI_BROWSER_PATH, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] } });
+test.use({ actionTimeout: 10_000, video: "off", launchOptions: { executablePath: process.env.RANGKAI_BROWSER_PATH, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] } });
 
 test.describe("Journey 3: Wizard -> Roads -> Simulation Publish -> Public View", () => {
 	test("organizer creates draft, adds simulation road, publishes simulation event, and public views simulation banner", async ({ browser, baseURL }, testInfo) => {
@@ -36,14 +37,7 @@ test.describe("Journey 3: Wizard -> Roads -> Simulation Publish -> Public View",
 			});
 			expect(signup.ok()).toBe(true);
 
-			const orgRes = await context.request.post(`${baseURL}/api/organizations`, {
-				data: { name: orgName, village: "Sanur", district: "Denpasar Selatan" },
-			});
-			if (orgRes.status() !== 201) {
-				console.log("orgRes error:", orgRes.status(), await orgRes.text());
-			}
-			expect(orgRes.status()).toBe(201);
-			const org = (await orgRes.json()) as { organization: { id: string } };
+			const org = await approveSyntheticOrganization(browser, context.request, baseURL, { name: orgName, village: "Sanur", district: "Denpasar Selatan" });
 
 			// 2. Create draft event via API to ensure valid session/org
 			const createEventRes = await context.request.post(`${baseURL}/api/events`, {
@@ -62,8 +56,7 @@ test.describe("Journey 3: Wizard -> Roads -> Simulation Publish -> Public View",
 			const eventId = createdEvent.event.id;
 
 			// Set the event point in the organizer wizard and verify persistence.
-			await page.goto(`/dashboard/events/${eventId}`);
-			await page.getByRole("button", { name: /2\. Detail & Jadwal WITA/ }).click();
+			await page.goto(`/dashboard/events/${eventId}/review`);
 			await page.locator(".venue-location-map canvas").click({ timeout: 10_000 });
 			await expect(page.getByLabel("Bujur (longitude)")).not.toHaveValue("");
 			await expect(page.getByLabel("Lintang (latitude)")).not.toHaveValue("");
@@ -74,7 +67,7 @@ test.describe("Journey 3: Wizard -> Roads -> Simulation Publish -> Public View",
 			await page.getByLabel("Lintang (latitude)").fill("-8.685");
 			await page.getByRole("region", { name: "Titik lokasi acara" }).screenshot({ path: testInfo.outputPath("venue-location-input.png") });
 			const savePoint = page.waitForResponse((response) => response.url().endsWith("/extracted-fields") && response.request().method() === "PATCH");
-			await page.getByRole("button", { name: "Simpan Rincian" }).click();
+			await page.getByRole("button", { name: "Simpan Draf" }).click();
 			const savedPointResponse = await savePoint;
 			expect(savedPointResponse.status(), await savedPointResponse.text()).toBe(200);
 			const pointRead = await context.request.get(`${baseURL}/api/events/${eventId}`);
@@ -98,7 +91,7 @@ test.describe("Journey 3: Wizard -> Roads -> Simulation Publish -> Public View",
 			await expect(page.getByText(/Perubahan rincian.*berhasil disimpan/i)).toBeVisible();
 
 			// 4. Navigate to Roads Tab
-			await page.getByRole("tab", { name: "Dampak Jalan" }).click();
+			await page.getByRole("link", { name: "Dampak jalan" }).click();
 			await expect(page).toHaveURL(new RegExp(`/dashboard/events/${eventId}/roads`));
 
 			// Add a simulation road via atomic API
@@ -129,20 +122,21 @@ test.describe("Journey 3: Wizard -> Roads -> Simulation Publish -> Public View",
 			await expect(page.getByText(/Ruas Jalan Terdampak \(1\)/i).first()).toBeVisible();
 
 			// 5. Navigate back to Review Tab to mark verified by Prajuru
-			await page.getByRole("tab", { name: "Dokumen & AI" }).click();
-			await expect(page).toHaveURL(new RegExp(`/dashboard/events/${eventId}/document`));
+			await page.goto(`/dashboard/events/${eventId}/review`);
+			await expect(page).toHaveURL(new RegExp(`/dashboard/events/${eventId}/review`));
+			await expect(page.locator('input[type="text"]').first()).toHaveValue(`${eventTitle} (Terkoreksi)`);
 
 			const reviewPromise = page.waitForResponse(
-				(r) => r.url().endsWith("/review") && r.request().method() === "POST" && r.status() === 200,
+				(r) => r.url().endsWith("/review") && r.request().method() === "POST",
 			);
 			const reviewBtn = page.getByRole("button", { name: "Konfirmasi Prajuru (Review)" });
 			await reviewBtn.click();
-			await reviewPromise;
+			const reviewResponse = await reviewPromise;
+			expect(reviewResponse.status(), await reviewResponse.text()).toBe(200);
 
 			// 6. Confirm and publish in the wizard, including keyboard dismissal.
 			await page.goto(`/dashboard/events/${eventId}`);
-			await page.getByRole("button", { name: /4\. Verifikasi & Terbitkan/ }).click();
-			const openPublish = page.getByRole("button", { name: "3. Terbitkan ke Warga" });
+						const openPublish = page.getByRole("button", { name: "3. Terbitkan ke Warga" });
 			await expect(openPublish).toBeEnabled();
 			await openPublish.click();
 			const dialog = page.getByRole("dialog", { name: "Publikasikan Simulasi?" });

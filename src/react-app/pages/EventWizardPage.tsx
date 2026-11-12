@@ -5,7 +5,6 @@ import {
 	AlertTriangle,
 	ArrowLeft,
 	ArrowRight,
-	Building2,
 	CheckCircle2,
 	ClipboardCheck,
 	FileText,
@@ -35,7 +34,6 @@ import { DashboardRoadMapInput } from "../features/map/DashboardRoadMapInput";
 import { VenueLocationInput } from "../features/map/VenueLocationInput";
 import { ApiClientError } from "../lib/api-client";
 import {
-	useCreateOrganizationMutation,
 	useMyOrganizationsQuery,
 } from "../lib/auth";
 import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
@@ -58,6 +56,7 @@ import {
 	publishVerifiedEvent,
 	saveExtractedFields,
 	saveOrganizationId,
+	submitRoadImpactForReview,
 	toWitaIsoTimestamp,
 	transitionEventToReview,
 	triggerDocumentExtraction,
@@ -240,7 +239,6 @@ export function EventWizardPage() {
 	);
 
 	const myOrgsQuery = useMyOrganizationsQuery();
-	const createOrgMutation = useCreateOrganizationMutation();
 	const myOrganizations = useMemo(
 		() => myOrgsQuery.data?.organizations ?? [],
 		[myOrgsQuery.data?.organizations],
@@ -266,6 +264,11 @@ export function EventWizardPage() {
 	const [formState, setFormState] = useState<DraftFormState>(() =>
 		loadSessionDraft(),
 	);
+	const effectiveOrgId = useMemo(() => {
+		if (!isCreateMode || myOrganizations.length === 0) return formState.organizationId;
+		if (myOrganizations.some((o) => o.id === formState.organizationId)) return formState.organizationId;
+		return (myOrganizations.find((o) => o.role === "organizer") || myOrganizations[0]).id;
+	}, [isCreateMode, myOrganizations, formState.organizationId]);
 	const [hydratedEventId, setHydratedEventId] = useState<string | null>(null);
 	const [fieldErrors, setFieldErrors] = useState<
 		Partial<Record<keyof DraftFormState, string>>
@@ -291,8 +294,6 @@ export function EventWizardPage() {
 	const [aiConsentGranted, setAiConsentGranted] = useState(false);
 
 	// Inline quick-create Desa Adat state
-	const [quickOrgName, setQuickOrgName] = useState("");
-	const [quickOrgVillage, setQuickOrgVillage] = useState("");
 
 	// Step 2: Road Map Input State ("draw" vs "catalog")
 	const [roadInputMode, setRoadInputMode] = useState<"draw" | "catalog">(
@@ -434,7 +435,7 @@ export function EventWizardPage() {
 		if (routeEventId && isRealUuidEvent) {
 			return routeEventId;
 		}
-		const orgId = formState.organizationId;
+		const orgId = effectiveOrgId;
 		if (!publishSimulation && !hasOperationalAuthority) throw new Error("Organisasi belum memiliki kewenangan publikasi operasional.");
 		if (!orgId) throw new Error("Pilih Desa Adat terlebih dahulu.");
 		const draftRes = await createEventDraft({
@@ -555,7 +556,7 @@ export function EventWizardPage() {
 			setBannerFeedback(null);
 
 			if (!publishSimulation && !hasOperationalAuthority) throw new Error("Organisasi belum memiliki kewenangan publikasi operasional.");
-			const parsed = wizardFormSchema.safeParse(formState);
+			const parsed = wizardFormSchema.safeParse({ ...formState, organizationId: effectiveOrgId });
 			if (!parsed.success) {
 				const nextErrors: Partial<Record<keyof DraftFormState, string>> = {};
 				for (const issue of parsed.error.issues) {
@@ -659,6 +660,9 @@ export function EventWizardPage() {
 				impactFromWita || formState.startsAtWita,
 			);
 			const endsIso = toWitaIsoTimestamp(impactToWita || formState.endsAtWita);
+			if (!startsIso || !endsIso || Date.parse(endsIso) <= Date.parse(startsIso)) {
+				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
+			}
 
 			const payload = {
 				displayName: newSegmentName.trim(),
@@ -718,6 +722,9 @@ export function EventWizardPage() {
 				impactFromWita || formState.startsAtWita,
 			);
 			const endsIso = toWitaIsoTimestamp(impactToWita || formState.endsAtWita);
+			if (!startsIso || !endsIso || Date.parse(endsIso) <= Date.parse(startsIso)) {
+				throw new Error("Isi waktu mulai dan selesai penutupan (WITA) dengan waktu selesai setelah waktu mulai.");
+			}
 
 			await createRoadImpact(targetEventId, {
 				roadSegmentId,
@@ -781,6 +788,20 @@ export function EventWizardPage() {
 				description:
 					err instanceof Error ? err.message : "Terjadi kendala jaringan.",
 			});
+		},
+	});
+
+	const submitRoadReviewMutation = useMutation({
+		mutationFn: async (impactId: string) => {
+			if (!routeEventId || !isRealUuidEvent) throw new Error("Kegiatan belum tersimpan.");
+			return submitRoadImpactForReview(routeEventId, impactId);
+		},
+		onSuccess: async () => {
+			await queryClient.invalidateQueries({ queryKey: ["events", routeEventId, "road-impacts"] });
+			setBannerFeedback({ status: "success", title: "Pengajuan Tinjauan Terkirim", description: "Ruas jalan telah masuk ke antrean tinjauan Polisi / Reviewer Pemerintah." });
+		},
+		onError: (err) => {
+			setBannerFeedback({ status: "error", title: "Gagal Mengajukan Tinjauan", description: err instanceof Error ? err.message : "Terjadi kendala jaringan." });
 		},
 	});
 
@@ -964,7 +985,20 @@ export function EventWizardPage() {
 				</div>
 			</div>
 
-			{isCreateMode ? <p className="mb-6 text-sm font-semibold">Langkah {activeStep + 1} dari 4: {WIZARD_STEPS[activeStep].label.replace(/^\d\. /, "")}</p> : null}
+			<nav aria-label="Langkah pembuatan kegiatan" className="mb-6 flex flex-wrap gap-2">
+				{WIZARD_STEPS.map((step, idx) => (
+					<button
+						key={step.id}
+						type="button"
+						disabled={idx > 0 && !routeEventId}
+						onClick={() => setActiveStep(step.id)}
+						aria-current={activeStep === step.id ? "step" : undefined}
+						className={`ui-button ${activeStep === step.id ? "ui-button-primary" : ""}`}
+					>
+						{step.label}
+					</button>
+				))}
+			</nav>
 
 			{/* Feedback Banner */}
 			{bannerFeedback ? (
@@ -1030,7 +1064,7 @@ export function EventWizardPage() {
 									<select
 										id="wizard-org-select"
 										disabled={Boolean(createdEventId)}
-										value={formState.organizationId}
+										value={effectiveOrgId}
 										onChange={(e) => {
 											updateField("organizationId", e.target.value);
 											saveOrganizationId(e.target.value);
@@ -1045,74 +1079,7 @@ export function EventWizardPage() {
 										))}
 									</select>
 
-									{/* Quick-create Desa Adat if user has 0 memberships */}
-									{myOrganizations.length === 0 ? (
-										<div className="rounded border border-[#F3D9A4] bg-[#FDF7EB] p-3.5 space-y-2.5 mt-2">
-											<div className="flex items-center gap-1.5 text-base font-bold text-[#9A5B13]">
-												<Building2 className="w-3.5 h-3.5" />
-												<span>
-													Belum punya Desa Adat terdaftar? Buat cepat di sini:
-												</span>
-											</div>
-											<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-												<input
-													type="text"
-													value={quickOrgName}
-													onChange={(e) => setQuickOrgName(e.target.value)}
-													placeholder="Nama Desa Adat / Banjar *"
-													className="rounded border border-[#E5E3DC] bg-white px-3 py-1.5 text-base text-[#181817]"
-												/>
-												<input
-													type="text"
-													value={quickOrgVillage}
-													onChange={(e) => setQuickOrgVillage(e.target.value)}
-													placeholder="Kelurahan / Kecamatan (Mis. Ubud)"
-													className="rounded border border-[#E5E3DC] bg-white px-3 py-1.5 text-base text-[#181817]"
-												/>
-											</div>
-											<button
-												type="button"
-												disabled={
-													createOrgMutation.isPending ||
-													quickOrgName.trim().length < 3
-												}
-												onClick={async () => {
-													try {
-														const res = await createOrgMutation.mutateAsync({
-															name: quickOrgName.trim(),
-															village: quickOrgVillage.trim() || undefined,
-														});
-														updateField(
-															"organizationId",
-															res.organization.id,
-														);
-														saveOrganizationId(res.organization.id);
-														setQuickOrgName("");
-														setQuickOrgVillage("");
-														setBannerFeedback({
-															status: "success",
-															title: "Desa Adat Berhasil Didaftarkan",
-															description: `"${res.organization.name}" kini aktif sebagai Desa Adat penyelenggara.`,
-														});
-													} catch (err) {
-														setBannerFeedback({
-															status: "error",
-															title: "Gagal Membuat Desa Adat",
-															description:
-																err instanceof Error
-																	? err.message
-																	: "Pastikan Anda telah masuk akun.",
-														});
-													}
-												}}
-												className="px-3 py-1.5 rounded bg-[#4D702F] text-white text-base font-semibold hover:bg-[#405E28] disabled:opacity-50"
-											>
-												{createOrgMutation.isPending
-													? "Mendaftarkan..."
-													: "+ Daftarkan & Gunakan Desa Adat Ini"}
-											</button>
-										</div>
-									) : null}
+									{myOrganizations.length === 0 && <p>Belum ada organisasi terhubung. <Link to="/onboarding/organization">Ajukan organisasi untuk ditinjau</Link>.</p>}
 								</div>
 
 								{/* AI Consent Checkbox */}
@@ -1438,7 +1405,7 @@ export function EventWizardPage() {
 								{fieldErrors.venueLongitude ? <p role="alert">{fieldErrors.venueLongitude}</p> : null}
 								<div className="space-y-1.5">
 									<label className="block text-base font-semibold text-[#181817]">
-										Waktu Mulai (WITA • UTC+8)
+										Waktu Mulai (WITA • UTC+8) <span className="text-red-600" aria-hidden="true">*</span>
 									</label>
 									<input
 										type="datetime-local"
@@ -1453,7 +1420,7 @@ export function EventWizardPage() {
 								{/* Waktu Selesai WITA */}
 								<div className="space-y-1.5">
 									<label className="block text-base font-semibold text-[#181817]">
-										Waktu Selesai (WITA • UTC+8)
+										Waktu Selesai (WITA • UTC+8) <span className="text-red-600" aria-hidden="true">*</span>
 									</label>
 									<input
 										type="datetime-local"
@@ -1928,6 +1895,10 @@ export function EventWizardPage() {
 											</div>
 										</div>
 
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+											<label>Mulai Penutupan (WITA)<input type="datetime-local" value={impactFromWita || formState.startsAtWita} onChange={e => setImpactFromWita(e.target.value)} className="teduh-form-input" /></label>
+											<label>Selesai Penutupan (WITA)<input type="datetime-local" value={impactToWita || formState.endsAtWita} onChange={e => setImpactToWita(e.target.value)} className="teduh-form-input" /></label>
+										</div>
 										<div className="flex justify-end">
 											<button
 												type="button"
@@ -2009,7 +1980,21 @@ export function EventWizardPage() {
 															expiresAt={imp.operationalStatus?.expiresAt}
 														/>
 													</div>
-													<div className="flex justify-end shrink-0">
+													<div className="flex justify-end gap-2 shrink-0">
+														{imp.sourceType === "catalog" && (currentLifecycleStatus === "draft" || currentLifecycleStatus === "review") && (!imp.reviewStatus || imp.reviewStatus === "rejected" || imp.reviewStatus === "superseded") ? (
+															<button
+																type="button"
+																disabled={submitRoadReviewMutation.isPending}
+																onClick={() => void submitRoadReviewMutation.mutateAsync(imp.id)}
+																className="ui-button"
+															>
+																<span>Ajukan Tinjauan Reviewer</span>
+															</button>
+														) : imp.reviewStatus ? (
+															<span className="px-2 py-1 rounded bg-stone-100 text-xs font-semibold text-stone-700 self-center">
+																{imp.reviewStatus === "pending" ? "Menunggu Reviewer" : imp.reviewStatus === "approved" ? "Disetujui Reviewer" : imp.reviewStatus === "rejected" ? "Ditolak Reviewer" : "Perlu Pengajuan Ulang"}
+															</span>
+														) : null}
 														<button
 															type="button"
 															disabled={removeRoadImpactMutation.isPending}

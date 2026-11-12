@@ -18,6 +18,7 @@ import {
 	useAuthSession,
 	useMyOrganizationsQuery,
 	useSignInMutation,
+	fetchMyOrganizations,
 	useSignOutMutation,
 } from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
@@ -82,7 +83,19 @@ export function LoginPage() {
 				email: parsed.data.email,
 				password: parsed.data.password,
 			});
-			navigate(redirectTarget);
+			if (rawFrom) navigate(redirectTarget);
+			else {
+				try {
+					const orgs = await fetchMyOrganizations();
+					const roles = orgs.platformRoles || [];
+					if (roles.includes("superadmin")) navigate("/admin/organizations");
+					else if (roles.includes("government_reviewer")) navigate("/reviewer/road-requests");
+					else if (orgs.organizations.length) navigate("/dashboard");
+					else navigate("/onboarding/status");
+				} catch {
+					navigate("/onboarding/status");
+				}
+			}
 		} catch (err) {
 			if (err instanceof ApiClientError) {
 				setServerErrorMessage(err.message);
@@ -190,6 +203,19 @@ export function LoginPage() {
 						)}
 
 						<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+							{(orgsData?.platformRoles || []).includes("superadmin") && (
+								<Link to="/admin/organizations" className="ui-button ui-button-primary">
+									<LayoutDashboard size={16} />
+									<span>Buka Panel Superadmin</span>
+								</Link>
+							)}
+							{(orgsData?.platformRoles || []).includes("government_reviewer") && (
+								<Link to="/reviewer/road-requests" className="ui-button ui-button-primary">
+									<LayoutDashboard size={16} />
+									<span>Buka Antrean Tinjauan Polisi / Reviewer</span>
+								</Link>
+							)}
+                            <Link to="/onboarding/status">Lihat status pengajuan</Link>
 							<Link
 								to="/dashboard"
 								className="ui-button ui-button-primary"

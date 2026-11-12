@@ -40,6 +40,10 @@ export default defineConfig({
 	],
 	webServer: {
 		command: "pnpm dev",
+		// E2E runs are test environments: NODE_ENV=test activates the documented
+		// rate-limit bypass in src/worker/middleware/rate-limit.ts (signup bursts
+		// across the journey batch otherwise share the 10/min dev limiter budget).
+		env: { NODE_ENV: "test" },
 		url: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173",
 		reuseExistingServer: true,
 		timeout: 60000,

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "organization_applications_one_pending" ON "organization_applications" USING btree ("applicant_id") WHERE status = 'pending';

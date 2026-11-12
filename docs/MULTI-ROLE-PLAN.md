@@ -1,6 +1,6 @@
 ﻿# Governance phase design draft
 
-Status: approved user decisions captured; remaining territory-data and detailed road-review policy to resolve before implementation. This file does not alter current UI batch or teammate map work.
+Status: approved user decisions captured. Candidate boundary datasets are identified, but their actual geometry has not been downloaded or authority-verified. This work does not duplicate teammate-owned public map/location/routing behavior.
 
 ## Confirmed scope and ownership
 
@@ -32,7 +32,7 @@ Proposed implementation boundary for next discussion: road request binds event, 
 
 Only superadmin assigns/changes organization territory; source/provenance/version and audit required. Frontend map cannot be sole constraint. Road/area mutation and approval must check correct territory and jurisdiction in PostGIS using stored, validated coordinates; administrative names or venue point alone do not establish a whole road lies inside territory. Territory missing/invalid means no operational closure, with explicit configuration path.
 
-Actual boundary dataset/source and policy for crossing-border/shared-jurisdiction segments remain open. No invented verified polygons or treating old decorative district shapes as legal jurisdiction. Implement server import/validation using synthetic tests if data unavailable, retaining real-data acceptance as separate gate; teammate owns map presentation contract.
+Candidate source metadata is provided for Kemendagri 2025 and BIG 2026, but actual resource contents and customary authority are not verified. Do not invent or auto-verify polygons or treat decorative district shapes as legal jurisdiction. Cross-territory requests are blocked for manual handling in this MVP; teammate owns public map presentation/location/routing.
 
 ## Verification required in future implementation
 
@@ -44,7 +44,7 @@ Actual boundary dataset/source and policy for crossing-border/shared-jurisdictio
 - Audit actor/time/resource/decision/reason and no token/password/privatepayload logging.
 - Safe additive migrations with explicit existingorg/account conversion plan before execution; no blind autoapproval of old organizations or destructive production migration.
 
-Next: resolve territory provenance and shared-boundary policy; write bounded tickets and review finalspec. No current worker for this future governance scope.
+The territory import/verification API, admin editor and full-geometry checks are being implemented under issue 05. Road-review lifecycle and final integration remain for issues 06–07.
 
 ## Verified references and approved territory rules — 2026-11-12
 
@@ -69,7 +69,7 @@ Confirmed rules:
 
 Acceptance additions: spatialtests entireinside/outside, midpointinsidebutendoutside, concavepolygonexit/reentry, boundarytouch, holes, multipolygons/disconnectedroads, invalid/nonfinite/CRS/axisorder, missing/pending/simulatedterritory, crossorg/reviewerdenials, staleversion/concurrency/rollback, verificationrole/audit and eventpublic-withclosurepending. PostGIS actualintegration tests must execute PostGIS functions on guardeddevelopmentDB or localtestDB, not merely inspectSQL text. Data/UI fixtures remain SYNTHETIC_TEST_DATA; public realclosure and officialauthority acceptance separate.
 
-No current code or database changes for this next phase yet. Next artifact is bounded governance/territory tickets after currentUIintegration, with reviewedmigration and teammatehandoff contract. Keep previousdecisions and source caveats visible.
+The approved scope below supersedes earlier planning-only statements. Keep the source caveats above visible throughout implementation.
 
 ## Execution plan — approved 2026-11-12
 
@@ -85,4 +85,5 @@ Implementation order and acceptance:
 6. Frontend integration: onboarding status with visible pending polling at 60 seconds and manual refresh; four admin screens and scoped reviewer queue; preserve current design system, mobile usability, honest loading/error/empty states. No public role dropdown granting privileges.
 7. Local verification then self-review: authorization negatives, activation expiry/reuse, concurrent approval and rollback, API/public filtering, focused browser user journeys, typecheck, lint and build. Reuse unchanged evidence; no paid AI calls. Record actual test results and remaining development PostGIS/runtime gates separately.
 
-Current status: planning/preflight only. None of the multi-role schema, endpoints or screens above are implemented by this planning commit. Production migration, real authority verification and deployment require separate gates.
+Current implementation status (2026-11-13): tickets 04–06 are implemented locally. Guarded development migrations 0011–0013 were applied only to Neon branch br-wandering-paper-aogdxs48. Focused activation, territory and road-review integration plus readiness batches pass; SIMULASI road status requires event-scoped authorization but is exempt from reviewer approval, while real-event updates require current version-bound approval. Public APIs retain labeled SIMULASI data and filter unapproved real-event road impacts. The 10 critical Chromium journeys, typecheck and changed-file lint passed; a final unit/integration regression batch and self-review are recorded in the QA checkpoint. No production migration or deployment was performed.
+

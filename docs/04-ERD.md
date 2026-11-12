@@ -177,6 +177,49 @@ UNIQUE (event_id, user_id)
 - created_at: timestamptz
 - updated_at: timestamptz
 
+### activation_invitations
+
+- id: uuid PK
+- token_hash: text UNIQUE NOT NULL (SHA-256; plaintext exists only in the one-time response)
+- recipient_email: text NOT NULL
+- role: organizer | officer | government_reviewer
+- organization_id: uuid FK NULL
+- event_id: uuid FK NULL
+- can_update_traffic: boolean DEFAULT false
+- can_update_cleanup: boolean DEFAULT false
+- status: pending | accepted | revoked
+- expires_at: timestamptz
+- created_by: text FK
+- accepted_by: text FK NULL
+- accepted_at: timestamptz NULL
+- created_at: timestamptz
+
+Scope CHECK constraints require organizer to target one organization, officer to target an event in that organization with at least one field permission, and government reviewer to have no organization/event scope. Expired status is derived from `expires_at`; the pending row is retained for history. The activation flow is one-use and does not change credentials for an existing identity.
+
+### platform_grants
+
+- id: uuid PK
+- user_id: text FK
+- role: superadmin | government_reviewer
+- status: active | suspended | revoked
+- created_at: timestamptz
+
+UNIQUE (user_id, role). Platform grants are separate from organization memberships. Reviewer jurisdiction is stored separately from this account-activation grant.
+
+### platform_audit
+
+- id: uuid PK
+- actor_id: text FK
+- action: text
+- application_id: uuid FK NULL
+- entity_type: text NULL
+- entity_id: text NULL
+- reason: text NULL
+- request_id: text
+- created_at: timestamptz
+
+Activation creation, acceptance and revocation record actor, action, invitation identity, role/scope summary and request ID. Raw activation tokens and passwords are never stored in audit data.
+
 ### cleanup_tasks
 
 - id: uuid PK
@@ -294,3 +337,7 @@ Run migrations against a development Neon branch first.
 - Derive the current status from history.
 - Keep waste measurements separate from AI predictions.
 - Keep document content private by default.
+
+## Organization governance (approved 2026-11-12)
+
+`platform_grants` associates a user with a distinct superadmin or government_reviewer role and active, suspended or revoked state; user and role are unique. `organization_applications` records applicant, proposed name/village/district, pending/approved/rejected decision, reason, decision actor/time and resulting organization; one pending application per applicant is enforced by a partial unique index. `platform_audit` records actor, action, application, reason, request ID and UTC timestamp. Foreign keys preserve relationships. Existing memberships and organizations are not backfilled or automatically approved.

@@ -1,3 +1,4 @@
+import { approveSyntheticOrganization } from "./approval-fixture";
 import { test, expect } from "@playwright/test";
 import { eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -16,11 +17,14 @@ import {
 	roadStatusUpdates,
 } from "../../src/db/schema";
 
+test.use({ actionTimeout: 10_000 });
+
 test.describe("Journey 4: Field Officer Traffic Update -> Public Live Status & Unassigned Denial", () => {
 	test("assigned officer updates road status, public view reflects update, unassigned user is denied, stale status displays unconfirmed", async ({
 		browser,
 		baseURL,
 	}) => {
+		test.setTimeout(120_000);
 		const { pinnedUrl } = await assertDevBranch();
 		const db = getDb(pinnedUrl);
 		const key = randomUUID().slice(0, 8);
@@ -63,11 +67,7 @@ test.describe("Journey 4: Field Officer Traffic Update -> Public Live Status & U
 			});
 			expect(orgSignup.ok()).toBe(true);
 
-			const orgRes = await orgContext.request.post(`${baseURL}/api/organizations`, {
-				data: { name: orgName, village: "Ubud", district: "Ubud" },
-			});
-			expect(orgRes.status()).toBe(201);
-			const org = (await orgRes.json()) as { organization: { id: string } };
+			const org = await approveSyntheticOrganization(browser, orgContext.request, baseURL, { name: orgName, village: "Ubud", district: "Ubud" });
 
 			// 2. Create Event & Simulation Road
 			const createEventRes = await orgContext.request.post(`${baseURL}/api/events`, {
@@ -159,7 +159,7 @@ test.describe("Journey 4: Field Officer Traffic Update -> Public Live Status & U
 			await expect(assignment.getByText("SIMULASI")).toBeVisible();
 			await expect(assignment.getByText("Pos Pecalang (Jalan)")).toBeVisible();
 			await expect(assignment.getByText("Tim Kebersihan")).toHaveCount(0);
-			await assignment.getByRole("link", { name: "Buka Pos Jaga" }).click();
+			await assignment.getByRole("link", { name: "Buka tugas" }).click();
 			await expect(officer1Page).toHaveURL(new RegExp(`/field/events/${eventId}$`));
 			await expect(officer1Page.getByText(eventTitle).first()).toBeVisible();
 			await expect(officer1Page.getByText("Kendali Status Ruas Jalan (Pecalang)")).toBeVisible();
