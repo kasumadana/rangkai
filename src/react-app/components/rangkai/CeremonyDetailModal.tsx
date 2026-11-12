@@ -1,7 +1,5 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router";
-import { Token } from "@astryxdesign/core/Token";
-import { Stack } from "@astryxdesign/core/Stack";
 import type { OperationalRoadStatus } from "../../lib/road-status";
 
 export interface CeremonyDetailItem {
@@ -38,12 +36,12 @@ function getStatusBadgeConfig(status: OperationalRoadStatus) {
 			};
 		case "open":
 			return {
-				label: "Jalur Normal",
+				label: "Dibuka",
 				className: "status-open",
 			};
 		default:
 			return {
-				label: "Konfirmasi",
+				label: "Belum dikonfirmasi",
 				className: "status-unknown",
 			};
 	}
@@ -105,31 +103,31 @@ export function CeremonyDetailModal({
 					</button>
 				</div>
 
-				<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+				<div className="flex flex-wrap items-center gap-1">
 					<span className={`map-popup-badge ${statusBadge.className}`}>
 						{statusBadge.label}
 					</span>
 					{ceremony.isSimulation !== false ? (
-						<Token color="orange" size="sm" label="SIMULASI" />
+						<span className="map-popup-badge simulation-token">SIMULASI</span>
 					) : null}
 					<span className="text-xs text-stone-500 font-medium">
 						{ceremony.windowWita}
 						{ceremony.dateLabel ? ` • ${ceremony.dateLabel}` : ""}
 					</span>
-				</Stack>
+				</div>
 
 				<div className="map-detail-summary-list">
 					<div className="map-detail-summary-item">
 						<span className="map-detail-summary-label">Lokasi & Koridor</span>
 						<span className="map-detail-summary-val">
-							{ceremony.sacredCenterName} • {ceremony.roadName || "Koridor Utama Desa"}
+							{ceremony.sacredCenterName} • {ceremony.roadName || "Ruas belum ditentukan"}
 						</span>
 					</div>
 					<div className="map-detail-summary-item">
 						<span className="map-detail-summary-label">Arahan Rute Alternatif</span>
 						<span className="map-detail-summary-val">
 							{ceremony.detourRoute ||
-								"Gunakan jalur lingkar desa atau ikuti arahan Pecalang di lokasi"}
+								"Ikuti arahan petugas di lokasi."}
 						</span>
 					</div>
 				</div>

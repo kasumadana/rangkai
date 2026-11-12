@@ -57,7 +57,7 @@ export function RangkaiPreloader({
 					window.clearTimeout(timeoutId);
 					resolve();
 				};
-				img.src = "/images/bali-culture-hero.jpg";
+				img.src = "/images/bali-culture-hero.webp";
 			});
 			promises.push(heroImagePromise);
 		}

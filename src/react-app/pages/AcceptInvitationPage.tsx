@@ -113,8 +113,8 @@ export function AcceptInvitationPage() {
 										display: "inline-block",
 										padding: "3px 10px",
 										borderRadius: 9999,
-										background: "#ECF3EF",
-										color: "#264D3B",
+										background: "#F0F4EB",
+										color: "#4D702F",
 										fontSize: 12,
 										fontWeight: 600,
 										marginBottom: 10,
@@ -166,13 +166,13 @@ export function AcceptInvitationPage() {
 									</div>
 									<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 										{inviteData.permissions.canUpdateTraffic && (
-											<div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#264D3B", fontWeight: 500 }}>
+											<div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#4D702F", fontWeight: 500 }}>
 												<Radio size={16} />
 												<span>Pembaruan Status Ruas Jalan (Pecalang)</span>
 											</div>
 										)}
 										{inviteData.permissions.canUpdateCleanup && (
-											<div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#264D3B", fontWeight: 500 }}>
+											<div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#4D702F", fontWeight: 500 }}>
 												<Trash2 size={16} />
 												<span>Pemeriksaan Foto Bukti & Catatan Sampah (Kebersihan)</span>
 											</div>
@@ -254,7 +254,7 @@ export function AcceptInvitationPage() {
 											onClick={handleAccept}
 											disabled={acceptMutation.isPending}
 											style={{
-												background: "#264D3B",
+												background: "#4D702F",
 												color: "#FFFFFF",
 												border: "none",
 												borderRadius: 9999,

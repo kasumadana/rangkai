@@ -195,6 +195,7 @@ Request:
   "startsAt": "2026-11-10T08:00:00Z",
   "endsAt": "2026-11-10T14:00:00Z",
   "venueName": "Balai Banjar",
+  "venueLocation": { "type": "Point", "coordinates": [115.21, -8.65] },
   "category": "upacara",
   "description": "Deskripsi opsional",
   "permitReference": "SURAT/2026/01"
@@ -202,6 +203,8 @@ Request:
 ```
 
 Response: 201 Created with event object in status "draft". Atomic audit log recorded.
+
+`venueLocation` is optional and nullable. When present it must be a GeoJSON Point in `[longitude, latitude]` order within the configured Bali bounds. It is chosen and reviewed by the organizer; it is never inferred from a road or district. Existing events can remain without a point.
 
 GET /api/events
 Permission: authenticated organization member
@@ -245,13 +248,14 @@ Response: 200 OK
 GET /api/events/:eventId
 Permission: authorized organization member (organizer or assigned field officer)
 Response: 200 OK with event detail. Returns 403/404 if caller is unassigned or outside the organization.
+The detail includes `venueLocation` as a GeoJSON Point or `null`.
 
 PATCH /api/events/:eventId
 Permission: organizer
 Constraints:
 - Terminal states (`completed`, `cancelled`) cannot be modified (409 Conflict).
 - Published and active events cannot be edited via PATCH (409 Conflict); edits must occur prior to publication while in `draft` or `review` status (FR-011).
-- In `review` status, modifying any organizer-editable field (`title`, `category`, `description`, `venueName`, `startsAt`, `endsAt`, `permitReference`) invalidates previous human review verification and resets status to `draft`.
+- In `review` status, modifying any organizer-editable field (`title`, `category`, `description`, `venueName`, `venueLocation`, `startsAt`, `endsAt`, `permitReference`) invalidates previous human review verification and resets status to `draft`.
 Response: 200 OK with updated event. Atomic audit log recorded. Zero-row concurrent conflicts return 409 Conflict without creating false audit records.
 
 POST /api/events/:eventId/review
@@ -356,7 +360,7 @@ Request (accepts flat fields or `{ "corrections": { ... } }` wrapper):
   "contactInformation": "I Made Surya (0812-0000-0101)"
 }
 ```
-Persists all 12 reviewed/corrected fields on `events` atomically under `FOR UPDATE OF e`, resets `review` status to `draft` (clearing `verifiedBy`/`verifiedAt`) when any field changes, and records `before_json` and `after_json` from the locked row (`hasContactInformation` boolean is logged in audit JSON rather than raw private contact strings; `contactInformation` is returned only to organizers and stripped from officer and public responses).
+Persists reviewed/corrected fields, including optional `venueLocation`, on `events` atomically under `FOR UPDATE OF e`, resets `review` status to `draft` (clearing `verifiedBy`/`verifiedAt`) when any field changes, and records `before_json` and `after_json` from the locked row (`hasContactInformation` boolean is logged in audit JSON rather than raw private contact strings; `contactInformation` is returned only to organizers and stripped from officer and public responses).
 
 ## 6. Road Segments
 
@@ -541,7 +545,7 @@ Query: from, to, optional bbox
 Returns only published/active public information.
 
 GET /api/public/events/:slug
-Returns public event summary.
+Returns public event summary including organizer-selected `venueLocation` as a GeoJSON Point or `null`; the same field is included in the public event list. Normal publication and authority filters apply.
 
 GET /api/public/events/:slug/roads
 Returns planned road impacts and effective status.

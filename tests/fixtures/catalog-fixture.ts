@@ -25,6 +25,12 @@ export const VALID_CATALOG = {
 	],
 	geometryColumns: [
 		{
+			f_table_name: "events",
+			f_geometry_column: "venue_location",
+			type: "POINT",
+			srid: 4326,
+		},
+		{
 			f_table_name: "cleanup_tasks",
 			f_geometry_column: "location",
 			type: "POINT",

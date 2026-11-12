@@ -144,14 +144,14 @@ function getImpactColor(impact: RoadImpactRecord, mode: DashboardMapInteractionM
 		if (impact.operationalStatus?.isStale) return "#6B7280";
 		if (eff === "closed") return "#C8322B";
 		if (eff === "intermittent") return "#D97706";
-		if (eff === "open") return "#15803D";
+		if (eff === "open") return "#4D702F";
 		return "#6B7280";
 	}
 
 	const norm = normalizeRoadImpactType(impact.impactType);
 	if (norm === "closure") return "#C8322B";
 	if (norm === "intermittent" || norm === "narrowing") return "#D97706";
-	return "#264D3B";
+	return "#4D702F";
 }
 
 const QUICK_AREAS: Array<{ label: string; center: [number, number]; zoom: number }> = [
@@ -452,7 +452,7 @@ export function DashboardRoadMapInput({
 					"line-color": [
 						"case",
 						["get", "isSelected"],
-						"#264D3B",
+						"#4D702F",
 						"#0284C7",
 					],
 					"line-width": ["case", ["get", "isSelected"], 6, 4],
@@ -618,7 +618,7 @@ export function DashboardRoadMapInput({
 				width: 24px;
 				height: 24px;
 				border-radius: 50%;
-				background: ${isFirst ? "#264D3B" : isLast ? "#9E2A2B" : "#D97706"};
+				background: ${isFirst ? "#4D702F" : isLast ? "#9E2A2B" : "#D97706"};
 				color: #FFFFFF;
 				border: 2.5px solid #FFFFFF;
 				display: flex;
@@ -892,7 +892,7 @@ export function DashboardRoadMapInput({
 						<i style={{ background: "#D97706" }} /> Buka-Tutup / Penyempitan
 					</span>
 					<span className="teduh-legend-item">
-						<i style={{ background: "#15803D" }} /> Terbuka / Normal
+						<i style={{ background: "#4D702F" }} /> Terbuka / Normal
 					</span>
 					{mode === "operational" ? <span className="teduh-legend-item"><i style={{ background: "#6B7280" }} /> Belum dikonfirmasi</span> : null}
 					{mode !== "operational" ? (

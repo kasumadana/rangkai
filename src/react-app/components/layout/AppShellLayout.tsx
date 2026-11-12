@@ -20,8 +20,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { forwardRef, useEffect, useMemo, useRef, useState, type AnchorHTMLAttributes } from "react";
 import { Link as RouterLink, Outlet, useLocation } from "react-router";
-import { HStack, VStack } from "@astryxdesign/core/Stack";
-import { Text } from "@astryxdesign/core/Text";
 import { EventLifecycleBadge, RangkaiPreloader, shouldPlayPreloader } from "../rangkai";
 import {
 	useAuthSession,
@@ -343,7 +341,7 @@ export function PublicShellLayout() {
 									fontSize: 14,
 								}}
 							>
-								<LayoutDashboard size={18} color="#264D3B" />
+								<LayoutDashboard size={18} color="#4D702F" />
 								<span>Panel Petugas Desa</span>
 							</RouterLinkBridge>
 							<button
@@ -404,7 +402,7 @@ export function PublicShellLayout() {
 						<div className="footer-brand-col">
 							<RouterLinkBridge href="/" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: 10 }}>
 								<img src="/logo.png" alt="Rangkai Logo" style={{ height: 38 }} />
-								<span style={{ fontSize: 20, fontWeight: 500, color: "#264D3B" }}>Rangkai</span>
+								<span style={{ fontSize: 20, fontWeight: 500, color: "#4D702F" }}>Rangkai</span>
 							</RouterLinkBridge>
 							<p className="brand-bio">
 								Sistem koordinasi operasional upacara adat Bali untuk ruang publik, status ruas jalan terverifikasi oleh Pecalang, kantong parkir, dan pengelolaan kebersihan pasca-kegiatan.
@@ -627,9 +625,9 @@ export function WorkspaceShellLayout() {
 							className="teduh-map-tool-btn"
 							style={{
 								textDecoration: "none",
-								background: "#264D3B",
+								background: "#4D702F",
 								color: "#FFFFFF",
-								borderColor: "#264D3B",
+								borderColor: "#4D702F",
 							}}
 						>
 							<KeyRound size={14} />
@@ -653,25 +651,25 @@ export function WorkspaceShellLayout() {
 									<div className="teduh-sidebar-group">
 										<RouterLink
 											to="/field"
-											className="teduh-sidebar-link font-medium text-[#264D3B]"
+											className="teduh-sidebar-link font-medium text-[#4D702F]"
 										>
 											<ArrowLeft size={16} />
 											<span>Kembali ke Pos Jaga</span>
 										</RouterLink>
 
-										<VStack gap={1.5} className="p-3 mt-1.5 rounded-xl bg-white border border-[#E2E4E8]">
-											<HStack justify="between" align="center" gap={1.5}>
-												<Text type="label" color="secondary" className="uppercase tracking-wider text-xs font-semibold">
+										<div className="flex flex-col gap-1.5 p-3 mt-1.5 rounded-xl bg-white border border-[#E2E4E8]">
+											<div className="flex items-center justify-between gap-1.5">
+												<span className="uppercase tracking-wider text-xs font-semibold text-stone-600">
 													Tugas Lapangan
-												</Text>
+												</span>
 												{activeEvent ? (
 													<EventLifecycleBadge status={activeEvent.status} />
 												) : null}
-											</HStack>
-											<Text type="body" weight="bold" maxLines={2} className="text-sm leading-snug m-0 text-[#181B20]">
+											</div>
+											<p className="line-clamp-2 text-sm font-bold leading-snug m-0 text-[#181B20]">
 												{activeEvent?.title || "Memuat kegiatan..."}
-											</Text>
-										</VStack>
+											</p>
+										</div>
 									</div>
 
 									<div className="teduh-sidebar-group">
@@ -803,25 +801,25 @@ export function WorkspaceShellLayout() {
 								<div className="teduh-sidebar-group">
 									<RouterLink
 										to="/dashboard"
-										className="teduh-sidebar-link font-medium text-[#264D3B]"
+										className="teduh-sidebar-link font-medium text-[#4D702F]"
 									>
 										<ArrowLeft size={16} />
 										<span>Kembali ke Daftar</span>
 									</RouterLink>
 
-									<VStack gap={1.5} className="p-3 mt-1.5 rounded-xl bg-white border border-[#E2E4E8]">
-										<HStack justify="between" align="center" gap={1.5}>
-											<Text type="label" color="secondary" className="uppercase tracking-wider text-xs font-semibold">
+									<div className="flex flex-col gap-1.5 p-3 mt-1.5 rounded-xl bg-white border border-[#E2E4E8]">
+										<div className="flex items-center justify-between gap-1.5">
+											<span className="uppercase tracking-wider text-xs font-semibold text-stone-600">
 												Kegiatan Terpilih
-											</Text>
+											</span>
 											{activeEvent ? (
 												<EventLifecycleBadge status={activeEvent.status} />
 											) : null}
-										</HStack>
-										<Text type="body" weight="bold" maxLines={2} className="text-sm leading-snug m-0 text-[#181B20]">
+										</div>
+										<p className="line-clamp-2 text-sm font-bold leading-snug m-0 text-[#181B20]">
 											{activeEvent?.title || "Memuat kegiatan..."}
-										</Text>
-									</VStack>
+										</p>
+									</div>
 								</div>
 
 								<div className="teduh-sidebar-group">

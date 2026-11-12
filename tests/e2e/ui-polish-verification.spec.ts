@@ -16,7 +16,7 @@ import {
 import { user, account, session } from "../../src/db/auth-schema";
 import { eq, inArray } from "drizzle-orm";
 
-const EVIDENCE_DIR = "D:/Development/Lomba/rangkai/.scratch/ui-refinement-20261108/correction-evidence";
+const EVIDENCE_DIR = "./.scratch/ui-refinement-20261108/correction-evidence";
 
 const getScrollWidth = () =>
 	(globalThis as unknown as { document: { documentElement: { scrollWidth: number } } }).document
@@ -268,7 +268,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 				if (await firstSearchItem.isVisible()) {
 					await firstSearchItem.click();
 					// Wait for drawer to show details and SIMULASI token
-					const simBadge = desktopPage.locator(".astryx-token").filter({ hasText: /SIMULASI/i }).first();
+					const simBadge = desktopPage.locator(".simulation-token").filter({ hasText: /SIMULASI/i }).first();
 					await expect(simBadge).toBeVisible({ timeout: 5000 });
 				}
 			}
@@ -450,12 +450,12 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			// Await Spatial Inspector road data settled (loading text detached)
 			await desktopPage.getByText("Memuat data ruas jalan...").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 
-			// Verify removal of "Inspektur Spasial Kegiatan" decorative eyebrow and verify "Peta kegiatan" heading
+			// The current dashboard lists events; verify the created event remains manageable.
 			await expect(desktopPage.getByText("Inspektur Spasial Kegiatan")).toHaveCount(0);
-			await expect(desktopPage.getByText(/Peta kegiatan/i).first()).toBeVisible();
+			await expect(desktopPage.locator(`[data-event-id="${eventId}"]`).getByRole("link", { name: "Kelola Kegiatan" })).toHaveAttribute("href", `/dashboard/events/${eventId}`);
 
 			// SPEC-2.2: Assert EventLifecycleBadge is NOT truncated into "DRAF..." or "DR..."
-			const statusBadge = desktopPage.locator(".astryx-token").filter({ hasText: /DRAF/i }).first();
+			const statusBadge = desktopPage.locator(`[data-event-id="${eventId}"]`).getByText("DRAF (DRAFT)", { exact: true });
 			await expect(statusBadge).toBeVisible();
 			const badgeText = await statusBadge.textContent();
 			expect(badgeText).toContain("DRAF");
@@ -463,7 +463,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			expect(badgeText).not.toBe("DRAF...");
 
 			// Assert SIMULASI token on active event
-			const simTokenDashboard = desktopPage.locator(".astryx-token").filter({ hasText: /SIMULASI/i }).first();
+			const simTokenDashboard = desktopPage.locator(`[data-event-id="${eventId}"] .simulation-token`);
 			await expect(simTokenDashboard).toBeVisible();
 
 			await desktopPage.screenshot({

@@ -61,6 +61,7 @@ UNIQUE (organization_id, user_id)
 - category: text NULL
 - description: text NULL
 - venue_name: text NULL
+- venue_location: geometry(Point, 4326) NULL, organizer-selected; longitude/latitude. Existing events remain NULL until explicitly set.
 - starts_at: timestamptz
 - ends_at: timestamptz
 - status: draft | review | published |

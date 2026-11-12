@@ -1,19 +1,41 @@
-@layer reset, theme, base, astryx-base, astryx-theme, components, utilities;
+@layer theme, base, components, utilities;
 
 @import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-@import "@astryxdesign/theme-stone/fonts.css";
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/preflight.css" layer(base);
 
-@import "@astryxdesign/core/reset.css";
-@import "@astryxdesign/core/astryx.css";
-@import "@astryxdesign/theme-stone/theme.css";
-@import "@astryxdesign/core/tailwind-theme.css";
 
 @import "tailwindcss/utilities.css" layer(utilities);
 
+@theme {
+	--color-emerald-50: #F0F4EB;
+	--color-emerald-100: #E2ECD8;
+	--color-emerald-200: #C6D5B8;
+	--color-emerald-300: #AABF94;
+	--color-emerald-400: #89A66C;
+	--color-emerald-500: #5C8437;
+	--color-emerald-600: #4D702F;
+	--color-emerald-700: #405E28;
+	--color-emerald-800: #355024;
+	--color-emerald-900: #293F1D;
+	--color-green-50: #F0F4EB;
+	--color-green-100: #E2ECD8;
+	--color-green-200: #C6D5B8;
+	--color-green-300: #AABF94;
+	--color-green-400: #89A66C;
+	--color-green-500: #5C8437;
+	--color-green-600: #4D702F;
+	--color-green-700: #405E28;
+	--color-green-800: #355024;
+	--color-green-900: #293F1D;
+}
+
 @layer base {
+	.venue-location-input { display: grid; gap: 0.75rem; }
+	.venue-location-map.maplibregl-map { height: 280px !important; width: 100%; }
+	.venue-location-input label { display: grid; gap: 0.25rem; }
+	.venue-location-input button.teduh-btn-secondary { justify-self: start; }
 	:root {
 		--font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 		--font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
@@ -27,10 +49,10 @@
 		--color-background-body: #FBFBFA;
 		--color-surface: #FFFFFF;
 		--color-surface-subtle: #F4F4F3;
-		--color-surface-soft-pine: #ECF3EF;
+		--color-surface-soft-pine: #F0F4EB;
 
-		--color-primary: #264D3B; /* Deep Pine */
-		--color-primary-hover: #1D3B2D;
+		--color-primary: #5C8437;
+		--color-primary-hover: #496A2C;
 		--color-btn-primary: #9E2A2B; /* Terracotta Crimson */
 		--color-btn-primary-hover: #832223;
 		--color-secondary: #C25E24; /* Saffron Ochre */
@@ -46,9 +68,9 @@
 		--color-border-strong: #CBD5E1;
 
 		/* Semantic road status tokens */
-		--status-open: #15803D;
-		--status-open-bg: #F0FDF4;
-		--status-open-border: #BBF7D0;
+		--status-open: #5C8437;
+		--status-open-bg: #F0F4EB;
+		--status-open-border: #C6D5B8;
 		--status-intermittent: #D97706;
 		--status-intermittent-bg: #FFFBEB;
 		--status-intermittent-border: #FDE68A;
@@ -107,7 +129,7 @@
 	.teduh-btn-primary,
 	.teduh-btn-secondary,
 	.teduh-btn-danger {
-		min-height: 48px;
+		min-height: 49px;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -157,7 +179,7 @@
 	}
 
 	.teduh-tab-item {
-		min-height: 48px;
+		min-height: 49px;
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
@@ -212,7 +234,7 @@
 	.teduh-form-select:focus {
 		outline: none;
 		border-color: var(--color-primary);
-		box-shadow: 0 0 0 2px rgba(38, 77, 59, 0.25);
+		box-shadow: 0 0 0 2px rgba(92, 132, 55, 0.25);
 	}
 
 	/* Global Minimalist Sleek Scrollbars (Discreet & Non-Intrusive Across All Pages) */
@@ -246,9 +268,7 @@
 
 	/* Heading font-weight normal 400 across all headings per user rule */
 	h1, h2, h3, h4, h5, h6,
-	.hd,
-	.astryx-heading,
-	[class*="astryx-heading"] {
+	.hd {
 		font-weight: 400;
 		letter-spacing: -0.02em;
 		color: var(--color-text-title);
@@ -448,7 +468,7 @@
 	}
 
 	.nav-notif-btn:hover {
-		background: #ECF3EF;
+		background: #F0F4EB;
 		transform: translateY(-1px);
 	}
 
@@ -547,7 +567,7 @@
 		width: 32px;
 		height: 32px;
 		border-radius: var(--radius-full);
-		background: rgba(38, 77, 59, 0.1);
+		background: rgba(92, 132, 55, 0.1);
 		color: var(--color-primary);
 		display: inline-flex;
 		align-items: center;
@@ -648,7 +668,7 @@
 	}
 
 	.navbar-hamburger:hover {
-		background: #ECF3EF;
+		background: #F0F4EB;
 		color: var(--color-primary);
 	}
 
@@ -1286,7 +1306,7 @@
 		width: 28px;
 		height: 28px;
 		border-radius: 50%;
-		background: #ECF3EF;
+		background: #F0F4EB;
 		color: var(--color-primary);
 		display: flex;
 		align-items: center;
@@ -1390,7 +1410,7 @@
 	.pli-icon {
 		width: 44px;
 		height: 44px;
-		background: #ECF3EF;
+		background: #F0F4EB;
 		color: var(--color-primary);
 		border-radius: 50%;
 		display: flex;
@@ -2523,7 +2543,7 @@
 	.map-zoom-btn:hover,
 	.map-reset-btn:hover {
 		transform: scale(1.05);
-		box-shadow: 0 8px 24px rgba(38, 77, 59, 0.2);
+		box-shadow: 0 8px 24px rgba(92, 132, 55, 0.2);
 	}
 
 	@media (min-width: 861px) {
@@ -2723,7 +2743,7 @@
 
 	.drawer-road-item:hover,
 	.drawer-road-item.is-selected {
-		background: #ECF3EF;
+		background: #F0F4EB;
 		border: none;
 		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
 	}
@@ -2846,49 +2866,6 @@
 		}
 	}
 
-	/* District Ceremony Count Pill (Overview map) */
-	.district-count-pill {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		background: rgba(255, 255, 255, 0.96);
-		backdrop-filter: blur(8px);
-		-webkit-backdrop-filter: blur(8px);
-		border: 1.5px solid var(--district-border, rgba(38, 77, 59, 0.45));
-		border-radius: var(--radius-full);
-		padding: 4px 10px 4px 8px;
-		cursor: pointer;
-		box-shadow: 0 4px 14px rgba(14, 17, 22, 0.14);
-		transition: transform var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
-		user-select: none;
-		white-space: nowrap;
-		pointer-events: auto;
-		transform: translate(-50%, -50%);
-	}
-
-	.district-count-pill:hover {
-		transform: translate(-50%, -50%) translateY(-2px) scale(1.05);
-		box-shadow: 0 8px 22px rgba(14, 17, 22, 0.22);
-		background: #FFFFFF;
-	}
-
-	.district-count-pill .district-count-name {
-		font-size: 11.5px;
-		font-weight: 600;
-		color: #181B20;
-		letter-spacing: -0.01em;
-	}
-
-	.district-count-pill .district-count-badge {
-		font-size: 10px;
-		font-weight: 600;
-		color: #FFFFFF;
-		background: var(--district-border, var(--color-primary));
-		border-radius: var(--radius-full);
-		padding: 1.5px 6.5px;
-		line-height: 1.2;
-	}
-
 	/* Teduh Style Compact Popup Card */
 	.map-popup-card,
 	.map-popup-compact {
@@ -2943,7 +2920,7 @@
 		background: #F8FAF8;
 		padding: 7px 10px;
 		border-radius: 9px;
-		border: 1px solid rgba(228, 231, 229, 0.7);
+		border: none;
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
@@ -2994,7 +2971,7 @@
 		border-radius: 8px;
 		display: flex;
 		flex-direction: column;
-		border: 1px solid rgba(228, 231, 229, 0.6);
+		border: none;
 		text-align: left !important;
 		min-width: 0;
 		overflow: hidden;
@@ -3185,7 +3162,7 @@
 		background: #F8FAF9;
 		border-radius: 12px;
 		padding: 10px 14px;
-		border: 1px solid #EAEFEA;
+		border: none;
 		text-align: left;
 	}
 
@@ -3229,7 +3206,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 4px;
-		border: 1px solid rgba(228, 231, 229, 0.6);
+		border: none;
 	}
 
 	.map-detail-box-label {
@@ -3507,8 +3484,8 @@
 	}
 
 	.teduh-search-box:focus-within {
-		border-color: rgba(38, 77, 59, 0.45);
-		box-shadow: 0 4px 16px rgba(38, 77, 59, 0.08);
+		border-color: rgba(92, 132, 55, 0.45);
+		box-shadow: 0 4px 16px rgba(92, 132, 55, 0.08);
 	}
 
 	.teduh-search-icon {
@@ -3656,7 +3633,7 @@
 	}
 
 	.teduh-pill-action:hover {
-		background: #1D3D2E;
+		background: #405E28;
 		transform: translateY(-1px);
 	}
 
@@ -3860,7 +3837,7 @@
 	.rangkai-preloader-track {
 		width: 148px;
 		height: 2px;
-		background: rgba(38, 77, 59, 0.12);
+		background: rgba(92, 132, 55, 0.12);
 		border-radius: 999px;
 		overflow: hidden;
 	}
@@ -3868,7 +3845,7 @@
 	.rangkai-preloader-bar {
 		width: 100%;
 		height: 100%;
-		background: var(--color-primary, #264D3B);
+		background: var(--color-primary, #4D702F);
 		border-radius: 999px;
 		transform-origin: left center;
 		transform: scaleX(0);
@@ -4252,7 +4229,6 @@
 	.map-popup-title,
 	.map-detail-modal-title,
 	.modal-title,
-	.astryx-card-title,
 	.teduh-meta-label,
 	.teduh-meta-value,
 	.teduh-stat-number {
@@ -4295,9 +4271,9 @@
 
 	.teduh-road-item {
 		text-align: left;
-		border: 1px solid rgba(228, 231, 229, 0.7);
+		border: none;
 		cursor: pointer;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+		box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03);
 		transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 		width: 100%;
 		box-sizing: border-box;
@@ -4306,14 +4282,12 @@
 	.teduh-road-item:hover {
 		background: #FFFFFF;
 		transform: translateY(-2px);
-		border-color: rgba(38, 77, 59, 0.3);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
 	}
 
 	.teduh-road-item.is-selected {
 		background: #FFFFFF;
-		border-color: var(--color-primary);
-		box-shadow: 0 0 0 2px rgba(38, 77, 59, 0.15), 0 10px 28px rgba(38, 77, 59, 0.08);
+		box-shadow: 0 0 0 2px rgba(92, 132, 55, 0.25), 0 10px 28px rgba(92, 132, 55, 0.08);
 	}
 
 	.teduh-roads-map-box {
@@ -4324,7 +4298,40 @@
 		overflow: hidden;
 		background: #0E1116;
 		box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
-		border: 1px solid rgba(228, 231, 229, 0.5);
+		border: none;
+	}
+
+	.teduh-venue-unconfirmed-note {
+		margin: 0 0 12px 0;
+		padding: 10px 14px;
+		border-radius: 12px;
+		background: #FFFFFF;
+		color: #545B67;
+		font-size: 13.5px;
+		font-weight: 500;
+		box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
+	}
+
+	.teduh-road-meta-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 16px;
+		margin-top: 8px;
+		padding-top: 8px;
+		border-top: 1px solid #F0EFEA;
+		font-size: 12.5px;
+		color: #545B67;
+	}
+
+	.teduh-road-meta-pill {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.teduh-road-meta-pill strong {
+		color: #181B20;
+		font-weight: 600;
 	}
 
 	.teduh-disclaimer-icon {
@@ -4363,7 +4370,6 @@
 .map-popup-title,
 .map-detail-modal-title,
 .modal-title,
-.astryx-card-title,
 .teduh-meta-label,
 .teduh-meta-value,
 .teduh-stat-number,
@@ -4379,7 +4385,7 @@
    ========================================================================== */
 .teduh-workspace-shell {
 	min-height: 100dvh;
-	background: #FBFBFA;
+	background: #F4F3EF;
 	color: #181B20;
 	display: flex;
 	flex-direction: column;
@@ -4434,8 +4440,8 @@
 	border-radius: 999px;
 	font-size: 11.5px;
 	font-weight: 600;
-	background: #ECF3EF;
-	color: #264D3B;
+	background: #F0F4EB;
+	color: #4D702F;
 	white-space: nowrap;
 }
 
@@ -4474,7 +4480,7 @@
 }
 
 .teduh-workspace-sidebar {
-	background: #F6F5F2;
+	background: #F8F7F4;
 	border-right: 1px solid #E6E4DF;
 	padding: 22px 16px;
 	display: flex;
@@ -4519,15 +4525,15 @@
 }
 
 .teduh-sidebar-link:hover {
-	background: rgba(38, 77, 59, 0.07);
+	background: rgba(92, 132, 55, 0.07);
 	color: #181B20;
 }
 
 .teduh-sidebar-link.is-active {
-	background: #264D3B;
+	background: #4D702F;
 	color: #FFFFFF;
 	font-weight: 600;
-	box-shadow: 0 4px 12px rgba(38, 77, 59, 0.18);
+	box-shadow: 0 4px 12px rgba(92, 132, 55, 0.18);
 }
 
 .teduh-sidebar-link.is-disabled {
@@ -4572,18 +4578,19 @@
 
 .teduh-workspace-card {
 	background: #FFFFFF;
-	border: 1px solid #E6E4DF;
+	border: none;
 	border-radius: 18px;
 	padding: 24px;
-	box-shadow: 0 4px 18px rgba(15, 23, 42, 0.03);
+	box-shadow: 0 4px 20px rgba(15, 23, 42, 0.04);
 	display: flex;
 	flex-direction: column;
 	gap: 18px;
 }
 
 .teduh-workspace-card.is-subtle {
-	background: #F8FAF8;
-	border-color: rgba(38, 77, 59, 0.16);
+	background: #FAF9F6;
+	border: none;
+	box-shadow: none;
 }
 
 .teduh-workspace-card-header {
@@ -4610,13 +4617,13 @@
 
 .teduh-kpi-card {
 	background: #FFFFFF;
-	border: 1px solid #E6E4DF;
+	border: none;
 	border-radius: 16px;
 	padding: 18px 20px;
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	box-shadow: 0 2px 10px rgba(15, 23, 42, 0.02);
+	box-shadow: 0 2px 12px rgba(15, 23, 42, 0.035);
 }
 
 .teduh-kpi-label {
@@ -4640,7 +4647,7 @@
 
 .teduh-event-row-card {
 	background: #FFFFFF;
-	border: 1px solid #E6E4DF;
+	border: none;
 	border-radius: 16px;
 	padding: 18px 20px;
 	display: flex;
@@ -4648,26 +4655,155 @@
 	justify-content: space-between;
 	gap: 16px;
 	flex-wrap: wrap;
+	box-shadow: 0 2px 12px rgba(15, 23, 42, 0.035);
 	transition: all 0.18s ease;
 }
 
 .teduh-event-row-card:hover {
-	border-color: rgba(38, 77, 59, 0.35);
-	box-shadow: 0 6px 20px rgba(15, 23, 42, 0.05);
+	box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
 }
 
 .teduh-event-row-card.is-selected {
-	border-color: #264D3B;
 	background: #FAFDFB;
-	box-shadow: 0 0 0 2px rgba(38, 77, 59, 0.12);
+	box-shadow: 0 0 0 2px rgba(92, 132, 55, 0.28);
+}
+
+/* Venue Location Map Input Sub-Panel (Organizer Flow) */
+.venue-location-input {
+	background: #F8F7F4;
+	border-radius: 16px;
+	padding: 16px;
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+}
+
+.venue-location-header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+.venue-location-title-group {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	min-width: 0;
+}
+
+.venue-location-icon {
+	width: 34px;
+	height: 34px;
+	border-radius: 10px;
+	background: #F0F4EB;
+	color: #4D702F;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+}
+
+.venue-location-title {
+	margin: 0;
+	font-size: 13.5px;
+	font-weight: 600;
+	color: #181817;
+	line-height: 1.3;
+}
+
+.venue-location-subtitle {
+	margin: 2px 0 0;
+	font-size: 12px;
+	color: #585854;
+	line-height: 1.45;
+}
+
+.venue-location-status-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 4px 10px;
+	border-radius: 999px;
+	font-size: 11.5px;
+	font-weight: 600;
+	white-space: nowrap;
+}
+
+.venue-location-status-pill.is-set {
+	background: #F0F4EB;
+	color: #4D702F;
+}
+
+.venue-location-status-pill.is-empty {
+	background: #ECEAE4;
+	color: #585854;
+}
+
+.venue-location-map,
+.venue-location-map.maplibregl-map {
+	height: 280px !important;
+	width: 100%;
+	border-radius: 14px;
+	overflow: hidden;
+	background: #0E1116;
+}
+
+.venue-location-controls {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.venue-location-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	font-size: 12.5px;
+	font-weight: 600;
+	color: #181817;
+}
+
+.venue-location-actions {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.venue-location-error {
+	margin: 0;
+	font-size: 12px;
+	font-weight: 500;
+	color: #B91C1C;
+	background: #FEF2F2;
+	padding: 8px 12px;
+	border-radius: 10px;
+}
+
+/* Publish mode field in Wizard Step 0 */
+.teduh-publish-mode-field {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.teduh-publish-mode-label {
+	font-size: 12px;
+	font-weight: 600;
+	color: #585854;
 }
 
 /* Dashboard Interactive Map Input */
 .teduh-dashboard-map-wrapper {
-	border: 1px solid #E6E4DF;
+	border: none;
 	border-radius: 16px;
 	overflow: hidden;
 	background: #FFFFFF;
+	box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04);
 	display: flex;
 	flex-direction: column;
 }
@@ -4675,7 +4811,7 @@
 .teduh-dashboard-map-toolbar {
 	padding: 12px 16px;
 	background: #F8F7F4;
-	border-bottom: 1px solid #E6E4DF;
+	border-bottom: 1px solid #ECEAE4;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
@@ -4714,9 +4850,9 @@
 }
 
 .teduh-map-mode-pill.is-active {
-	background: #264D3B;
+	background: #4D702F;
 	color: #FFFFFF;
-	box-shadow: 0 2px 6px rgba(38, 77, 59, 0.2);
+	box-shadow: 0 2px 6px rgba(92, 132, 55, 0.2);
 }
 
 .teduh-map-operational-badge {
@@ -4725,7 +4861,7 @@
 	gap: 6px;
 	font-size: 13px;
 	font-weight: 600;
-	color: #264D3B;
+	color: #4D702F;
 }
 
 .teduh-map-area-select {
@@ -4776,7 +4912,7 @@
 	max-width: 540px;
 	background: rgba(255, 255, 255, 0.95);
 	backdrop-filter: blur(8px);
-	border: 1px solid #E6E4DF;
+	border: none;
 	border-radius: 10px;
 	padding: 8px 12px;
 	font-size: 12.5px;
@@ -4794,7 +4930,7 @@
 	height: 8px;
 	border-radius: 50%;
 	flex-shrink: 0;
-	background: #264D3B;
+	background: #4D702F;
 }
 
 .teduh-hint-dot.is-draw {
@@ -4820,7 +4956,7 @@
 	left: 12px;
 	background: rgba(255, 255, 255, 0.94);
 	backdrop-filter: blur(8px);
-	border: 1px solid #E6E4DF;
+	border: none;
 	border-radius: 8px;
 	padding: 6px 12px;
 	display: flex;
@@ -4831,6 +4967,7 @@
 	font-weight: 600;
 	color: #181B20;
 	z-index: 5;
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
 }
 
 .teduh-legend-item {
@@ -4914,7 +5051,66 @@
 	}
 
 	.teduh-mobile-nav-item.is-active {
-		color: #264D3B;
-		background: #ECF3EF;
+		color: #4D702F;
+		background: #F0F4EB;
+	}
+}
+
+@media (max-width: 768px) {
+	.teduh-workspace-card {
+		padding: 18px 16px;
+	}
+
+	.venue-location-controls {
+		grid-template-columns: 1fr;
+	}
+
+	.teduh-dashboard-map-toolbar {
+		padding: 10px 12px;
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.teduh-dashboard-map-toolbar-group {
+		width: 100%;
+		justify-content: space-between;
+	}
+
+	.teduh-dashboard-map-hint {
+		font-size: 11.5px;
+		padding: 6px 10px;
+		right: 54px;
+	}
+
+	.teduh-dashboard-map-legend {
+		left: 8px;
+		right: 8px;
+		bottom: 8px;
+		gap: 8px;
+		font-size: 11px;
+	}
+}
+
+@media (max-width: 480px) {
+	.teduh-workspace-main {
+		padding: 16px 12px 92px;
+		gap: 18px;
+	}
+
+	.teduh-kpi-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 10px;
+	}
+
+	.teduh-kpi-card {
+		padding: 14px;
+	}
+
+	.teduh-kpi-value {
+		font-size: 22px;
+	}
+
+	.venue-location-input {
+		padding: 12px;
 	}
 }

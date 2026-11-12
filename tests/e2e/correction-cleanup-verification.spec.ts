@@ -206,7 +206,7 @@ test.describe("Journey 5: Selected Cleanup Photo/Waste/Submit -> Organizer Verif
 			await expect(officerPage.getByText(/Tugas kebersihan diserahkan untuk diverifikasi/i)).toBeVisible();
 
 			await officerPage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey5-cleanup-submitted.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey5-cleanup-submitted.png",
 				fullPage: true,
 			});
 
@@ -221,7 +221,7 @@ test.describe("Journey 5: Selected Cleanup Photo/Waste/Submit -> Organizer Verif
 			await expect(orgPage.getByText(/Kebersihan area berhasil diverifikasi Prajuru/i)).toBeVisible();
 
 			await orgPage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey5-organizer-verified.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey5-organizer-verified.png",
 				fullPage: true,
 			});
 
@@ -249,7 +249,7 @@ test.describe("Journey 5: Selected Cleanup Photo/Waste/Submit -> Organizer Verif
 			await expect(orgPage.getByText(/TERBUKA KEMBALI|REOPENED|in_progress/i).first()).toBeVisible();
 
 			await orgPage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey5-cleanup-reopened.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey5-cleanup-reopened.png",
 				fullPage: true,
 			});
 		} finally {

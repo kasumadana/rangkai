@@ -157,8 +157,8 @@ export function RegisterPage() {
 									width: 48,
 									height: 48,
 									borderRadius: "50%",
-									background: "#ECF3EF",
-									color: "#264D3B",
+									background: "#F0F4EB",
+									color: "#4D702F",
 									display: "flex",
 									alignItems: "center",
 									justifyContent: "center",
@@ -189,8 +189,8 @@ export function RegisterPage() {
 								{safeReturnUrl ? (
 									<div
 										style={{
-											background: "#ECF3EF",
-											border: "1px solid rgba(38, 77, 59, 0.3)",
+											background: "#F0F4EB",
+											border: "1px solid rgba(92, 132, 55, 0.3)",
 											borderRadius: 16,
 											padding: "16px 18px",
 											display: "flex",
@@ -199,7 +199,7 @@ export function RegisterPage() {
 										}}
 									>
 										<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-											<CheckCircle2 size={18} color="#264D3B" />
+											<CheckCircle2 size={18} color="#4D702F" />
 											<span style={{ fontSize: 14, fontWeight: 600, color: "#181B20" }}>
 												Kembali ke Tautan Undangan Anda
 											</span>
@@ -222,7 +222,7 @@ export function RegisterPage() {
 								<div
 									style={{
 										background: "#F8FAF8",
-										border: "1px solid rgba(38, 77, 59, 0.15)",
+										border: "1px solid rgba(92, 132, 55, 0.15)",
 										borderRadius: 16,
 										padding: "16px 18px",
 										display: "flex",
@@ -231,7 +231,7 @@ export function RegisterPage() {
 									}}
 								>
 									<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-										<PlusCircle size={18} color="#264D3B" />
+										<PlusCircle size={18} color="#4D702F" />
 										<span style={{ fontSize: 14, fontWeight: 600, color: "#181B20" }}>
 											Saya Prajuru / Penyelenggara Baru
 										</span>
@@ -276,7 +276,7 @@ export function RegisterPage() {
 											alignSelf: "flex-start",
 											marginTop: 4,
 											fontSize: 13,
-											color: "#264D3B",
+											color: "#4D702F",
 											fontWeight: 600,
 											textDecoration: "none",
 										}}
@@ -311,7 +311,7 @@ export function RegisterPage() {
 							<div
 								style={{
 									background: "#F8FAF8",
-									border: "1px solid rgba(38, 77, 59, 0.12)",
+									border: "1px solid rgba(92, 132, 55, 0.12)",
 									borderRadius: 14,
 									padding: "12px 14px",
 									fontSize: 12.5,
@@ -534,7 +534,7 @@ export function RegisterPage() {
 									disabled={signUpMutation.isPending}
 									style={{
 										marginTop: 6,
-										background: "#264D3B",
+										background: "#4D702F",
 										color: "#FFFFFF",
 										border: "none",
 										borderRadius: 9999,
@@ -568,7 +568,7 @@ export function RegisterPage() {
 								<Link
 									to="/login"
 									style={{
-										color: "#264D3B",
+										color: "#4D702F",
 										fontWeight: 600,
 										textDecoration: "none",
 									}}

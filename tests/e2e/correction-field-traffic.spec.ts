@@ -143,8 +143,24 @@ test.describe("Journey 4: Field Officer Traffic Update -> Public Live Status & U
 			}
 			expect(acceptRes.status()).toBe(200);
 
-			// 4. Assigned Officer 1 navigates to /field/events/:id
-			await officer1Page.goto(`/field/events/${eventId}`);
+			// 4. The assigned event is listed with its permission and opens the field post.
+			let failTasks = true;
+			await officer1Page.route("**/api/field/tasks", async (route) => {
+				if (failTasks) {
+					failTasks = false;
+					await route.fulfill({ status: 503, json: { error: { code: "UNAVAILABLE", message: "Penugasan tidak tersedia", requestId: "test" } } });
+				} else await route.continue();
+			});
+			await officer1Page.goto("/field");
+			await expect(officer1Page.getByText("Gagal Memuat Penugasan")).toBeVisible();
+			await officer1Page.getByRole("button", { name: "Coba Lagi" }).click();
+			const assignment = officer1Page.getByRole("listitem").filter({ hasText: eventTitle });
+			await expect(assignment).toBeVisible();
+			await expect(assignment.getByText("SIMULASI")).toBeVisible();
+			await expect(assignment.getByText("Pos Pecalang (Jalan)")).toBeVisible();
+			await expect(assignment.getByText("Tim Kebersihan")).toHaveCount(0);
+			await assignment.getByRole("link", { name: "Buka Pos Jaga" }).click();
+			await expect(officer1Page).toHaveURL(new RegExp(`/field/events/${eventId}$`));
 			await expect(officer1Page.getByText(eventTitle).first()).toBeVisible();
 			await expect(officer1Page.getByText("Kendali Status Ruas Jalan (Pecalang)")).toBeVisible();
 			await expect(officer1Page.getByText(roadName).first()).toBeVisible();
@@ -153,19 +169,22 @@ test.describe("Journey 4: Field Officer Traffic Update -> Public Live Status & U
 			const noteInput = officer1Page.getByPlaceholder(/Contoh: Iring-iringan Melasti/i);
 			await noteInput.fill("Iring-iringan telah memasuki Catus Pata.");
 
-			// Click "Tutup Total" button
-			await officer1Page.getByRole("button", { name: "Tutup Total" }).first().click();
-
-			// Confirm in AlertDialog
-			await expect(officer1Page.getByText("Konfirmasi Perubahan Status Jalan")).toBeVisible();
-			await officer1Page.getByRole("button", { name: "Simpan Status" }).click();
+			const closeRoad = officer1Page.getByRole("button", { name: "Tutup Total" }).first();
+			await closeRoad.click();
+			const confirmation = officer1Page.getByRole("dialog", { name: "Konfirmasi Perubahan Status Jalan" });
+			await expect(confirmation).toBeVisible();
+			await officer1Page.keyboard.press("Escape");
+			await expect(confirmation).toBeHidden();
+			await expect(closeRoad).toBeFocused();
+			await closeRoad.click();
+			await confirmation.getByRole("button", { name: "Simpan Status" }).click();
 
 			// Assert success feedback
 			await expect(officer1Page.getByText(/Status "CLOSED" berhasil disimpan ke server/i)).toBeVisible();
 
 			// Capture screenshot of officer dashboard
 			await officer1Page.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey4-field-officer-status.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey4-field-officer-status.png",
 				fullPage: true,
 			});
 
@@ -175,7 +194,7 @@ test.describe("Journey 4: Field Officer Traffic Update -> Public Live Status & U
 			await expect(publicPage.getByText(/Tutup Total/i).first()).toBeVisible();
 
 			await publicPage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey4-public-status-closed.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey4-public-status-closed.png",
 				fullPage: true,
 			});
 
@@ -232,7 +251,7 @@ test.describe("Journey 4: Field Officer Traffic Update -> Public Live Status & U
 			await expect(publicPage.getByText(/BELUM DIKONFIRMASI ULANG/i).first()).toBeVisible();
 
 			await publicPage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey4-public-status-stale.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey4-public-status-stale.png",
 				fullPage: true,
 			});
 		} finally {

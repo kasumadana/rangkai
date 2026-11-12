@@ -1,6 +1,3 @@
-import { AlertDialog } from "@astryxdesign/core/AlertDialog";
-import { Banner } from "@astryxdesign/core/Banner";
-import { HStack } from "@astryxdesign/core/Stack";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -34,6 +31,7 @@ import {
 	RoadStatusBadge,
 } from "../components/rangkai";
 import { DashboardRoadMapInput } from "../features/map/DashboardRoadMapInput";
+import { VenueLocationInput } from "../features/map/VenueLocationInput";
 import { ApiClientError } from "../lib/api-client";
 import {
 	useCreateOrganizationMutation,
@@ -56,7 +54,6 @@ import {
 	fromIsoToWitaInput,
 	getSavedOrganizationId,
 	normalizeEventCategory,
-	normalizeRoadImpactType,
 	publishVerifiedEvent,
 	saveExtractedFields,
 	saveOrganizationId,
@@ -64,59 +61,15 @@ import {
 	transitionEventToReview,
 	triggerDocumentExtraction,
 	uploadEventDocument,
+	CATEGORY_OPTIONS,
+	IMPACT_TYPE_OPTIONS,
+	getImpactTypeLabel,
 } from "../lib/events-api";
 import { formatWitaDateTime, formatWitaRange } from "../lib/wita";
 
 const DRAFT_STORAGE_KEY = "rangkai:event-wizard-draft-v1";
 const UUID_REGEX =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-export const CATEGORY_OPTIONS = [
-	{ value: "upacara_adat", label: "Upacara Adat / Dewa Yadnya" },
-	{ value: "odalan", label: "Piodalan / Pujawali Pura" },
-	{ value: "melasti", label: "Prosesi Melasti" },
-	{ value: "pengerupukan", label: "Pengerupukan / Pawai Ogoh-Ogoh" },
-	{ value: "karya", label: "Karya Agung / Pitra Yadnya (Pelebon)" },
-	{ value: "lainnya", label: "Kegiatan Adat & Budaya Lainnya" },
-];
-
-export const IMPACT_TYPE_OPTIONS: Array<{
-	value: "closure" | "intermittent" | "narrowing" | "procession";
-	label: string;
-}> = [
-	{
-		value: "closure",
-		label: "Penutupan Total (Bahu & Badan Jalan Ditutup)",
-	},
-	{
-		value: "intermittent",
-		label: "Buka-Tutup Berkala (Intermittent / Prioritas Prosesi)",
-	},
-	{
-		value: "narrowing",
-		label: "Penyempitan Lajur / Pengalihan Sebagian",
-	},
-	{
-		value: "procession",
-		label: "Jalur Iring-iringan Prosesi Berjalan",
-	},
-];
-
-export function getImpactTypeLabel(type?: string): string {
-	const normalized = normalizeRoadImpactType(type);
-	switch (normalized) {
-		case "closure":
-			return "Penutupan Total";
-		case "intermittent":
-			return "Buka-Tutup Berkala";
-		case "narrowing":
-			return "Penyempitan Lajur";
-		case "procession":
-			return "Jalur Prosesi";
-		default:
-			return "Penutupan Jalan";
-	}
-}
 
 function getFieldReviewStatus(
 	candidate?: {
@@ -180,6 +133,8 @@ const wizardFormSchema = z
 			.max(255, "Maksimal 255 karakter."),
 		category: z.string().trim().max(100).optional(),
 		venueName: z.string().trim().max(255).optional(),
+		venueLongitude: z.string(),
+		venueLatitude: z.string(),
 		startsAtWita: z.string().trim().optional(),
 		endsAtWita: z.string().trim().optional(),
 		permitReference: z.string().trim().max(100).optional(),
@@ -190,6 +145,12 @@ const wizardFormSchema = z
 		cleanupLocationNotes: z.string().trim().max(2000).optional(),
 		contactInformation: z.string().trim().max(500).optional(),
 	})
+	.refine((val) => {
+		if (!val.venueLongitude.trim() && !val.venueLatitude.trim()) return true;
+		if (!val.venueLongitude.trim() || !val.venueLatitude.trim()) return false;
+		const lng = Number(val.venueLongitude), lat = Number(val.venueLatitude);
+		return Number.isFinite(lng) && Number.isFinite(lat) && lng >= 114.3 && lng <= 115.9 && lat >= -8.95 && lat <= -7.95;
+	}, { message: "Isi kedua koordinat dalam wilayah Bali, atau kosongkan keduanya.", path: ["venueLongitude"] })
 	.refine(
 		(val) => {
 			const startIso = toWitaIsoTimestamp(val.startsAtWita);
@@ -214,6 +175,8 @@ interface DraftFormState {
 	title: string;
 	category: string;
 	venueName: string;
+	venueLongitude: string;
+	venueLatitude: string;
 	startsAtWita: string;
 	endsAtWita: string;
 	permitReference: string;
@@ -233,6 +196,8 @@ function loadSessionDraft(): DraftFormState {
 		title: "",
 		category: "upacara_adat",
 		venueName: "",
+		venueLongitude: "",
+		venueLatitude: "",
 		startsAtWita: "2026-11-14T08:00",
 		endsAtWita: "2026-11-14T13:30",
 		permitReference: "",
@@ -309,6 +274,13 @@ export function EventWizardPage() {
 		description: string;
 	} | null>(null);
 	const [isPublishDialogOpen, setIsPublishDialogOpen] = useState(false);
+	const publishDialogRef = useRef<HTMLDialogElement>(null);
+	useEffect(() => {
+		const dialog = publishDialogRef.current;
+		if (!dialog) return;
+		if (isPublishDialogOpen && !dialog.open) dialog.showModal();
+		if (!isPublishDialogOpen && dialog.open) dialog.close();
+	}, [isPublishDialogOpen]);
 	const [publishSimulation, setPublishSimulation] = useState(true);
 	const [aiConsentGranted, setAiConsentGranted] = useState(true);
 
@@ -398,6 +370,8 @@ export function EventWizardPage() {
 				loadedEvent.category ||
 				"upacara_adat",
 			venueName: loadedEvent.venueName || "",
+			venueLongitude: String((record.venueLocation as { coordinates?: number[] } | null)?.coordinates?.[0] ?? ""),
+			venueLatitude: String((record.venueLocation as { coordinates?: number[] } | null)?.coordinates?.[1] ?? ""),
 			startsAtWita: startWita || "2026-11-14T08:00",
 			endsAtWita: endWita || "2026-11-14T13:30",
 			permitReference: loadedEvent.permitReference || "",
@@ -449,6 +423,7 @@ export function EventWizardPage() {
 					: "Draf Pengumuman Upacara Adat",
 			category: normalizeEventCategory(formState.category) || "upacara_adat",
 			venueName: formState.venueName.trim() || null,
+			venueLocation: formState.venueLongitude && formState.venueLatitude ? { type: "Point", coordinates: [Number(formState.venueLongitude), Number(formState.venueLatitude)] } : null,
 			startsAt: toWitaIsoTimestamp(formState.startsAtWita),
 			endsAt: toWitaIsoTimestamp(formState.endsAtWita),
 			permitReference: formState.permitReference.trim() || null,
@@ -576,6 +551,9 @@ export function EventWizardPage() {
 			const endsAtIso = toWitaIsoTimestamp(parsed.data.endsAtWita);
 			const canonicalCategory =
 				normalizeEventCategory(parsed.data.category) || "upacara_adat";
+			const venueLocation = parsed.data.venueLongitude && parsed.data.venueLatitude
+				? { type: "Point" as const, coordinates: [Number(parsed.data.venueLongitude), Number(parsed.data.venueLatitude)] as [number, number] }
+				: null;
 
 			if (isCreateMode || !isRealUuidEvent) {
 				return createEventDraft({
@@ -583,6 +561,7 @@ export function EventWizardPage() {
 					title: parsed.data.title,
 					category: canonicalCategory,
 					venueName: parsed.data.venueName || null,
+					venueLocation,
 					startsAt: startsAtIso,
 					endsAt: endsAtIso,
 					permitReference: parsed.data.permitReference || null,
@@ -590,10 +569,11 @@ export function EventWizardPage() {
 				});
 			}
 
-			return saveExtractedFields(routeEventId!, {
+			const result = await saveExtractedFields(routeEventId!, {
 				title: parsed.data.title,
 				category: canonicalCategory,
 				venueName: parsed.data.venueName || null,
+				venueLocation,
 				startsAt: startsAtIso,
 				endsAt: endsAtIso,
 				permitReference: parsed.data.permitReference || null,
@@ -604,6 +584,7 @@ export function EventWizardPage() {
 				cleanupLocationNotes: parsed.data.cleanupLocationNotes || null,
 				contactInformation: parsed.data.contactInformation || null,
 			});
+			return result;
 		},
 		onSuccess: async (result) => {
 			await queryClient.invalidateQueries({ queryKey: ["events"] });
@@ -980,7 +961,7 @@ export function EventWizardPage() {
 							to={`/dashboard/events/${routeEventId}/team`}
 							className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
 						>
-							<Users className="w-3.5 h-3.5 text-[#264D3B]" />
+							<Users className="w-3.5 h-3.5 text-[#4D702F]" />
 							<span>Tim &amp; Undangan</span>
 						</Link>
 					) : null}
@@ -988,7 +969,7 @@ export function EventWizardPage() {
 						type="button"
 						disabled={saveDraftMutation.isPending}
 						onClick={() => void saveDraftMutation.mutateAsync()}
-						className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+						className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4D702F] text-white text-xs font-semibold hover:bg-[#405E28] disabled:opacity-50"
 					>
 						<Save className="w-3.5 h-3.5" />
 						<span>
@@ -1000,44 +981,44 @@ export function EventWizardPage() {
 
 			{/* Contextual Event Navigation Tabs for Saved Events */}
 			{isRealUuidEvent && routeEventId ? (
-				<HStack gap={2} wrap="wrap" className="mb-6">
-					<span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-[#264D3B] text-white shadow-xs cursor-default">
+				<nav aria-label="Navigasi acara" className="teduh-context-tab-nav mb-5 flex flex-wrap gap-2">
+					<span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold bg-[#4D702F] text-white shadow-xs cursor-default">
 						<FileText className="w-4 h-4" />
 						<span>Ringkasan / Wizard</span>
 					</span>
 					<Link
 						to={`/dashboard/events/${routeEventId}/document`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold bg-white text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline shadow-xs"
 					>
 						<FileText className="w-4 h-4" />
 						<span>Dokumen &amp; AI</span>
 					</Link>
 					<Link
 						to={`/dashboard/events/${routeEventId}/roads`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold bg-white text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline shadow-xs"
 					>
 						<MapPinned className="w-4 h-4" />
 						<span>Dampak Jalan</span>
 					</Link>
 					<Link
 						to={`/dashboard/events/${routeEventId}/cleanup`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold bg-white text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline shadow-xs"
 					>
 						<ClipboardCheck className="w-4 h-4" />
 						<span>Kebersihan</span>
 					</Link>
 					<Link
 						to={`/dashboard/events/${routeEventId}/team`}
-						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-base font-semibold bg-white border border-[#E5E3DC] text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline"
+						className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-semibold bg-white text-[#585854] hover:text-[#181817] hover:bg-[#F3F1EC] transition-all no-underline shadow-xs"
 					>
 						<Users className="w-4 h-4" />
 						<span>Tim &amp; Undangan</span>
 					</Link>
-				</HStack>
+				</nav>
 			) : null}
 
 			{/* Step Navigation Bar */}
-			<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+			<div className="teduh-wizard-steps-grid grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
 				{WIZARD_STEPS.map((step) => {
 					const isCurrent = activeStep === step.id;
 					const isDone = activeStep > step.id;
@@ -1046,27 +1027,27 @@ export function EventWizardPage() {
 							key={step.id}
 							type="button"
 							onClick={() => setActiveStep(step.id)}
-							className={`text-left rounded-2xl border p-3.5 transition-all ${
+							className={`teduh-wizard-step-card text-left rounded-2xl p-4 transition-all ${
 								isCurrent
-									? "border-[#264D3B] bg-[#EBF3EE] ring-2 ring-[#264D3B]/10"
+									? "bg-[#F0F4EB] ring-2 ring-[#4D702F]/25 shadow-xs"
 									: isDone
-										? "border-[#C7DBD0] bg-white hover:bg-[#F3F1EC]"
-										: "border-[#E5E3DC] bg-white hover:bg-[#F3F1EC]"
+										? "bg-white hover:bg-[#F3F1EC] shadow-xs"
+										: "bg-white hover:bg-[#F3F1EC] shadow-xs"
 							}`}
 						>
 							<div className="flex items-center justify-between gap-2 mb-1">
 								<span
-									className={`text-xs font-bold ${
-										isCurrent ? "text-[#264D3B]" : "text-[#181817]"
+									className={`text-sm font-semibold ${
+										isCurrent ? "text-[#4D702F]" : "text-[#181817]"
 									}`}
 								>
 									{step.label}
 								</span>
 								{isDone ? (
-									<CheckCircle2 className="w-3.5 h-3.5 text-[#264D3B] shrink-0" />
+									<CheckCircle2 className="w-4 h-4 text-[#4D702F] shrink-0" />
 								) : null}
 							</div>
-							<p className="text-[11px] text-[#585854] leading-snug">
+							<p className="text-xs text-[#585854] leading-snug">
 								{step.description}
 							</p>
 						</button>
@@ -1076,13 +1057,9 @@ export function EventWizardPage() {
 
 			{/* Feedback Banner */}
 			{bannerFeedback ? (
-				<div className="mb-6">
-					<Banner
-						status={bannerFeedback.status}
-						collapsible={false}
-						title={bannerFeedback.title}
-						description={bannerFeedback.description}
-					/>
+				<div role={bannerFeedback.status === "error" ? "alert" : "status"} className={`mb-6 rounded-xl p-4 ${bannerFeedback.status === "error" ? "bg-red-50 text-red-900" : bannerFeedback.status === "warning" ? "bg-amber-50 text-amber-950" : bannerFeedback.status === "success" ? "bg-green-50 text-green-900" : "bg-blue-50 text-blue-900"}`}>
+					<strong>{bannerFeedback.title}</strong>
+					<p>{bannerFeedback.description}</p>
 				</div>
 			) : null}
 
@@ -1106,21 +1083,28 @@ export function EventWizardPage() {
 					{activeStep === 0 ? (
 						<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 							<div className="xl:col-span-7 teduh-workspace-card space-y-5">
-								<label>Mode publikasi
-									<select value={publishSimulation ? "simulation" : "operational"} onChange={(e) => setPublishSimulation(e.target.value !== "operational")}>
-										<option value="simulation">Simulasi</option>
-										{hasOperationalAuthority ? <option value="operational">Operasional</option> : null}
-									</select>
-								</label>
-								<div className="border-b border-[#F0EFEA] pb-3">
-									<h2 className="teduh-workspace-card-title">
-										1. Pilih Desa Adat &amp; Unggah Surat Edaran
-									</h2>
-									<p className="text-xs text-[#585854] mt-1">
-										Unggah foto atau PDF surat edaran resmi desa adat. Google
-										Gemini akan mengekstrak informasi ke draf terstruktur untuk
-										diperiksa Prajuru.
-									</p>
+								<div className="border-b border-[#F0EFEA] pb-3 flex flex-wrap items-start justify-between gap-3">
+									<div>
+										<h2 className="teduh-workspace-card-title">
+											1. Pilih Desa Adat &amp; Unggah Surat Edaran
+										</h2>
+										<p className="text-xs text-[#585854] mt-1">
+											Unggah foto atau PDF surat edaran resmi desa adat. Google
+											Gemini akan mengekstrak informasi ke draf terstruktur untuk
+											diperiksa Prajuru.
+										</p>
+									</div>
+									<label className="teduh-publish-mode-field">
+										<span className="teduh-publish-mode-label">Mode publikasi</span>
+										<select
+											className="teduh-form-select"
+											value={publishSimulation ? "simulation" : "operational"}
+											onChange={(e) => setPublishSimulation(e.target.value !== "operational")}
+										>
+											<option value="simulation">Simulasi</option>
+											{hasOperationalAuthority ? <option value="operational">Operasional</option> : null}
+										</select>
+									</label>
 								</div>
 
 								{/* Desa Adat Selector */}
@@ -1138,7 +1122,7 @@ export function EventWizardPage() {
 											updateField("organizationId", e.target.value);
 											saveOrganizationId(e.target.value);
 										}}
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs font-medium text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs font-medium text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									>
 										{orgOptions.map((opt) => (
 											<option key={opt.value} value={opt.value}>
@@ -1207,7 +1191,7 @@ export function EventWizardPage() {
 														});
 													}
 												}}
-												className="px-3 py-1.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+												className="px-3 py-1.5 rounded-xl bg-[#4D702F] text-white text-xs font-semibold hover:bg-[#405E28] disabled:opacity-50"
 											>
 												{createOrgMutation.isPending
 													? "Mendaftarkan..."
@@ -1223,7 +1207,7 @@ export function EventWizardPage() {
 										type="checkbox"
 										checked={aiConsentGranted}
 										onChange={(e) => setAiConsentGranted(e.target.checked)}
-										className="mt-0.5 rounded border-[#C5C3BC] text-[#264D3B] focus:ring-[#264D3B]"
+										className="mt-0.5 rounded border-[#C5C3BC] text-[#4D702F] focus:ring-[#4D702F]"
 									/>
 									<div className="text-xs">
 										<span className="font-bold text-[#181817] block">
@@ -1239,8 +1223,8 @@ export function EventWizardPage() {
 								</label>
 
 								{/* File Upload Dropzone */}
-								<div className="rounded-2xl border-2 border-dashed border-[#C7DBD0] bg-[#F6FAF7] p-6 text-center space-y-3">
-									<Upload className="w-8 h-8 text-[#264D3B] mx-auto" />
+								<div className="rounded-2xl border-2 border-dashed border-[#C6D5B8] bg-[#F6FAF7] p-6 text-center space-y-3">
+									<Upload className="w-8 h-8 text-[#4D702F] mx-auto" />
 									<div className="space-y-1">
 										<p className="text-sm font-bold text-[#181817]">
 											Unggah Berkas Surat Edaran (PDF, JPG, PNG • Maks. 10 MB)
@@ -1252,7 +1236,7 @@ export function EventWizardPage() {
 										</p>
 									</div>
 									<div>
-										<label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] cursor-pointer">
+										<label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#4D702F] text-white text-xs font-semibold hover:bg-[#405E28] cursor-pointer">
 											<Upload className="w-3.5 h-3.5" />
 											<span>
 												{uploadAndExtractMutation.isPending
@@ -1292,7 +1276,7 @@ export function EventWizardPage() {
 										</label>
 									</div>
 									{activeDocument ? (
-										<p className="text-xs font-semibold text-[#264D3B]">
+										<p className="text-xs font-semibold text-[#4D702F]">
 											Berkas terunggah: {activeDocument.originalName} (
 											{Math.round(activeDocument.sizeBytes / 1024)} KB)
 										</p>
@@ -1324,13 +1308,13 @@ export function EventWizardPage() {
 							<div className="xl:col-span-5 teduh-workspace-card space-y-4">
 								<div className="flex items-center justify-between gap-2 border-b border-[#F0EFEA] pb-3">
 									<div className="flex items-center gap-2">
-										<Sparkles className="w-4 h-4 text-[#264D3B]" />
+										<Sparkles className="w-4 h-4 text-[#4D702F]" />
 										<h3 className="teduh-workspace-card-title">
 											Hasil Ekstraksi AI Gemini
 										</h3>
 									</div>
 									{activeExtraction ? (
-										<span className="px-2.5 py-0.5 rounded-full bg-[#EBF3EE] text-[#264D3B] text-[11px] font-bold">
+										<span className="px-2.5 py-0.5 rounded-full bg-[#F0F4EB] text-[#4D702F] text-[11px] font-bold">
 											{activeExtraction.modelName} ({activeExtraction.latencyMs}{" "}
 											ms)
 										</span>
@@ -1386,7 +1370,7 @@ export function EventWizardPage() {
 										<button
 											type="button"
 											onClick={() => setActiveStep(1)}
-											className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+											className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#4D702F] text-white text-xs font-semibold hover:bg-[#405E28]"
 										>
 											<span>Periksa &amp; Koreksi Rincian</span>
 											<ArrowRight className="w-3.5 h-3.5" />
@@ -1425,7 +1409,7 @@ export function EventWizardPage() {
 									</p>
 								</div>
 								{activeExtraction ? (
-									<span className="px-3 py-1 rounded-full bg-[#EBF3EE] text-[#264D3B] text-xs font-semibold">
+									<span className="px-3 py-1 rounded-full bg-[#F0F4EB] text-[#4D702F] text-xs font-semibold">
 										Terisi dari Ekstraksi Surat Edaran
 									</span>
 								) : null}
@@ -1442,7 +1426,7 @@ export function EventWizardPage() {
 										value={formState.title}
 										onChange={(e) => updateField("title", e.target.value)}
 										placeholder="Contoh: Karya Pujawali & Prosesi Melasti Pura Dalem Ubud"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									/>
 									{fieldErrors.title ? (
 										<p className="text-xs text-[#9E2A2B] font-medium">
@@ -1478,7 +1462,7 @@ export function EventWizardPage() {
 									<select
 										value={formState.category}
 										onChange={(e) => updateField("category", e.target.value)}
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									>
 										{CATEGORY_OPTIONS.map((opt) => (
 											<option key={opt.value} value={opt.value}>
@@ -1500,7 +1484,7 @@ export function EventWizardPage() {
 											updateField("permitReference", e.target.value)
 										}
 										placeholder="Contoh: 14/DA-UBD/XI/2026"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									/>
 								</div>
 
@@ -1514,7 +1498,7 @@ export function EventWizardPage() {
 										value={formState.venueName}
 										onChange={(e) => updateField("venueName", e.target.value)}
 										placeholder="Contoh: Pura Desa Adat Ubud menuju Catus Pata Ubud"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									/>
 									{activeExtraction?.outputJson ? (
 										<div className="flex flex-wrap items-center justify-between gap-2 pt-1">
@@ -1538,6 +1522,8 @@ export function EventWizardPage() {
 								</div>
 
 								{/* Waktu Mulai WITA */}
+								<VenueLocationInput longitude={formState.venueLongitude} latitude={formState.venueLatitude} onChange={(lng, lat) => setFormState((prev) => ({ ...prev, venueLongitude: lng, venueLatitude: lat }))} />
+								{fieldErrors.venueLongitude ? <p role="alert">{fieldErrors.venueLongitude}</p> : null}
 								<div className="space-y-1.5">
 									<label className="block text-xs font-semibold text-[#181817]">
 										Waktu Mulai (WITA • UTC+8)
@@ -1548,7 +1534,7 @@ export function EventWizardPage() {
 										onChange={(e) =>
 											updateField("startsAtWita", e.target.value)
 										}
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									/>
 								</div>
 
@@ -1561,7 +1547,7 @@ export function EventWizardPage() {
 										type="datetime-local"
 										value={formState.endsAtWita}
 										onChange={(e) => updateField("endsAtWita", e.target.value)}
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									/>
 									{fieldErrors.endsAtWita ? (
 										<p className="text-xs text-[#9E2A2B] font-medium">
@@ -1585,7 +1571,7 @@ export function EventWizardPage() {
 											}
 										}}
 										placeholder="Urutan iring-iringan, sarana upakara yang diusung, dan titik pemberhentian..."
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 text-xs text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									/>
 								</div>
 
@@ -1601,7 +1587,7 @@ export function EventWizardPage() {
 											updateField("trafficImpactDescription", e.target.value)
 										}
 										placeholder="Rute pengalihan arus kendaraan, kantong parkir krama, dan imbauan bagi pengguna jalan..."
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 text-xs text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									/>
 								</div>
 
@@ -1617,7 +1603,7 @@ export function EventWizardPage() {
 											updateField("organizerName", e.target.value)
 										}
 										placeholder="Contoh: Prawartaka Karya Desa Adat Ubud"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									/>
 								</div>
 
@@ -1632,7 +1618,7 @@ export function EventWizardPage() {
 											updateField("contactInformation", e.target.value)
 										}
 										placeholder="Contoh: 0812-3456-7890 (Jro Pecalang)"
-										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#264D3B]"
+										className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs text-[#181817] focus:outline-none focus:border-[#4D702F]"
 									/>
 								</div>
 							</div>
@@ -1652,7 +1638,7 @@ export function EventWizardPage() {
 										type="button"
 										disabled={saveDraftMutation.isPending}
 										onClick={() => void saveDraftMutation.mutateAsync()}
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4]"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#4D702F] bg-[#F0F4EB] text-xs font-semibold text-[#4D702F] hover:bg-[#E2ECD8]"
 									>
 										<Save className="w-3.5 h-3.5" />
 										<span>Simpan Rincian</span>
@@ -1660,7 +1646,7 @@ export function EventWizardPage() {
 									<button
 										type="button"
 										onClick={() => setActiveStep(2)}
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4D702F] text-white text-xs font-semibold hover:bg-[#405E28]"
 									>
 										<span>Lanjut ke Peta &amp; Ruas Jalan</span>
 										<ArrowRight className="w-3.5 h-3.5" />
@@ -1695,7 +1681,7 @@ export function EventWizardPage() {
 											onClick={() => setRoadInputMode("draw")}
 											className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
 												roadInputMode === "draw"
-													? "bg-[#264D3B] text-white"
+													? "bg-[#4D702F] text-white"
 													: "text-[#585854] hover:text-[#181817]"
 											}`}
 										>
@@ -1707,7 +1693,7 @@ export function EventWizardPage() {
 											onClick={() => setRoadInputMode("catalog")}
 											className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
 												roadInputMode === "catalog"
-													? "bg-[#264D3B] text-white"
+													? "bg-[#4D702F] text-white"
 													: "text-[#585854] hover:text-[#181817]"
 											}`}
 										>
@@ -1756,7 +1742,7 @@ export function EventWizardPage() {
 														}}
 														className={`w-full py-1.5 px-2 rounded-md font-semibold text-xs transition-colors ${
 															selectedRoadSegmentId === cand.roadSegmentId
-																? "bg-[#264D3B] text-white"
+																? "bg-[#4D702F] text-white"
 																: "bg-stone-100 hover:bg-stone-200 text-stone-800"
 														}`}
 													>
@@ -1825,16 +1811,16 @@ export function EventWizardPage() {
 
 								{/* Input Form Based on Active Map Mode */}
 								{roadInputMode === "draw" ? (
-									<div className="rounded-2xl border border-[#D7E3DC] bg-[#F6FAF7] p-4 space-y-4">
+									<div className="rounded-2xl border border-[#DCE8D3] bg-[#F6FAF7] p-4 space-y-4">
 										<div className="flex flex-wrap items-center justify-between gap-2">
 											<div className="flex items-center gap-2">
-												<PenTool className="w-4 h-4 text-[#264D3B]" />
+												<PenTool className="w-4 h-4 text-[#4D702F]" />
 												<span className="text-xs font-bold text-[#181817]">
 													Formulir Ruas Jalan dari Titik Peta (
 													{draftCoordinates.length} titik dipilih)
 												</span>
 											</div>
-											<span className="text-[11px] font-semibold text-[#264D3B]">
+											<span className="text-[11px] font-semibold text-[#4D702F]">
 												{draftCoordinates.length < 2
 													? "Klik minimal 2 titik pada peta di atas"
 													: "Garis ruas jalan siap disimpan"}
@@ -1937,7 +1923,7 @@ export function EventWizardPage() {
 													onChange={(e) =>
 														setHumanVerifiedRoad(e.target.checked)
 													}
-													className="rounded border-[#C5C3BC] text-[#264D3B]"
+													className="rounded border-[#C5C3BC] text-[#4D702F]"
 												/>
 												<span>
 															Saya memeriksa garis ini untuk latihan. Garis ini bukan ruas operasional terverifikasi.
@@ -1953,7 +1939,7 @@ export function EventWizardPage() {
 												onClick={() =>
 													void drawAndAttachRoadMutation.mutateAsync()
 												}
-												className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50 shrink-0"
+												className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#4D702F] text-white text-xs font-semibold hover:bg-[#405E28] disabled:opacity-50 shrink-0"
 											>
 												<Plus className="w-3.5 h-3.5" />
 												<span>
@@ -2044,7 +2030,7 @@ export function EventWizardPage() {
 														);
 													}
 												}}
-												className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+												className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4D702F] text-white text-xs font-semibold hover:bg-[#405E28] disabled:opacity-50"
 											>
 												<Plus className="w-3.5 h-3.5" />
 												<span>
@@ -2080,7 +2066,7 @@ export function EventWizardPage() {
 																imp.displayName ||
 																"Ruas Jalan Terverifikasi"}
 														</span>
-														<span className="px-2 py-0.5 rounded-md bg-[#EBF3EE] text-[#264D3B] text-[11px] font-semibold shrink-0">
+														<span className="px-2 py-0.5 rounded-md bg-[#F0F4EB] text-[#4D702F] text-[11px] font-semibold shrink-0">
 															{getImpactTypeLabel(imp.impactType)}
 														</span>
 													</div>
@@ -2152,7 +2138,7 @@ export function EventWizardPage() {
 									<button
 										type="button"
 										onClick={() => setActiveStep(3)}
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e]"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4D702F] text-white text-xs font-semibold hover:bg-[#405E28]"
 									>
 										<span>Lanjut ke Verifikasi &amp; Terbitkan</span>
 										<ArrowRight className="w-3.5 h-3.5" />
@@ -2210,7 +2196,7 @@ export function EventWizardPage() {
 										<span className="text-[11px] text-[#585854] block">
 											Ruas Jalan Terdampak
 										</span>
-										<p className="font-bold text-[#264D3B]">
+										<p className="font-bold text-[#4D702F]">
 																	{attachedRoadImpacts.length} ruas jalan tercatat
 										</p>
 									</div>
@@ -2235,7 +2221,7 @@ export function EventWizardPage() {
 								</div>
 
 								{/* Action Bar: Save, Verify (Review), Publish, Complete */}
-								<div className="rounded-2xl border border-[#D7E3DC] bg-[#F6FAF7] p-4 space-y-3">
+								<div className="rounded-2xl border border-[#DCE8D3] bg-[#F6FAF7] p-4 space-y-3">
 									<div className="flex flex-wrap items-center justify-between gap-2">
 										<span className="text-xs font-bold text-[#181817]">
 											Tindakan Siklus Hidup Acara (Event Lifecycle)
@@ -2258,7 +2244,7 @@ export function EventWizardPage() {
 											type="button"
 											disabled={!isRealUuidEvent || reviewMutation.isPending}
 											onClick={() => void reviewMutation.mutateAsync()}
-											className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B] bg-[#EBF3EE] text-xs font-semibold text-[#264D3B] hover:bg-[#dfece4] disabled:opacity-50"
+											className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#4D702F] bg-[#F0F4EB] text-xs font-semibold text-[#4D702F] hover:bg-[#E2ECD8] disabled:opacity-50"
 										>
 											<CheckCircle2 className="w-3.5 h-3.5" />
 											<span>
@@ -2277,7 +2263,7 @@ export function EventWizardPage() {
 													currentLifecycleStatus !== "review")
 											}
 											onClick={() => setIsPublishDialogOpen(true)}
-											className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+											className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4D702F] text-white text-xs font-semibold hover:bg-[#405E28] disabled:opacity-50"
 										>
 											<Send className="w-3.5 h-3.5" />
 											<span>3. Terbitkan ke Warga</span>
@@ -2290,7 +2276,7 @@ export function EventWizardPage() {
 												type="button"
 												disabled={completeMutation.isPending}
 												onClick={() => void completeMutation.mutateAsync()}
-												className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#264D3B] bg-white text-xs font-semibold text-[#264D3B] hover:bg-[#EBF3EE]"
+												className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-[#4D702F] bg-white text-xs font-semibold text-[#4D702F] hover:bg-[#F0F4EB]"
 											>
 												<CheckCircle2 className="w-3.5 h-3.5" />
 												<span>Tandai Acara Selesai</span>
@@ -2348,7 +2334,7 @@ export function EventWizardPage() {
 												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
 											>
 												<div className="flex items-center gap-3">
-													<Users className="w-4 h-4 text-[#264D3B]" />
+													<Users className="w-4 h-4 text-[#4D702F]" />
 													<div>
 														<p className="text-xs font-bold text-[#181817]">
 															Tim Lapangan &amp; Tautan Undangan
@@ -2368,7 +2354,7 @@ export function EventWizardPage() {
 												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
 											>
 												<div className="flex items-center gap-3">
-													<Radio className="w-4 h-4 text-[#264D3B]" />
+													<Radio className="w-4 h-4 text-[#4D702F]" />
 													<div>
 														<p className="text-xs font-bold text-[#181817]">
 															Pos Pecalang (Status Jalan Live)
@@ -2386,7 +2372,7 @@ export function EventWizardPage() {
 												className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3.5 flex items-center justify-between hover:bg-[#F3F1EC] no-underline"
 											>
 												<div className="flex items-center gap-3">
-													<ClipboardCheck className="w-4 h-4 text-[#264D3B]" />
+													<ClipboardCheck className="w-4 h-4 text-[#4D702F]" />
 													<div>
 														<p className="text-xs font-bold text-[#181817]">
 															Kebersihan &amp; Pencatatan Sampah
@@ -2413,19 +2399,19 @@ export function EventWizardPage() {
 				</>
 			)}
 
-			<AlertDialog
-				isOpen={isPublishDialogOpen}
-				onOpenChange={setIsPublishDialogOpen}
-				onAction={() => {
-					void publishMutation.mutateAsync();
-				}}
-				title={!publishSimulation ? "Umumkan Kegiatan ke Warga?" : "Publikasikan Simulasi?"}
-				description={!publishSimulation ? "Pastikan seluruh data telah sesuai dengan surat edaran." : "Kegiatan ini akan ditampilkan sebagai SIMULASI."}
-				actionLabel={!publishSimulation ? "Ya, Terbitkan" : "Ya, Terbitkan Simulasi"}
-				cancelLabel="Batal"
-				actionVariant="primary"
-				isActionLoading={publishMutation.isPending}
-			/>
+			<dialog ref={publishDialogRef} aria-labelledby="publish-dialog-title" aria-describedby="publish-dialog-description"
+				className="m-auto w-[min(92vw,32rem)] rounded-2xl bg-white p-6 text-stone-900 shadow-xl backdrop:bg-black/50"
+				onCancel={(event) => { if (publishMutation.isPending) event.preventDefault(); }}
+				onClose={() => setIsPublishDialogOpen(false)}>
+				<h2 id="publish-dialog-title" className="text-xl font-semibold">{!publishSimulation ? "Umumkan Kegiatan ke Warga?" : "Publikasikan Simulasi?"}</h2>
+				<p id="publish-dialog-description" className="mt-2 text-stone-600">{!publishSimulation ? "Pastikan seluruh data telah sesuai dengan surat edaran." : "Kegiatan ini akan ditampilkan sebagai SIMULASI."}</p>
+				<div className="mt-6 flex flex-wrap justify-end gap-3">
+					<button type="button" className="teduh-btn-secondary" disabled={publishMutation.isPending} onClick={() => setIsPublishDialogOpen(false)}>Batal</button>
+					<button type="button" className="teduh-btn-primary" disabled={publishMutation.isPending} onClick={() => publishMutation.mutate()}>
+						{publishMutation.isPending ? "Menerbitkan..." : !publishSimulation ? "Ya, Terbitkan" : "Ya, Terbitkan Simulasi"}
+					</button>
+				</div>
+			</dialog>
 		</div>
 
 	);

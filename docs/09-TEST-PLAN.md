@@ -24,6 +24,7 @@ Unit:
 - Permission helpers.
 - Road-status expiry logic.
 - Waste quantity validation.
+- Venue Point validation: valid longitude/latitude, reversed or non-finite coordinates, and absent/cleared points.
 
 Integration:
 
@@ -38,6 +39,7 @@ Integration:
 - Event assignment scoping and revocation (officers only receive assigned events in detail and listings).
 - Event CRUD, bounded pagination, review state transition, road-impact publication gating (verified road segments requirement), and lifecycle cancellation with reason.
 - Stale verification reset to draft on core field modification during review.
+- Venue Point persistence and readback, cross-organization denial, and review invalidation after changing the point.
 - Terminal state modification prevention (completed/cancelled).
 - Idempotent publication retries without duplicate slug creation or audit duplication.
 - Atomic database mutation + audit log batching with rollback verification.

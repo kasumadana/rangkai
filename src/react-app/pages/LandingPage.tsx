@@ -1,6 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Token } from "@astryxdesign/core/Token";
-import { Stack } from "@astryxdesign/core/Stack";
 import {
 	ArrowRight,
 	Calendar,
@@ -166,7 +164,7 @@ export function LandingPage() {
 				<div className="hero-right">
 					<div className="hero-fade-overlay" />
 					<img
-						src="/images/bali-culture-hero.jpg"
+						src="/images/bali-culture-hero.webp"
 						alt="Pura Ulun Danu Beratan Bali"
 						className="hero-full-img"
 					/>
@@ -278,14 +276,14 @@ export function LandingPage() {
 									<div>
 										<div className="schedule-card-header">
 											<span className="schedule-village-label">{evt.village} • {evt.regency}</span>
-											<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+											<div className="flex flex-wrap items-center gap-1">
 												{evt.isSimulation !== false ? (
-													<Token color="orange" size="sm" label="SIMULASI" />
+													<span className="map-popup-badge simulation-token">SIMULASI</span>
 												) : null}
 												<span className={`road-status-badge ${statusClass}`}>
 													{statusText}
 												</span>
-											</Stack>
+											</div>
 										</div>
 
 										<h3 className="schedule-card-title">{evt.title}</h3>
@@ -305,7 +303,7 @@ export function LandingPage() {
 									</div>
 
 									<div className="schedule-card-footer">
-										<Link to={`/peta?village=${evt.slug}`} style={{ fontSize: 13, color: "#264D3B", textDecoration: "none", fontWeight: 500 }}>
+										<Link to={`/peta?village=${evt.slug}`} style={{ fontSize: 13, color: "#4D702F", textDecoration: "none", fontWeight: 500 }}>
 											Lihat di Peta →
 										</Link>
 										<Link to={`/events/${evt.slug}`} className="btn-schedule-detail">
@@ -340,7 +338,7 @@ export function LandingPage() {
 								display: "inline-flex",
 								alignItems: "center",
 								gap: 8,
-								background: "#264D3B",
+								background: "#4D702F",
 								color: "#FFFFFF",
 								padding: "10px 20px",
 								borderRadius: 9999,

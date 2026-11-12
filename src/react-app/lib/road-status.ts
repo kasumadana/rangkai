@@ -1,6 +1,3 @@
-import type { StatusDotVariant } from "@astryxdesign/core/StatusDot";
-import type { TokenProps } from "@astryxdesign/core/Token";
-
 /**
  * Allowed operational road statuses per AGENTS.md §13 & docs/02-SRS.md FR-034:
  * - OPEN
@@ -13,8 +10,8 @@ export type OperationalRoadStatus = "open" | "intermittent" | "closed" | "unknow
 export interface StatusPresentation {
 	code: "OPEN" | "INTERMITTENT" | "CLOSED" | "UNKNOWN";
 	label: string;
-	tokenColor: NonNullable<TokenProps["color"]>;
-	dotVariant: StatusDotVariant;
+	tokenColor: "green" | "orange" | "red" | "gray";
+	dotVariant: "success" | "warning" | "error" | "neutral";
 	summary: string;
 }
 

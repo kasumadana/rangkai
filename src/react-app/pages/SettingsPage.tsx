@@ -131,7 +131,7 @@ export function SettingsPage() {
 			</div>
 
 			{saveFeedback ? (
-				<div className="mb-6 rounded-2xl border border-[#A6D9B8] bg-[#EBF7F0] p-4 flex items-center gap-2.5 text-xs font-semibold text-[#1D5E3A]">
+				<div className="mb-6 rounded-2xl border border-[#C6D5B8] bg-[#F0F4EB] p-4 flex items-center gap-2.5 text-xs font-semibold text-[#355024]">
 					<CheckCircle2 className="w-4 h-4 shrink-0" />
 					<span>{saveFeedback}</span>
 				</div>
@@ -149,7 +149,7 @@ export function SettingsPage() {
 							<span
 								className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
 									sessionData?.user
-										? "bg-[#EBF3EE] text-[#264D3B]"
+										? "bg-[#F0F4EB] text-[#4D702F]"
 										: "bg-[#F3F1EC] text-[#585854]"
 								}`}
 							>
@@ -187,7 +187,7 @@ export function SettingsPage() {
 									<span className="text-[11px] font-medium text-[#585854]">
 										Peran Aktif di Desa Terpilih
 									</span>
-									<p className="text-sm font-bold text-[#264D3B]">
+									<p className="text-sm font-bold text-[#4D702F]">
 										{activeOrgOption?.role === "officer"
 											? "Petugas Lapangan (Pecalang / Kebersihan)"
 											: activeOrgOption?.role === "organizer" ? "Panitia Penyelenggara (Organizer)" : "Pilih organisasi"}
@@ -230,7 +230,7 @@ export function SettingsPage() {
 								<div className="flex items-center gap-2">
 									<Link
 										to="/login"
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-xs font-semibold text-white hover:bg-[#1d3c2e] no-underline"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4D702F] text-xs font-semibold text-white hover:bg-[#405E28] no-underline"
 									>
 										<KeyRound className="w-3.5 h-3.5" />
 										<span>Masuk Akun Petugas</span>
@@ -268,7 +268,7 @@ export function SettingsPage() {
 								id="active-desa-select"
 								value={selectedOrgId}
 								onChange={(e) => handleOrgChange(e.target.value)}
-								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs font-medium text-[#181817] focus:outline-none focus:border-[#264D3B]"
+								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-xs font-medium text-[#181817] focus:outline-none focus:border-[#4D702F]"
 							>
 								<option value="">Pilih organisasi</option>
 								{orgOptions.map((opt) => (
@@ -298,7 +298,7 @@ export function SettingsPage() {
 												key={org.id}
 												className={`rounded-xl border p-3 flex items-center justify-between gap-3 ${
 													isCurrent
-														? "border-[#264D3B] bg-[#EBF3EE]/50"
+														? "border-[#4D702F] bg-[#F0F4EB]/50"
 														: "border-[#E5E3DC] bg-[#FBFBFA]"
 												}`}
 											>
@@ -310,7 +310,7 @@ export function SettingsPage() {
 														{org.village || "Bali"}
 														{org.district ? `, Kec. ${org.district}` : ""} •
 														Peran:{" "}
-														<span className="font-semibold text-[#264D3B]">
+														<span className="font-semibold text-[#4D702F]">
 															{org.role === "organizer"
 																? "Panitia (Organizer)"
 																: "Petugas Lapangan (Officer)"}
@@ -318,7 +318,7 @@ export function SettingsPage() {
 													</p>
 												</div>
 												{isCurrent ? (
-													<span className="px-2.5 py-1 rounded-lg bg-[#264D3B] text-white text-[11px] font-semibold shrink-0">
+													<span className="px-2.5 py-1 rounded-lg bg-[#4D702F] text-white text-[11px] font-semibold shrink-0">
 														Aktif Digunakan
 													</span>
 												) : (
@@ -344,7 +344,7 @@ export function SettingsPage() {
 								className="pt-2 space-y-3"
 							>
 								<div className="flex items-center gap-1.5">
-									<PlusCircle className="w-3.5 h-3.5 text-[#264D3B]" />
+									<PlusCircle className="w-3.5 h-3.5 text-[#4D702F]" />
 									<span className="text-xs font-bold text-[#181817]">
 										Daftarkan Desa Adat / Banjar Baru
 									</span>
@@ -400,7 +400,7 @@ export function SettingsPage() {
 									<button
 										type="submit"
 										disabled={createOrgMutation.isPending}
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-white text-xs font-semibold hover:bg-[#1d3c2e] disabled:opacity-50"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4D702F] text-white text-xs font-semibold hover:bg-[#405E28] disabled:opacity-50"
 									>
 										<PlusCircle className="w-3.5 h-3.5" />
 										<span>
@@ -423,7 +423,7 @@ export function SettingsPage() {
 						</h2>
 						<div className="space-y-3 text-xs">
 							<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-start gap-3">
-								<Clock className="w-4 h-4 text-[#264D3B] shrink-0 mt-0.5" />
+								<Clock className="w-4 h-4 text-[#4D702F] shrink-0 mt-0.5" />
 								<div>
 									<p className="font-bold text-[#181817]">
 										Zona Waktu Operasional WITA
@@ -436,7 +436,7 @@ export function SettingsPage() {
 							</div>
 
 							<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-start gap-3">
-								<Database className="w-4 h-4 text-[#264D3B] shrink-0 mt-0.5" />
+								<Database className="w-4 h-4 text-[#4D702F] shrink-0 mt-0.5" />
 								<div>
 									<p className="font-bold text-[#181817]">
 										Neon PostgreSQL + PostGIS
@@ -449,7 +449,7 @@ export function SettingsPage() {
 							</div>
 
 							<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-start gap-3">
-								<Sparkles className="w-4 h-4 text-[#264D3B] shrink-0 mt-0.5" />
+								<Sparkles className="w-4 h-4 text-[#4D702F] shrink-0 mt-0.5" />
 								<div>
 									<p className="font-bold text-[#181817]">
 										Ekstraksi AI Multimodal Terkendali
@@ -463,7 +463,7 @@ export function SettingsPage() {
 							</div>
 
 							<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-start gap-3">
-								<Globe className="w-4 h-4 text-[#264D3B] shrink-0 mt-0.5" />
+								<Globe className="w-4 h-4 text-[#4D702F] shrink-0 mt-0.5" />
 								<div>
 									<p className="font-bold text-[#181817]">
 										Cloudflare R2 Private Storage
@@ -476,7 +476,7 @@ export function SettingsPage() {
 							</div>
 						</div>
 
-						<div className="rounded-xl border border-[#D7E3DC] bg-[#EBF3EE] p-3.5 text-xs text-[#264D3B] space-y-1">
+						<div className="rounded-xl border border-[#DCE8D3] bg-[#F0F4EB] p-3.5 text-xs text-[#4D702F] space-y-1">
 							<p className="font-bold">Batasan Hukum &amp; Wewenang Rangkai</p>
 							<p className="leading-relaxed">
 								Rangkai adalah sistem koordinasi operasional upacara adat dan
