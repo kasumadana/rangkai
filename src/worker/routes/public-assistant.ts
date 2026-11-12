@@ -29,8 +29,8 @@ publicAssistantRouter.post("/questions", async c => {
   if (location) conditions.push(sql`(lower(${events.venueName}) = lower(${location}) OR lower(${organizations.village}) = lower(${location}) OR lower(${organizations.district}) = lower(${location}))`);
   if (from) conditions.push(gte(events.endsAt, new Date(from)));
   if (to) conditions.push(lte(events.startsAt, new Date(to)));
-  const rows = await db.select({ slug: events.publicSlug, title: events.title, status: events.status, isSimulation: events.isSimulation, startsAt: events.startsAt, endsAt: events.endsAt }).from(events).innerJoin(organizations, eq(events.organizationId, organizations.id)).where(and(...conditions)).orderBy(asc(events.startsAt)).limit(10);
-  return rows.filter(r => r.slug !== null).map(r => ({ sourceId: `event:${r.slug}`, publicUrl: `/events/${encodeURIComponent(r.slug!)}`, title: r.title, status: r.status, isSimulation: r.isSimulation !== false, startsAt: r.startsAt?.toISOString() ?? null, endsAt: r.endsAt?.toISOString() ?? null, observedAt: null, expiresAt: null }));
+  const rows = await db.select({ slug: events.publicSlug, title: events.title, venueName: events.venueName, village: organizations.village, district: organizations.district, status: events.status, isSimulation: events.isSimulation, startsAt: events.startsAt, endsAt: events.endsAt }).from(events).innerJoin(organizations, eq(events.organizationId, organizations.id)).where(and(...conditions)).orderBy(asc(events.startsAt)).limit(10);
+  return rows.filter(r => r.slug !== null).map(r => ({ sourceId: `event:${r.slug}`, publicUrl: `/events/${encodeURIComponent(r.slug!)}`, title: r.title, venueName: r.venueName, village: r.village, district: r.district, status: r.status, isSimulation: r.isSimulation !== false, startsAt: r.startsAt?.toISOString() ?? null, endsAt: r.endsAt?.toISOString() ?? null, observedAt: null, expiresAt: null }));
  };
  const sources = await retrieve();
  const providerSelection = await selectAssistantSources(question, sources, c.env.GEMINI_API_KEY.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME);
@@ -40,28 +40,28 @@ publicAssistantRouter.post("/questions", async c => {
  const current = await retrieve();
  const result = current.filter(source => selected.sourceIds.includes(source.sourceId));
  if (selected.intent === "event_lookup" && result.length) return c.json({ status: "answered", intent: selected.intent, answer: "Berikut data kegiatan yang dipilih. Periksa kesesuaian sumber; status kegiatan bukan status jalan.", sources: result, searchUrl: "/events" });
- if ((selected.intent === "road_status" || selected.intent === "cleanup_summary") && result.length) {
+ if ((selected.intent === "road_status" || selected.intent === "route_help" || selected.intent === "cleanup_summary") && result.length) {
   const internal = new Hono<{ Bindings: Env; Variables: AppVariables }>();
   internal.use("*", async (context, next) => { context.set("db", db); context.set("requestId", c.get("requestId")); await next(); });
   internal.route("/", publicRouter);
   const facts: Array<Record<string, unknown>> = [];
   for (const event of result.slice(0, 3)) {
    const slug = event.sourceId.slice(6);
-   const suffix = selected.intent === "road_status" ? "roads" : "cleanup-summary";
+   const suffix = selected.intent !== "cleanup_summary" ? "roads" : "cleanup-summary";
    const response = await internal.request(`http://internal/events/${encodeURIComponent(slug)}/${suffix}`, {}, c.env);
    if (!response.ok) continue;
    const payload: unknown = await response.json();
-   if (selected.intent === "road_status") {
-    const shape = z.object({ isSimulation: z.boolean(), roads: z.array(z.object({ id: z.string(), displayName: z.string(), operationalStatus: z.object({ effectiveStatus: z.string(), observedAt: z.string().nullable(), expiresAt: z.string().nullable() }) })).max(500) }).safeParse(payload);
+   if (selected.intent !== "cleanup_summary") {
+    const shape = z.object({ isSimulation: z.boolean(), roads: z.array(z.object({ id: z.string(), displayName: z.string(), plannedFrom: z.string().nullable().optional(), plannedTo: z.string().nullable().optional(), operationalStatus: z.object({ effectiveStatus: z.string(), observedAt: z.string().nullable(), expiresAt: z.string().nullable() }) })).max(500) }).safeParse(payload);
     if (!shape.success) continue;
-    for (const road of shape.data.roads.slice(0, 20)) facts.push({ sourceId: `road:${road.id}`, publicUrl: `${event.publicUrl}`, title: road.displayName, eventStatus: event.status, isSimulation: shape.data.isSimulation, status: freshRoadStatus(road.operationalStatus.effectiveStatus, road.operationalStatus.expiresAt), observedAt: road.operationalStatus.observedAt, expiresAt: road.operationalStatus.expiresAt });
+    for (const road of shape.data.roads.slice(0, 20)) facts.push({ sourceId: `road:${road.id}`, publicUrl: `${event.publicUrl}`, title: road.displayName, startsAt: road.plannedFrom ?? null, endsAt: road.plannedTo ?? null, eventStatus: event.status, isSimulation: shape.data.isSimulation, status: freshRoadStatus(road.operationalStatus.effectiveStatus, road.operationalStatus.expiresAt), observedAt: road.operationalStatus.observedAt, expiresAt: road.operationalStatus.expiresAt });
    } else {
     const shape = z.object({ isSimulation: z.boolean(), summary: z.object({ totalTasks: z.number().int().nonnegative(), verifiedTasks: z.number().int().nonnegative(), submittedTasks: z.number().int().nonnegative(), inProgressTasks: z.number().int().nonnegative(), todoTasks: z.number().int().nonnegative(), reopenedTasks: z.number().int().nonnegative() }) }).safeParse(payload);
     if (shape.success) facts.push({ sourceId: `cleanup:${slug}`, publicUrl: event.publicUrl, title: event.title, status: event.status, isSimulation: shape.data.isSimulation, observedAt: null, expiresAt: null, summary: shape.data.summary });
    }
   }
-  if (selected.intent === "road_status") for (const fact of facts) fact.status = freshRoadStatus(String(fact.status), typeof fact.expiresAt === "string" ? fact.expiresAt : null);
-  if (facts.length) return c.json({ status: "answered", intent: selected.intent, answer: selected.intent === "road_status" ? "Status jalan berikut berasal dari laporan publik; status kedaluwarsa tidak terkonfirmasi dan jalan terbuka belum tentu lancar." : "Berikut ringkasan tugas kebersihan publik. Verifikasi kebersihan tidak membuka jalan secara otomatis.", sources: facts, searchUrl: "/events" });
+  if (selected.intent !== "cleanup_summary") for (const fact of facts) fact.status = freshRoadStatus(String(fact.status), typeof fact.expiresAt === "string" ? fact.expiresAt : null);
+  if (facts.length) return c.json({ status: "answered", intent: selected.intent, answer: selected.intent === "route_help" ? "Berikut laporan ruas pada kegiatan terkait, bukan hasil pemeriksaan seluruh rute perjalanan. Rute asal-tujuan belum dihitung; tidak dapat dipastikan apakah ruas ini dilalui. Periksa sumber dan peta, termasuk waktu serta label simulasi. Jangan menganggap data yang tidak tersedia sebagai jalan terbuka." : selected.intent === "road_status" ? "Status jalan berikut berasal dari laporan publik; status kedaluwarsa tidak terkonfirmasi dan jalan terbuka belum tentu lancar." : "Berikut ringkasan tugas kebersihan publik. Verifikasi kebersihan tidak membuka jalan secara otomatis.", sources: facts, searchUrl: "/events" });
  }
  return c.json({ status: "abstained", intent: selected.intent, answer: "Informasi yang diminta belum dapat dijawab. Cari kegiatan atau konfirmasi kepada petugas setempat.", sources: [], searchUrl: "/events" });
 });

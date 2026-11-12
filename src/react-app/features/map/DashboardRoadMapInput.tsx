@@ -1,3 +1,4 @@
+import { catalogVisibility, roadDetails } from "./road-details";
 import {
 	Compass,
 	Layers,
@@ -215,6 +216,8 @@ export function DashboardRoadMapInput({
 	const onChangeDrawnRef = useRef(onChangeDrawnCoordinates);
 	const onSelectCatalogRef = useRef(onSelectCatalogSegment);
 	const onSelectImpactRef = useRef(onSelectImpact);
+ const roadDataRef = useRef({ roadImpacts, catalogSegments });
+ useEffect(() => { roadDataRef.current = { roadImpacts, catalogSegments }; }, [roadImpacts, catalogSegments]);
 
 	useEffect(() => {
 		modeRef.current = mode;
@@ -306,7 +309,7 @@ export function DashboardRoadMapInput({
 					"dashboard-catalog-line",
 				].filter((id) => Boolean(mapInstance?.getLayer(id)));
 
-				if (interactiveLayers.length > 0) {
+				if (modeRef.current !== "draw" && interactiveLayers.length > 0) {
 					const hitFeatures = mapInstance.queryRenderedFeatures(e.point, {
 						layers: interactiveLayers,
 					});
@@ -317,20 +320,28 @@ export function DashboardRoadMapInput({
 
 						if (layerId === "dashboard-catalog-line" && propId) {
 							onSelectCatalogRef.current?.(propId);
+							const data = roadDataRef.current;
+							const impact = data.roadImpacts.find(r => r.roadSegmentId === propId);
+							const segment = data.catalogSegments.find(r => r.id === propId);
+							new maplibregl.Popup().setLngLat(e.lngLat).setText(impact ? roadDetails(impact) : `${segment?.displayName || "Nama ruas belum tersedia"} - Belum ada jadwal dampak pada kegiatan ini.`).addTo(mapInstance);
 							return;
 						}
 						if (
 							layerId === "dashboard-impacts-line" &&
-							propId &&
-							modeRef.current !== "draw"
+							propId
 						) {
 							onSelectImpactRef.current?.(propId);
+							const impact = roadDataRef.current.roadImpacts.find(r => r.id === propId);
+							if (impact) new maplibregl.Popup().setLngLat(e.lngLat).setText(roadDetails(impact)).addTo(mapInstance);
 							return;
 						}
 					}
 				}
 
-				// In 'draw' mode, clicking on the map adds a vertex to drawnCoordinates
+				if (modeRef.current !== "draw") {
+							new maplibregl.Popup().setLngLat(e.lngLat).setText("Ruas ini belum tersedia dalam katalog yang dimuat. Pilih ruas katalog atau konfirmasi kepada penyelenggara.").addTo(mapInstance);
+ }
+ // In 'draw' mode, clicking on the map adds a vertex to drawnCoordinates
 				if (modeRef.current === "draw" && onChangeDrawnRef.current) {
 					const nextPoint: [number, number] = [
 						Number(e.lngLat.lng.toFixed(6)),
@@ -462,7 +473,10 @@ export function DashboardRoadMapInput({
 			});
 		}
 
-		// 2. Attached Event Road Impacts Layer
+		for (const id of ["dashboard-catalog-halo", "dashboard-catalog-line"]) {
+ map.setLayoutProperty(id, "visibility", catalogVisibility(mode));
+ }
+ // 2. Attached Event Road Impacts Layer
 		const impactsSourceId = "dashboard-impacts-source";
 		const impactsGeoJson = {
 			type: "FeatureCollection" as const,
@@ -548,6 +562,7 @@ export function DashboardRoadMapInput({
 			badge.addEventListener("click", (ev) => {
 				ev.stopPropagation();
 				onSelectImpactRef.current?.(imp.id);
+							new maplibregl.Popup().setLngLat(mid).setText(roadDetails(imp)).addTo(map);
 				map.flyTo({ center: mid, zoom: 15.8, duration: 700 });
 			});
 

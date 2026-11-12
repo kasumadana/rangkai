@@ -61,3 +61,11 @@ describe("assistant public evidence", () => {
   expect(queries[0].sql).toMatch(/is_simulation.*IS DISTINCT FROM FALSE.*has_operational_authority = TRUE/);
  });
 });
+
+it("route help returns available public road evidence with routing uncertainty", async () => {
+ const response = await ask("route_help");
+ const data = await response.json() as { status: string; answer: string; sources: Array<{ status: string }> };
+ expect(data.status).toBe("answered");
+ expect(data.sources[0].status).toBe("unconfirmed");
+ expect(data.answer).toContain("rute");
+});

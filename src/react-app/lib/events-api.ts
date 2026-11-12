@@ -1,3 +1,4 @@
+import { validateCleanupPhoto } from "./cleanup-input";
 import {
 	apiFetch,
 	type EventLifecycleStatus,
@@ -852,6 +853,7 @@ export async function uploadCleanupEvidence(
 	photoFile: File,
 	stage: "before" | "after",
 ): Promise<{ evidence: CleanupEvidenceRecord }> {
+	validateCleanupPhoto(photoFile);
 	const formData = new FormData();
 	formData.append("file", photoFile);
 	formData.append("stage", stage);

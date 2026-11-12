@@ -1,3 +1,4 @@
+import { shouldLoadCleanupTasks } from "../lib/cleanup-input";
 import "./workflow.css";
 import { useUnsavedChanges } from "../lib/use-unsaved-changes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -1172,8 +1173,7 @@ export function WorkflowRouteShellPage({
 		queryFn: () => fetchCleanupTasks(eventId),
 		enabled: Boolean(
 			isRealUuidEvent &&
-				(/\/cleanup(?:\/[^/]+)?$/.test(pathname) ||
-					(pathname.startsWith("/field") && !isOrganizer && !canTraffic && canCleanup)),
+				shouldLoadCleanupTasks(pathname, isOrganizer, canCleanup),
 		),
 		retry: false,
 	});
@@ -3009,16 +3009,17 @@ export function WorkflowRouteShellPage({
 									<span className="text-base font-bold text-stone-900">
 										{uploadCleanupEvidenceMutation.isPending
 											? "Mengunggah foto..."
-											: "Klik untuk Mengunggah Foto Bukti (JPG, PNG, WEBP)"}
+											: "Klik untuk Mengunggah Foto Bukti (JPG/PNG, maksimal 5 MB)"}
 									</span>
 									<input
 										type="file"
-										accept="image/jpeg,image/png,image/webp"
+										accept="image/jpeg,image/png"
 										disabled={uploadCleanupEvidenceMutation.isPending}
 										onChange={(e) => {
 											const f = e.target.files?.[0];
 											if (f) {
-												void uploadCleanupEvidenceMutation.mutateAsync(f);
+												uploadCleanupEvidenceMutation.mutate(f);
+												e.target.value = "";
 											}
 										}}
 										className="sr-only"

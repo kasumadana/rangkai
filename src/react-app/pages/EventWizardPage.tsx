@@ -1928,6 +1928,10 @@ export function EventWizardPage() {
 											</div>
 										</div>
 
+										<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+											<label>Mulai Penutupan (WITA)<input type="datetime-local" value={impactFromWita || formState.startsAtWita} onChange={e => setImpactFromWita(e.target.value)} className="teduh-form-input" /></label>
+											<label>Selesai Penutupan (WITA)<input type="datetime-local" value={impactToWita || formState.endsAtWita} onChange={e => setImpactToWita(e.target.value)} className="teduh-form-input" /></label>
+										</div>
 										<div className="flex justify-end">
 											<button
 												type="button"
