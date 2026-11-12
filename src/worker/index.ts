@@ -11,6 +11,7 @@ import { eventsRouter } from "./routes/events";
 import { extractionsRouter } from "./routes/extractions";
 import { publicRouter } from "./routes/public";
 import { publicAssistantRouter } from "./routes/public-assistant";
+import { assistantRouter } from "./routes/assistant";
 import { roadsRouter } from "./routes/roads";
 import { organizationsRouter } from "./routes/organizations";
 import { invitationsRouter } from "./routes/invitations";
@@ -135,6 +136,7 @@ app.all("/api/auth/*", async (c) => {
 
 // Mount Public API routes (anonymous read-only access)
 app.route("/api/public/assistant", publicAssistantRouter);
+app.route("/api/assistant", assistantRouter);
 app.route("/api/public", publicRouter);
 // Invitation inspection is anonymous; its mutation and listing handlers enforce authentication.
 app.route("/api/invitations", invitationsRouter);

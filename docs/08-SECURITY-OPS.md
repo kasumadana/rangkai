@@ -231,3 +231,5 @@ The assistant sends questions and at most ten public event titles/IDs to the con
 ### Cleanup photo-quality privacy
 
 Assessment uses only task-scoped, authorized private evidence records; clients cannot supply object keys or URLs. Images go to Gemini only when the feature is explicitly enabled and an authorized user requests assessment. Object keys, raw image data and provider output are not logged or returned as source content. Photo uploads can contain metadata; operational use requires appropriate consent and review of the external provider data handling before enabling the feature.
+
+The authenticated assistant is read-only and scopes event facts to current membership and assigned officer permissions. It sends only a question and selected event ID/title to the provider and does not expose documents, photos, contact lists, invitation tokens, secrets, or audit payloads. Permission is checked again after provider processing and before response. The isolate-local limiter is not a distributed cost guard; production enablement requires separate edge/cost controls and authorized provider verification.

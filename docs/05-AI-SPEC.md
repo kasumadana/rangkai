@@ -556,3 +556,7 @@ DECISION: Waste planning uses organizer-supplied coefficient ranges and optional
 ### Cleanup photo-quality assistance
 
 When explicitly enabled, the server sends the selected private before and after JPEG or PNG evidence to Gemini for bounded readability and same-area observations. Output is schema validated and requires organizer review; it is not a cleanliness certification or waste-weight estimate. The result never verifies cleanup or changes road status. Provider behavior and accuracy have not been evaluated on real photo pairs; synthetic tests do not establish accuracy.
+
+### Authenticated assistant boundary
+
+The internal read-only assistant checks the selected organization, event and assignment before sending the question and selected event ID/title to Gemini. Structured selections are schema- and source-validated; the server authors facts and links. It rechecks session and permissions after the provider response and checks permissions after bounded fact retrieval. Raw documents, photos, contacts, invitations and audit payloads are excluded. Application help is reviewed static content, not a model result. Provider failure requires manual navigation; no result is automatically published or changed.
