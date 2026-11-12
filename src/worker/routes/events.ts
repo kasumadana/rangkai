@@ -190,6 +190,18 @@ eventsRouter.post("/", async (c) => {
 			)
 			RETURNING *
 		),
+		stale_reviews AS (
+			UPDATE road_review_requests q SET status='superseded',reason='Event time or simulation mode changed after reviewer submission.'
+			FROM inserted e
+			WHERE q.event_id=e.id AND q.status IN ('pending','approved')
+				AND (q.event_starts_at IS DISTINCT FROM e.starts_at OR q.event_ends_at IS DISTINCT FROM e.ends_at OR q.is_simulation IS DISTINCT FROM e.is_simulation)
+			RETURNING q.id
+		),
+		stale_review_audit AS (
+			INSERT INTO platform_audit(actor_id,action,entity_type,entity_id,reason,request_id)
+			SELECT ${currentUser.id},'road_review.superseded','road_review_request',id::text,'Event time or simulation mode changed after reviewer submission.',${c.get("requestId")}
+			FROM stale_reviews RETURNING id
+		),
 		logged AS (
 			INSERT INTO audit_logs (
 				id, organization_id, event_id, actor_id, action, entity_type, entity_id, before_json, after_json, created_at
@@ -644,6 +656,7 @@ eventsRouter.patch("/:eventId", async (c) => {
 			published_at AS "publishedAt",
 			created_at AS "createdAt",
 			updated_at AS "updatedAt"
+			,(SELECT count(*)::int FROM stale_reviews) AS "invalidatedReviewCount"
 		FROM updated;
 	`;
 
@@ -886,7 +899,6 @@ eventsRouter.post("/:eventId/publish", async (c) => {
 			);
 		}
 	}
-
 
 	// 4. Verified road impacts prerequisite: join with road_segments and verify both existence and segment verification
 	const impactRows = await db

@@ -177,6 +177,49 @@ UNIQUE (event_id, user_id)
 - created_at: timestamptz
 - updated_at: timestamptz
 
+### activation_invitations
+
+- id: uuid PK
+- token_hash: text UNIQUE NOT NULL (SHA-256; plaintext exists only in the one-time response)
+- recipient_email: text NOT NULL
+- role: organizer | officer | government_reviewer
+- organization_id: uuid FK NULL
+- event_id: uuid FK NULL
+- can_update_traffic: boolean DEFAULT false
+- can_update_cleanup: boolean DEFAULT false
+- status: pending | accepted | revoked
+- expires_at: timestamptz
+- created_by: text FK
+- accepted_by: text FK NULL
+- accepted_at: timestamptz NULL
+- created_at: timestamptz
+
+Scope CHECK constraints require organizer to target one organization, officer to target an event in that organization with at least one field permission, and government reviewer to have no organization/event scope. Expired status is derived from `expires_at`; the pending row is retained for history. The activation flow is one-use and does not change credentials for an existing identity.
+
+### platform_grants
+
+- id: uuid PK
+- user_id: text FK
+- role: superadmin | government_reviewer
+- status: active | suspended | revoked
+- created_at: timestamptz
+
+UNIQUE (user_id, role). Platform grants are separate from organization memberships. Reviewer jurisdiction is stored separately from this account-activation grant.
+
+### platform_audit
+
+- id: uuid PK
+- actor_id: text FK
+- action: text
+- application_id: uuid FK NULL
+- entity_type: text NULL
+- entity_id: text NULL
+- reason: text NULL
+- request_id: text
+- created_at: timestamptz
+
+Activation creation, acceptance and revocation record actor, action, invitation identity, role/scope summary and request ID. Raw activation tokens and passwords are never stored in audit data.
+
 ### cleanup_tasks
 
 - id: uuid PK

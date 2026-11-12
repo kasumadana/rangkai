@@ -34,6 +34,14 @@ Authenticated:
 - /field/events/:id
 - /settings
 
+Platform administration (active superadmin only):
+
+- /admin/organizations — review organization applications.
+- /admin/users — create one-use activation links and revoke pending links.
+- /activate/:token — review invitation scope, register or sign in with the invited email, then accept.
+
+Reviewer activation displays that jurisdiction assignment is still pending. Do not present reviewer access as an official road permit or a completed government approval. Invitation delivery is manual; the admin copies the link and sends it through an approved channel.
+
 ## 3. Main Screens
 
 ### A. Public Event List

@@ -15,6 +15,9 @@ import { assistantRouter } from "./routes/assistant";
 import { roadsRouter } from "./routes/roads";
 import { organizationsRouter } from "./routes/organizations";
 import { applicationsRouter } from "./routes/organization-applications";
+import { activationRouter, adminAccountsRouter } from "./routes/admin-accounts";
+import { territoriesRouter } from "./routes/territories";
+import { reviewerTerritoryRouter } from "./routes/road-review";
 import { invitationsRouter } from "./routes/invitations";
 import { fieldRouter } from "./routes/field";
 import { advisoryRouter } from "./routes/advisory";
@@ -155,6 +158,10 @@ app.route("/api/events", assignmentsRouter);
 app.route("/api/events", eventsRouter);
 app.route("/api/organizations", organizationsRouter);
 app.route("/api", applicationsRouter);
+app.route("/api/admin", adminAccountsRouter);
+app.route("/api/admin", territoriesRouter);
+app.route("/api/activation-invitations", activationRouter);
+app.route("/api", reviewerTerritoryRouter);
 app.route("/api/field", fieldRouter);
 
 // 404 handler for API routes

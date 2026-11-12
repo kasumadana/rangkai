@@ -1,8 +1,8 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
-import { cleanupTasks, eventAssignments, events, memberships, roadImpacts, roadSegments, roadStatusUpdates, wasteRecords } from "../../db/schema";
+import { cleanupTasks, eventAssignments, events, memberships, organizationTerritoryVersions, roadImpacts, roadReviewRequests, roadSegments, roadStatusUpdates, wasteRecords } from "../../db/schema";
 import { sendError } from "../lib/errors";
 import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rate-limit";
@@ -89,7 +89,7 @@ assistantRouter.post("/questions", async c => {
  if (selected.intent === "event_lookup") {
   base.sources.push({ sourceId: source.sourceId, url, kind: "event", title: current.event.title, facts: { status: current.event.status, startsAt: current.event.startsAt?.toISOString() ?? null, endsAt: current.event.endsAt?.toISOString() ?? null, isSimulation: sim } });
  } else if (selected.intent === "road_status") {
-  const roads = await db.select({ id: roadImpacts.id, title: roadSegments.displayName }).from(roadImpacts).innerJoin(roadSegments, eq(roadImpacts.roadSegmentId, roadSegments.id)).where(eq(roadImpacts.eventId, eventId)).limit(20);
+  const roads = await db.select({ id: roadImpacts.id, title: roadSegments.displayName }).from(roadImpacts).innerJoin(roadSegments, eq(roadImpacts.roadSegmentId, roadSegments.id)).where(and(eq(roadImpacts.eventId, eventId), sql`(EXISTS (SELECT 1 FROM ${events} e0 WHERE e0.id=${roadImpacts.eventId} AND e0.is_simulation) OR EXISTS (SELECT 1 FROM ${roadReviewRequests} q JOIN ${organizationTerritoryVersions} tv ON tv.id=q.territory_version_id JOIN ${events} e ON e.id=q.event_id JOIN ${roadSegments} segment ON segment.id=q.road_segment_id WHERE q.road_impact_id=${roadImpacts.id} AND q.status='approved' AND q.is_simulation=e.is_simulation AND q.geometry_wkb=encode(ST_AsEWKB(segment.geom),'hex') AND q.planned_from=${roadImpacts.plannedFrom} AND q.planned_to=${roadImpacts.plannedTo} AND q.impact_type=${roadImpacts.impactType} AND q.event_starts_at IS NOT DISTINCT FROM e.starts_at AND q.event_ends_at IS NOT DISTINCT FROM e.ends_at AND q.territory_content_hash=tv.content_hash AND tv.status='verified' AND q.territory_version_id=(SELECT latest.id FROM ${organizationTerritoryVersions} latest WHERE latest.organization_id=e.organization_id AND latest.status='verified' ORDER BY latest.version DESC LIMIT 1)))`)).limit(20);
   for (const road of roads) {
    const [latest] = await db.select({ status: roadStatusUpdates.status, observedAt: roadStatusUpdates.observedAt, expiresAt: roadStatusUpdates.expiresAt }).from(roadStatusUpdates).where(eq(roadStatusUpdates.roadImpactId, road.id)).orderBy(desc(roadStatusUpdates.createdAt)).limit(1);
    const expiresAt = latest?.expiresAt?.toISOString() ?? null;

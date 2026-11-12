@@ -1,4 +1,4 @@
-# Software Requirements Specification — Rangkai
+﻿# Software Requirements Specification — Rangkai
 
 Version: 0.1.0
 Status: Draft
@@ -229,5 +229,14 @@ The system shall enforce that only organizations possessing verified operational
 ### FR-026: Field Task & Scoped Permission Access
 The system shall provide a dedicated field task endpoint (`/api/field/tasks`) returning only events assigned to the authenticated officer, scoped strictly to granted permissions (`canUpdateTraffic`, `canUpdateCleanup`). Unassigned officers receive an empty list and are rejected with 403 Forbidden on operational endpoints.
 
+Road-status observations on SIMULASI events retain event-scoped traffic authorization and audit/expiry behavior but do not require reviewer approval; real events require a current geometry-, schedule-, event- and territory-bound reviewer approval before a status update.
+
+### FR-027: Scoped Account Activation
+An active superadmin can create and revoke one-use, expiring activation invitations for organizer, officer and government reviewer accounts. Tokens are stored as hashes; acceptance is bound to the invited email and atomically grants only the declared organization/event or platform role. Invitation creation never chooses or resets a password, organizers cannot grant platform roles, and reviewer jurisdiction remains a separate assignment. Each mutation writes a platform audit record without storing the plaintext token.
+
+### FR-028: Versioned Organization Territories
+An active superadmin can import or draw a Polygon/MultiPolygon territory, record provenance and content hash, and save it as a pending version. Only superadmin verification records an explicit reviewed state; a synthetic version stays labeled SIMULASI and is not an official boundary. Invalid CRS/topology and out-of-range coordinates are rejected. Real operational road impacts require the complete road geometry to be covered by the latest verified organization territory using PostGIS `ST_CoveredBy`; crossing territory is blocked for manual handling. Pending edits do not replace the current verified version.
+
 Every P0 requirement must have at least one automated
 or documented manual acceptance test before release.
+

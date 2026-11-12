@@ -29,6 +29,12 @@ export const pointGeometry = customType<{ data: string; driverData: string }>({
 	},
 });
 
+export const multiPolygonGeometry = customType<{ data: string; driverData: string }>({
+	dataType() {
+		return "geometry(MultiPolygon, 4326)";
+	},
+});
+
 // Domain finite value enumerations & types (AGENTS.md §13)
 export const MEMBERSHIP_ROLES = ["organizer", "officer"] as const;
 export type MembershipRole = (typeof MEMBERSHIP_ROLES)[number];
@@ -139,6 +145,56 @@ export const platformGrants = pgTable("platform_grants", {
  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, table => [unique("platform_grants_user_role_unique").on(table.userId, table.role), check("platform_grants_role_check", sql`role IN ('superadmin', 'government_reviewer')`), check("platform_grants_status_check", sql`status IN ('active', 'suspended', 'revoked')`)]);
 
+export const activationInvitations = pgTable("activation_invitations", {
+	 id: uuid("id").primaryKey().defaultRandom(),
+	 tokenHash: text("token_hash").notNull().unique(),
+	 recipientEmail: text("recipient_email").notNull(),
+	 role: text("role").notNull(),
+	 organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+	 eventId: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
+	 canUpdateTraffic: boolean("can_update_traffic").default(false).notNull(),
+	 canUpdateCleanup: boolean("can_update_cleanup").default(false).notNull(),
+	 status: text("status").default("pending").notNull(),
+	 expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+	 createdBy: text("created_by").notNull().references(() => user.id),
+	 acceptedBy: text("accepted_by").references(() => user.id),
+	 acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+	 createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+	check("activation_invitations_role_check", sql`role IN ('organizer', 'officer', 'government_reviewer')`),
+	check("activation_invitations_status_check", sql`status IN ('pending', 'accepted', 'revoked')`),
+	check("activation_invitations_scope_check", sql`(role = 'organizer' AND organization_id IS NOT NULL AND event_id IS NULL AND NOT can_update_traffic AND NOT can_update_cleanup) OR (role = 'officer' AND organization_id IS NOT NULL AND event_id IS NOT NULL AND (can_update_traffic OR can_update_cleanup)) OR (role = 'government_reviewer' AND organization_id IS NULL AND event_id IS NULL AND NOT can_update_traffic AND NOT can_update_cleanup)`),
+	index("activation_invitations_status_expiry_idx").on(table.status, table.expiresAt),
+	index("activation_invitations_recipient_idx").on(table.recipientEmail),
+]);
+
+export const organizationTerritoryVersions = pgTable("organization_territory_versions", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	organizationId: uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+	version: integer("version").notNull(),
+	geom: multiPolygonGeometry("geom").notNull(),
+	geojson: jsonb("geojson").notNull(),
+	sourceType: text("source_type").notNull(),
+	sourceLabel: text("source_label").notNull(),
+	sourceUrl: text("source_url"),
+	contentHash: text("content_hash").notNull(),
+	isSimulation: boolean("is_simulation").default(false).notNull(),
+	status: text("status").default("pending_verification").notNull(),
+	createdBy: text("created_by").notNull().references(() => user.id),
+	verifiedBy: text("verified_by").references(() => user.id),
+	verifiedAt: timestamp("verified_at", { withTimezone: true }),
+	verificationReason: text("verification_reason"),
+	createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+	unique("organization_territory_versions_org_version_unique").on(table.organizationId, table.version),
+	check("organization_territory_versions_source_check", sql`source_type IN ('imported', 'manual', 'synthetic')`),
+	check("organization_territory_versions_status_check", sql`status IN ('pending_verification', 'verified', 'revoked')`),
+	check("organization_territory_versions_hash_check", sql`content_hash ~ '^[a-f0-9]{64}$'`),
+	check("organization_territory_versions_review_check", sql`(status = 'verified') = (verified_by IS NOT NULL AND verified_at IS NOT NULL AND verification_reason IS NOT NULL)`),
+	check("organization_territory_versions_simulation_check", sql`source_type <> 'synthetic' OR is_simulation`),
+	index("organization_territory_versions_org_status_idx").on(table.organizationId, table.status, table.version.desc()),
+]);
+
 export const organizationApplications = pgTable("organization_applications", {
  id: uuid("id").primaryKey().defaultRandom(),
  applicantId: text("applicant_id").notNull().references(() => user.id),
@@ -153,11 +209,28 @@ export const organizationApplications = pgTable("organization_applications", {
  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, table => [check("organization_applications_status_check", sql`status IN ('pending', 'approved', 'rejected')`), index("organization_applications_applicant_idx").on(table.applicantId), index("organization_applications_pending_idx").on(table.status), uniqueIndex("organization_applications_one_pending").on(table.applicantId).where(sql`status = 'pending'`)]);
 
+export const reviewerTerritoryAssignments = pgTable("reviewer_territory_assignments", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	userId: text("user_id").notNull().references(() => user.id),
+	territoryVersionId: uuid("territory_version_id").notNull().references(() => organizationTerritoryVersions.id, { onDelete: "restrict" }),
+	status: text("status").default("active").notNull(),
+	assignedBy: text("assigned_by").notNull().references(() => user.id),
+	assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
+	revokedBy: text("revoked_by").references(() => user.id),
+	revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, table => [
+	unique("reviewer_territory_assignments_user_version_unique").on(table.userId, table.territoryVersionId),
+	check("reviewer_territory_assignments_status_check", sql`status IN ('active', 'revoked')`),
+	index("reviewer_territory_assignments_version_status_idx").on(table.territoryVersionId, table.status),
+]);
+
 export const platformAudit = pgTable("platform_audit", {
  id: uuid("id").primaryKey().defaultRandom(),
  actorId: text("actor_id").notNull().references(() => user.id),
  action: text("action").notNull(),
  applicationId: uuid("application_id").references(() => organizationApplications.id),
+	entityType: text("entity_type"),
+	entityId: text("entity_id"),
  reason: text("reason"),
  requestId: text("request_id").notNull(),
  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -302,6 +375,37 @@ export const roadImpacts = pgTable(
 		),
 	],
 );
+
+export const roadReviewRequests = pgTable("road_review_requests", {
+	id: uuid("id").primaryKey().defaultRandom(),
+	roadImpactId: uuid("road_impact_id").notNull().references(() => roadImpacts.id, { onDelete: "cascade" }),
+	eventId: uuid("event_id").notNull().references(() => events.id, { onDelete: "cascade" }),
+	roadSegmentId: uuid("road_segment_id").notNull().references(() => roadSegments.id, { onDelete: "restrict" }),
+	territoryVersionId: uuid("territory_version_id").notNull().references(() => organizationTerritoryVersions.id, { onDelete: "restrict" }),
+	roadGeometry: lineStringGeometry("road_geometry").notNull(),
+	geometryWkb: text("geometry_wkb").notNull(),
+	territoryContentHash: text("territory_content_hash").notNull(),
+	eventStartsAt: timestamp("event_starts_at", { withTimezone: true }),
+	eventEndsAt: timestamp("event_ends_at", { withTimezone: true }),
+	plannedFrom: timestamp("planned_from", { withTimezone: true }).notNull(),
+	plannedTo: timestamp("planned_to", { withTimezone: true }).notNull(),
+	impactType: text("impact_type").notNull(),
+	isSimulation: boolean("is_simulation").notNull(),
+	status: text("status").default("pending").notNull(),
+	submittedBy: text("submitted_by").notNull().references(() => user.id),
+	submittedAt: timestamp("submitted_at", { withTimezone: true }).defaultNow().notNull(),
+	reviewedBy: text("reviewed_by").references(() => user.id),
+	reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+	reason: text("reason"),
+	createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [
+	check("road_review_requests_status_check", sql`status IN ('pending', 'approved', 'rejected', 'superseded')`),
+	check("road_review_requests_decision_check", sql`status NOT IN ('approved', 'rejected') OR (reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL AND reason IS NOT NULL)`),
+	check("road_review_requests_pending_check", sql`status <> 'pending' OR (reviewed_by IS NULL AND reviewed_at IS NULL AND reason IS NULL)`),
+	check("road_review_requests_time_check", sql`planned_to > planned_from`),
+	index("road_review_requests_event_status_idx").on(table.eventId, table.status, table.submittedAt),
+	uniqueIndex("road_review_requests_one_pending_impact").on(table.roadImpactId).where(sql`status = 'pending'`),
+]);
 
 export const roadStatusUpdates = pgTable(
 	"road_status_updates",

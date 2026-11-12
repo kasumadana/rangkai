@@ -78,6 +78,27 @@
       "when": 1794488790411,
       "tag": "0010_wonderful_ricochet",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1794492698411,
+      "tag": "0011_activation-invitations",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794493792296,
+      "tag": "0012_dazzling_cerise",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1794494699501,
+      "tag": "0013_sticky_doorman",
+      "breakpoints": true
     }
   ]
 }

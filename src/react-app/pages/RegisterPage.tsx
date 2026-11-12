@@ -12,10 +12,11 @@ import {
 	UserPlus,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { z } from "zod";
-import { ApiClientError } from "../lib/api-client";
+import { ApiClientError, apiFetch } from "../lib/api-client";
 import { useAuthSession, useSignUpMutation } from "../lib/auth";
+import { saveOrganizationId } from "../lib/events-api";
 import { useGsapPageReveal } from "../lib/gsap-motion";
 
 const registerSchema = z
@@ -41,16 +42,18 @@ const registerSchema = z
 export function RegisterPage() {
 	const pageRef = useRef<HTMLDivElement>(null);
 	const location = useLocation();
+	const navigate = useNavigate();
 	const { data: sessionData } = useAuthSession();
 	const signUpMutation = useSignUpMutation();
 
 	const stateObj = location.state as { email?: string; from?: string } | null;
 	const initialEmail = stateObj?.email || "";
-	const rawReturn = stateObj?.from;
+	const rawReturn = stateObj?.from || new URLSearchParams(location.search).get("from") || undefined;
 	const safeReturnUrl =
 		rawReturn && rawReturn.startsWith("/") && !rawReturn.startsWith("//")
 			? rawReturn
 			: null;
+	const activationToken = safeReturnUrl?.match(/^\/activate\/([a-f0-9]{64})$/)?.[1];
 
 	const [name, setName] = useState("");
 	const [email, setEmail] = useState(initialEmail);
@@ -67,6 +70,7 @@ export function RegisterPage() {
 		null,
 	);
 	const [registrationSuccess, setRegistrationSuccess] = useState(false);
+	const [activationError, setActivationError] = useState("");
 
 	useGsapPageReveal(pageRef, [registrationSuccess, Boolean(sessionData?.user)]);
 
@@ -100,6 +104,19 @@ export function RegisterPage() {
 				email: parsed.data.email,
 				password: parsed.data.password,
 			});
+			if (activationToken) {
+				try {
+					const accepted = await apiFetch<{ role: "organizer" | "officer" | "government_reviewer"; organizationId: string | null; eventId: string | null }>(`/api/activation-invitations/${activationToken}/accept`, { method: "POST", body: {} });
+					if (accepted.organizationId) saveOrganizationId(accepted.organizationId);
+					if (accepted.role === "organizer") navigate("/dashboard", { replace: true });
+					else if (accepted.role === "officer" && accepted.eventId) navigate(`/field/events/${accepted.eventId}`, { replace: true });
+					else if (accepted.role === "officer") navigate("/field", { replace: true });
+					else navigate("/settings", { replace: true });
+					return;
+				} catch (err) {
+					setActivationError(err instanceof ApiClientError ? err.message : "Akun berhasil dibuat, tetapi tautan belum dapat diaktifkan. Buka kembali tautan aktivasi atau hubungi superadmin.");
+				}
+			}
 			setRegistrationSuccess(true);
 		} catch (err) {
 			if (err instanceof ApiClientError) {
@@ -181,8 +198,9 @@ export function RegisterPage() {
 									Pendaftaran Akun Berhasil
 								</h1>
 								<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.6, color: "#545B67" }}>
-									Identitas akun Anda telah terdaftar. Pilih langkah berikutnya sesuai kebutuhan Anda:
+									{activationToken ? "Akun Anda sudah dibuat. Jika aktivasi belum selesai, buka kembali tautan undangan di bawah." : "Identitas akun Anda telah terdaftar. Pilih langkah berikutnya sesuai kebutuhan Anda:"}
 								</p>
+								{activationError && <p role="alert" style={{ marginTop: 12, color: "#9E2A2B" }}>{activationError}</p>}
 							</div>
 
 							<div style={{ display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
@@ -205,7 +223,7 @@ export function RegisterPage() {
 											</span>
 										</div>
 										<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.5, color: "#545B67" }}>
-											Akun Anda telah aktif dan siap menerima hak penugasan resmi.
+											{activationToken ? "Tautan undangan akan memberikan akses setelah Anda mengonfirmasinya." : "Akun Anda telah aktif dan siap menerima hak penugasan yang disetujui."}
 										</p>
 										<Link
 											to={safeReturnUrl}

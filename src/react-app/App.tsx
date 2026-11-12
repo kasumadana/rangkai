@@ -10,6 +10,11 @@ import { EventWizardPage } from "./pages/EventWizardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { AdminOrganizationsPage } from "./pages/AdminOrganizationsPage";
+import { AdminUsersPage } from "./pages/AdminUsersPage";
+import { AdminReviewersPage } from "./pages/AdminReviewersPage";
+import { ReviewerQueuePage } from "./pages/ReviewerQueuePage";
+import { ActivationPage } from "./pages/ActivationPage";
+import { AdminTerritoriesPage } from "./pages/AdminTerritoriesPage";
 import { OrganizationOnboardingPage } from "./pages/OrganizationOnboardingPage";
 import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
 import { OrganizerOverviewPage } from "./pages/OrganizerOverviewPage";
@@ -58,6 +63,11 @@ const router = createBrowserRouter(createRoutesFromElements(
 								/>
 								<Route path="/onboarding/status" element={<OrganizationOnboardingPage />} />
 								<Route path="/admin/organizations" element={<AdminOrganizationsPage />} />
+								<Route path="/admin/users" element={<AdminUsersPage />} />
+								<Route path="/admin/reviewers" element={<AdminReviewersPage />} />
+								<Route path="/reviewer/road-requests" element={<ReviewerQueuePage />} />
+								<Route path="/admin/territories" element={<AdminTerritoriesPage />} />
+								<Route path="/activate/:token" element={<ActivationPage />} />
 								<Route
 									path="/invite/:token"
 									element={<AcceptInvitationPage />}
