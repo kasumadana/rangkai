@@ -712,6 +712,41 @@ describe("A03 + A04 Integrated: Auth, RBAC, Event CRUD, Review & Publication", (
 	describe("5. Event CRUD, Boundary Validation & Pagination (A04 / FR-010..013)", () => {
 		let createdEventId = "";
 
+		it("stores venue coordinates, prevents cross-organization edits, and invalidates review when moved", async () => {
+			const point = { type: "Point", coordinates: [115.21, -8.65] };
+			const moved = { type: "Point", coordinates: [115.22, -8.66] };
+			const headers = { "Content-Type": "application/json", Cookie: organizerACookie };
+			const created = await app.request("http://localhost:5173/api/events", { method: "POST", headers, body: JSON.stringify({ organizationId: fixtureOrgA.id, title: "Titik acara uji", venueName: "Pura uji", startsAt: "2026-11-20T08:00:00Z", endsAt: "2026-11-20T10:00:00Z", venueLocation: point }) });
+			expect(created.status).toBe(201);
+			const data = await created.json<{ event: { id: string; venueLocation: typeof point } }>();
+			expect(data.event.venueLocation).toEqual(point);
+			const id = data.event.id;
+			const unauthorized = await app.request(`http://localhost:5173/api/events/${id}/extracted-fields`, { method: "PATCH", headers: { ...headers, Cookie: organizerBCookie }, body: JSON.stringify({ venueLocation: moved }) });
+			expect(unauthorized.status).toBe(404);
+			const review = await app.request(`http://localhost:5173/api/events/${id}/review`, { method: "POST", headers });
+			expect(review.status).toBe(200);
+			const updated = await app.request(`http://localhost:5173/api/events/${id}/extracted-fields`, { method: "PATCH", headers, body: JSON.stringify({ venueLocation: moved }) });
+			expect(updated.status).toBe(200);
+			const result = await updated.json<{ event: { venueLocation: typeof point; status: string; verifiedAt: string | null } }>();
+			expect(result.event.venueLocation).toEqual(moved);
+			expect(result.event.status).toBe("draft");
+			expect(result.event.verifiedAt).toBeNull();
+			const read = await app.request(`http://localhost:5173/api/events/${id}`, { headers: { Cookie: organizerACookie } });
+			expect((await read.json<{ event: { venueLocation: typeof point } }>()).event.venueLocation).toEqual(moved);
+			await db.insert(roadImpacts).values({ eventId: id, roadSegmentId: fixtureVerifiedRoadSegment.id, plannedFrom: new Date("2026-11-20T08:00:00Z"), plannedTo: new Date("2026-11-20T10:00:00Z"), impactType: "closure" });
+			const rereview = await app.request(`http://localhost:5173/api/events/${id}/review`, { method: "POST", headers });
+			expect(rereview.status).toBe(200);
+			const published = await app.request(`http://localhost:5173/api/events/${id}/publish`, { method: "POST", headers, body: JSON.stringify({ isSimulation: true }) });
+			expect(published.status).toBe(200);
+			const slug = (await published.json<{ event: { publicSlug: string } }>()).event.publicSlug;
+			const publicDetail = await app.request(`http://localhost:5173/api/public/events/${slug}`);
+			expect(publicDetail.status).toBe(200);
+			const publicEvent = (await publicDetail.json<{ event: { venueLocation: typeof point; isSimulation: boolean; contactInformation?: string } }>()).event;
+			expect(publicEvent.venueLocation).toEqual(moved);
+			expect(publicEvent.isSimulation).toBe(true);
+			expect(publicEvent).not.toHaveProperty("contactInformation");
+		});
+
 		it("rejects offsetless timestamps without explicit timezone", async () => {
 			const res = await app.request("http://localhost:5173/api/events", {
 				method: "POST",

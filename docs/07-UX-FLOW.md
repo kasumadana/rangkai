@@ -67,6 +67,7 @@ Top section:
 Middle:
 
 - Road-impact map
+- Organizer-selected event point when available; otherwise state that the point has not been set.
 - List of affected segments
 - Current status for each segment
 
@@ -94,6 +95,7 @@ Primary CTA: Create Event.
 
 Step 1: Surat Edaran & AI (Unggah berkas edaran dan ekstraksi Gemini multimodal).
 Step 2: Detail Upacara & Jadwal WITA (Periksa, lengkapi, dan konfirmasi rincian acara).
+An optional venue point can be chosen on the map or entered as longitude and latitude; it can be moved or removed. Changing it during review requires a new review.
 Step 3: Input Peta & Ruas Jalan Terdampak (Katalog resmi jalan terverifikasi dan preview spasial).
 Step 4: Verifikasi Prajuru & Penerbitan Resmi (Tinjauan akhir human-in-the-loop dan publikasi).
 

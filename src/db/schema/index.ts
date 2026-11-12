@@ -144,6 +144,7 @@ export const events = pgTable(
 		category: text("category"),
 		description: text("description"),
 		venueName: text("venue_name"),
+		venueLocation: pointGeometry("venue_location"),
 		startsAt: timestamp("starts_at", { withTimezone: true }),
 		endsAt: timestamp("ends_at", { withTimezone: true }),
 		status: text("status").$type<EventStatus>().default("draft").notNull(),

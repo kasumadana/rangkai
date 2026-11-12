@@ -198,8 +198,8 @@ export function OrganizationOnboardingPage() {
 					{/* Information Callout */}
 					<div
 						style={{
-							background: "var(--color-surface)",
-							border: "1px solid rgba(38, 77, 59, 0.12)",
+							background: "#F8FAF8",
+							border: "1px solid rgba(92, 132, 55, 0.12)",
 							borderRadius: 14,
 							padding: "12px 16px",
 							fontSize: "1rem",
@@ -361,7 +361,7 @@ export function OrganizationOnboardingPage() {
 							disabled={createOrgMutation.isPending}
 							style={{
 								marginTop: 8,
-								background: "#264D3B",
+								background: "#4D702F",
 								color: "#FFFFFF",
 								border: "none",
 								borderRadius: 9999,

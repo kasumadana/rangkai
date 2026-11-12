@@ -327,7 +327,9 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 			expect(result.branchId).toBe(AUTHORIZED_DEV_BRANCH);
 			expect(result.postgisVersion).toMatch(/^3\./);
 			expect(result.tableNames.length).toBeGreaterThanOrEqual(17);
-			expect(result.geometries.length).toBe(2);
+			expect(result.geometries).toEqual(expect.arrayContaining([
+				expect.objectContaining({ f_table_name: "events", f_geometry_column: "venue_location", type: "POINT", srid: 4326 }),
+			]));
 			expect(result.indexes.length).toBeGreaterThanOrEqual(10);
 			expect(result.constraints.length).toBeGreaterThanOrEqual(100);
 		});
@@ -336,7 +338,7 @@ describe("Neon + PostGIS + Drizzle Database Integration", () => {
 			const mockDb = createMockCatalogDb();
 			const result = await verifyDatabase(mockDb);
 			expect(result.branchId).toBe(AUTHORIZED_DEV_BRANCH);
-			expect(result.geometries.length).toBe(2);
+			expect(result.geometries.length).toBe(3);
 		});
 
 		it("rejects verification if PostGIS extension is missing or incompatible", async () => {

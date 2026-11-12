@@ -18,9 +18,10 @@ export default defineConfig({
 	},
 	use: {
 		baseURL: process.env.PLAYWRIGHT_BASE_URL || "http://localhost:5173",
+		launchOptions: process.env.RANGKAI_BROWSER_PATH ? { executablePath: process.env.RANGKAI_BROWSER_PATH, args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] } : undefined,
 		trace: "on-first-retry",
 		screenshot: "only-on-failure",
-		video: "retain-on-failure",
+		video: process.env.RANGKAI_BROWSER_PATH ? "off" : "retain-on-failure",
 	},
 	projects: [
 		{

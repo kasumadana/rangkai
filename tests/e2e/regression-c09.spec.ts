@@ -171,11 +171,23 @@ test.describe("C09 Regression Suite: Mobile Usability & Responsiveness (Pilar 5)
 		await expect(publicPage.locator("body")).toBeVisible();
 
 		// Periksa tidak ada horizontal scroll overflow pada viewport
+		interface DomMetricRoot {
+			document: {
+				documentElement: {
+					scrollWidth: number;
+					clientWidth: number;
+				};
+			};
+		}
 		const scrollWidth = await publicPage.evaluate(
-			() => (globalThis as unknown as { document: { documentElement: { scrollWidth: number } } }).document.documentElement.scrollWidth,
+			() =>
+				(globalThis as unknown as DomMetricRoot).document.documentElement
+					.scrollWidth,
 		);
 		const clientWidth = await publicPage.evaluate(
-			() => (globalThis as unknown as { document: { documentElement: { clientWidth: number } } }).document.documentElement.clientWidth,
+			() =>
+				(globalThis as unknown as DomMetricRoot).document.documentElement
+					.clientWidth,
 		);
 		expect(scrollWidth).toBeLessThanOrEqual(clientWidth + 5);
 

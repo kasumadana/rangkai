@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { EVENT_STATUSES } from "../../db/schema";
 import { isValidIsoDatetimeWithTimezone } from "./extractions";
+import { venueLocationSchema } from "./venue-location";
+export { venueLocationSchema } from "./venue-location";
 
 export const isoDateSchema = z
 	.string()
@@ -27,6 +29,7 @@ export const createEventSchema = z
 		category: z.string().trim().max(100).optional().nullable(),
 		description: z.string().trim().max(2000).optional().nullable(),
 		venueName: z.string().trim().max(255).optional().nullable(),
+		venueLocation: venueLocationSchema.optional().nullable(),
 		permitReference: z.string().trim().max(100).optional().nullable(),
 		isSimulation: z.boolean().default(true).optional(),
 	})
@@ -51,8 +54,9 @@ export const updateEventSchema = z
 		category: z.string().trim().max(100).optional().nullable(),
 		description: z.string().trim().max(2000).optional().nullable(),
 		venueName: z.string().trim().max(255).optional().nullable(),
+		venueLocation: venueLocationSchema.optional().nullable(),
 		permitReference: z.string().trim().max(100).optional().nullable(),
-		isSimulation: z.boolean().default(true).optional(),
+		isSimulation: z.boolean().optional(),
 	})
 	.refine(
 		(data) => {

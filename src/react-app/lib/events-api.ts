@@ -17,6 +17,7 @@ import {
 import type { OperationalRoadStatus } from "./road-status";
 
 export type { EventLifecycleStatus, EventRecord, PaginatedEventsResponse };
+export type VenueLocation = { type: "Point"; coordinates: [number, number] };
 
 export interface ListEventsParams {
 	page?: number;
@@ -33,6 +34,7 @@ export interface CreateEventPayload {
 	category?: string | null;
 	description?: string | null;
 	venueName?: string | null;
+	venueLocation?: VenueLocation | null;
 	permitReference?: string | null;
 }
 
@@ -43,6 +45,7 @@ export interface UpdateEventPayload {
 	category?: string | null;
 	description?: string | null;
 	venueName?: string | null;
+	venueLocation?: VenueLocation | null;
 	permitReference?: string | null;
 }
 
@@ -109,6 +112,7 @@ export interface ExtractedFieldsPayload {
 	startsAt?: string | null;
 	endsAt?: string | null;
 	venueName?: string | null;
+	venueLocation?: VenueLocation | null;
 	description?: string | null;
 	permitReference?: string | null;
 	processionDescription?: string | null;
@@ -329,6 +333,7 @@ export interface PublicEventItem {
 	category: string | null;
 	description: string | null;
 	venueName: string | null;
+	venueLocation?: VenueLocation | null;
 	startsAt: string | null;
 	endsAt: string | null;
 	status: string;
@@ -935,6 +940,7 @@ interface RawPublicEventPayload {
 	category?: string | null;
 	description?: string | null;
 	venueName?: string | null;
+	venueLocation?: VenueLocation | null;
 	startsAt?: string | null;
 	endsAt?: string | null;
 	status?: string;
@@ -976,6 +982,7 @@ function normalizePublicEvent(raw: RawPublicEventPayload): PublicEventItem & {
 		category: raw.category ?? null,
 		description: raw.description ?? null,
 		venueName: raw.venueName ?? null,
+		venueLocation: raw.venueLocation ?? null,
 		startsAt: raw.startsAt ?? null,
 		endsAt: raw.endsAt ?? null,
 		status: raw.status ?? "published",
@@ -1412,24 +1419,27 @@ export function mapPublicEventToCeremonyProfile(
 	let derivedCenter: [number, number] | null = null;
 	const mappedRoads: VillageRoadRouteSegment[] = roads.map((r, rIdx) => {
 		let coords: Array<[number, number]> = [];
+		let coordinateParts: Array<Array<[number, number]>> | undefined;
+		const validLine = (line: unknown): line is Array<[number, number]> =>
+			Array.isArray(line) && line.length >= 2 && line.every((pt: unknown) =>
+				Array.isArray(pt) && pt.length >= 2 &&
+				typeof pt[0] === "number" && Number.isFinite(pt[0]) && pt[0] >= -180 && pt[0] <= 180 &&
+				typeof pt[1] === "number" && Number.isFinite(pt[1]) && pt[1] >= -90 && pt[1] <= 90,
+			);
 		const geom = r.geometry;
 		if (
 			geom &&
 			geom.type === "LineString" &&
-			Array.isArray(geom.coordinates)
+			validLine(geom.coordinates)
 		) {
-			coords = (geom.coordinates as Array<[number, number]>).filter(
-				(pt) => Array.isArray(pt) && pt.length >= 2,
-			);
+			coords = geom.coordinates;
 		} else if (
 			geom &&
 			geom.type === "MultiLineString" &&
-			Array.isArray(geom.coordinates) &&
-			Array.isArray(geom.coordinates[0])
+			Array.isArray(geom.coordinates)
 		) {
-			coords = (geom.coordinates[0] as Array<[number, number]>).filter(
-				(pt) => Array.isArray(pt) && pt.length >= 2,
-			);
+			coordinateParts = geom.coordinates.filter(validLine);
+			coords = coordinateParts[0] ?? [];
 		}
 
 		if (!derivedCenter && coords.length > 0) {
@@ -1478,6 +1488,7 @@ export function mapPublicEventToCeremonyProfile(
 				evt.trafficImpactDescription ||
 				"Ikuti arahan petugas pecalang di simpang jalan.",
 			coordinates: coords,
+			coordinateParts,
 			svgPath: "M 180 260 L 760 260",
 			labelPoint: { x: 460, y: 245 },
 		};
@@ -1505,7 +1516,7 @@ export function mapPublicEventToCeremonyProfile(
 		primaryStatus = "closed";
 	} else if (mappedRoads.some((r) => r.status === "intermittent")) {
 		primaryStatus = "intermittent";
-	} else if (mappedRoads.some((r) => r.status === "open")) {
+	} else if (mappedRoads.length > 0 && mappedRoads.every((r) => r.status === "open")) {
 		primaryStatus = "open";
 	}
 
@@ -1537,7 +1548,8 @@ export function mapPublicEventToCeremonyProfile(
 			evt.trafficImpactDescription ||
 			mappedRoads[0]?.guidanceNote ||
 			"Penyesuaian arus lalu lintas mengikuti arahan petugas di lapangan.",
-		mapCenter: derivedCenter,
+		mapCenter: evt.venueLocation?.coordinates ?? derivedCenter,
+		venueLocation: evt.venueLocation?.coordinates ?? null,
 		mapZoom: 14.2,
 		puraPoint: {
 			name: evt.venueName || orgName,
@@ -1611,6 +1623,7 @@ export function buildDistrictFeaturesFromEvents(
 				windowWita: m.scheduleWindowWita,
 				sacredCenterName: m.sacredCenterName,
 				coordinates: m.mapCenter,
+				hasVenueLocation: m.venueLocation != null,
 				roadName: m.roadSegments[0]?.roadName,
 				detourRoute: m.roadSegments[0]?.guidanceNote || m.alternativeRouteSummary,
 				isSimulation: m.isSimulation !== false,
@@ -1975,3 +1988,49 @@ export async function generateWastePlan(
 	);
 }
 
+export const CATEGORY_OPTIONS = [
+	{ value: "upacara_adat", label: "Upacara Adat / Dewa Yadnya" },
+	{ value: "odalan", label: "Piodalan / Pujawali Pura" },
+	{ value: "melasti", label: "Prosesi Melasti" },
+	{ value: "pengerupukan", label: "Pengerupukan / Pawai Ogoh-Ogoh" },
+	{ value: "karya", label: "Karya Agung / Pitra Yadnya (Pelebon)" },
+	{ value: "lainnya", label: "Kegiatan Adat & Budaya Lainnya" },
+];
+
+export const IMPACT_TYPE_OPTIONS: Array<{
+	value: "closure" | "intermittent" | "narrowing" | "procession";
+	label: string;
+}> = [
+	{
+		value: "closure",
+		label: "Penutupan Total (Bahu & Badan Jalan Ditutup)",
+	},
+	{
+		value: "intermittent",
+		label: "Buka-Tutup Berkala (Intermittent / Prioritas Prosesi)",
+	},
+	{
+		value: "narrowing",
+		label: "Penyempitan Lajur / Pengalihan Sebagian",
+	},
+	{
+		value: "procession",
+		label: "Jalur Iring-iringan Prosesi Berjalan",
+	},
+];
+
+export function getImpactTypeLabel(type?: string): string {
+	const normalized = normalizeRoadImpactType(type);
+	switch (normalized) {
+		case "closure":
+			return "Penutupan Total";
+		case "intermittent":
+			return "Buka-Tutup Berkala";
+		case "narrowing":
+			return "Penyempitan Lajur";
+		case "procession":
+			return "Jalur Prosesi";
+		default:
+			return "Penutupan Jalan";
+	}
+}

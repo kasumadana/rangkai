@@ -7,10 +7,6 @@ import {
 	type CeremonyDetailItem,
 	type RoadSegmentFallbackItem,
 } from "../../components/rangkai";
-import type {
-	BaliDistrictProperties,
-	DistrictCeremonySummary,
-} from "../../lib/bali-districts";
 import {
 	BALI_ISLAND_CENTER,
 	BALI_ISLAND_ZOOM,
@@ -19,7 +15,6 @@ import {
 	BALI_MAP_MIN_ZOOM,
 	type BaliVillageCeremonyProfile,
 } from "../../lib/bali-villages";
-import { buildDistrictFeaturesFromEvents } from "../../lib/events-api";
 import type { OperationalRoadStatus } from "../../lib/road-status";
 
 type BasemapStyle = "osm" | "satellite";
@@ -82,41 +77,27 @@ function getStatusBadgeConfig(status: OperationalRoadStatus) {
 			return {
 				label: "Ditutup Total",
 				className: "status-closed",
+				pinColor: "#C8322B",
 			};
 		case "intermittent":
 			return {
 				label: "Buka-Tutup",
 				className: "status-intermittent",
+				pinColor: "#D97706",
 			};
 		case "open":
 			return {
 				label: "Jalur Normal",
 				className: "status-open",
+				pinColor: "#4D702F",
 			};
 		default:
 			return {
 				label: "Konfirmasi",
 				className: "status-unknown",
+				pinColor: "#57534E",
 			};
 	}
-}
-
-function calculateDistance(
-	coord1: [number, number],
-	coord2: [number, number],
-): number {
-	const [lon1, lat1] = coord1;
-	const [lon2, lat2] = coord2;
-	const dLat = (lat2 - lat1) * (Math.PI / 180);
-	const dLon = (lon2 - lon1) * (Math.PI / 180);
-	const a =
-		Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-		Math.cos(lat1 * (Math.PI / 180)) *
-			Math.cos(lat2 * (Math.PI / 180)) *
-			Math.sin(dLon / 2) *
-			Math.sin(dLon / 2);
-	const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-	return 6371 * c; // in kilometers
 }
 
 interface BaliLandingSatelliteMapProps {
@@ -129,16 +110,8 @@ export function BaliLandingSatelliteMap({
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
 	const wrapperRef = useRef<HTMLDivElement | null>(null);
 	const mapRef = useRef<maplibregl.Map | null>(null);
-	const revealedMarkersRef = useRef<maplibregl.Marker[]>([]);
-	const districtPillsRef = useRef<maplibregl.Marker[]>([]);
+	const ceremonyMarkersRef = useRef<maplibregl.Marker[]>([]);
 	const activePopupRef = useRef<maplibregl.Popup | null>(null);
-	const selectedDistrictRef = useRef<BaliDistrictProperties | null>(null);
-	const activeCeremonyIdRef = useRef<string | null>(null);
-
-	const districtFeaturesData = useMemo(
-		() => buildDistrictFeaturesFromEvents(ceremonies),
-		[ceremonies],
-	);
 
 	const allFallbackSegments: RoadSegmentFallbackItem[] = useMemo(() => {
 		const result: RoadSegmentFallbackItem[] = [];
@@ -159,8 +132,14 @@ export function BaliLandingSatelliteMap({
 					segmentName: seg.roadName,
 					corridorArea: seg.corridorSection || ceremony.desaAdatName,
 					impactType: mappedImpact,
-					plannedFrom: seg.plannedFrom || ceremony.scheduleIso?.startsAt || new Date().toISOString(),
-					plannedTo: seg.plannedTo || ceremony.scheduleIso?.endsAt || new Date().toISOString(),
+					plannedFrom:
+						seg.plannedFrom ||
+						ceremony.scheduleIso?.startsAt ||
+						new Date().toISOString(),
+					plannedTo:
+						seg.plannedTo ||
+						ceremony.scheduleIso?.endsAt ||
+						new Date().toISOString(),
 					observedAt: seg.observedAt || null,
 					expiresAt: seg.expiresAt || null,
 					diversionNote: seg.guidanceNote || null,
@@ -177,28 +156,95 @@ export function BaliLandingSatelliteMap({
 		}
 		return result;
 	}, [ceremonies]);
-	const districtFeaturesRef = useRef(districtFeaturesData);
+
+	const roadGeoJson = useMemo(() => {
+		const features: Array<{
+			type: "Feature";
+			properties: {
+				id: string;
+				ceremonyId: string;
+				roadName: string;
+				status: OperationalRoadStatus;
+				stroke: string;
+				halo: string;
+			};
+			geometry: {
+				type: "LineString" | "MultiLineString";
+				coordinates: Array<[number, number]> | Array<Array<[number, number]>>;
+			};
+		}> = [];
+
+		for (const ceremony of ceremonies) {
+			for (const seg of ceremony.roadSegments || []) {
+				const parts = (
+					seg.coordinateParts?.length
+						? seg.coordinateParts
+						: [seg.coordinates]
+				)
+					.map((part) =>
+						part.filter(
+							(pt): pt is [number, number] =>
+								Array.isArray(pt) &&
+								pt.length === 2 &&
+								Number.isFinite(pt[0]) &&
+								Number.isFinite(pt[1]),
+						),
+					)
+					.filter((part) => part.length >= 2);
+				if (parts.length === 0) continue;
+
+				const stroke =
+					seg.status === "closed"
+						? "#C8322B"
+						: seg.status === "intermittent"
+							? "#D97706"
+							: seg.status === "open"
+								? "#4D702F"
+								: "#57534E";
+				const halo =
+					seg.status === "closed"
+						? "rgba(200, 50, 43, 0.30)"
+						: seg.status === "intermittent"
+							? "rgba(217, 119, 6, 0.28)"
+							: seg.status === "open"
+								? "rgba(92, 132, 55, 0.28)"
+								: "rgba(87, 83, 78, 0.25)";
+
+				features.push({
+					type: "Feature",
+					properties: {
+						id: seg.id,
+						ceremonyId: ceremony.id,
+						roadName: seg.roadName,
+						status: seg.status,
+						stroke,
+						halo,
+					},
+					geometry:
+						parts.length === 1
+							? { type: "LineString", coordinates: parts[0] }
+							: { type: "MultiLineString", coordinates: parts },
+				});
+			}
+		}
+
+		return {
+			type: "FeatureCollection" as const,
+			features,
+		};
+	}, [ceremonies]);
+
+	const roadGeoJsonRef = useRef(roadGeoJson);
 	useEffect(() => {
-		districtFeaturesRef.current = districtFeaturesData;
-	}, [districtFeaturesData]);
+		roadGeoJsonRef.current = roadGeoJson;
+	}, [roadGeoJson]);
 
 	const [activeBasemap] = useState<BasemapStyle>("satellite");
 	const [isMapLoaded, setIsMapLoaded] = useState(false);
 	const [mapError, setMapError] = useState<string | null>(null);
-	const [selectedDistrict, setSelectedDistrict] =
-		useState<BaliDistrictProperties | null>(null);
 	const [activeCeremonyId, setActiveCeremonyId] = useState<string | null>(null);
 	const [activeDetailCeremony, setActiveDetailCeremony] =
 		useState<CeremonyDetailItem | null>(null);
-
-	// Synchronize ref states to prevent stale closures in map zoom callbacks
-	useEffect(() => {
-		selectedDistrictRef.current = selectedDistrict;
-	}, [selectedDistrict]);
-
-	useEffect(() => {
-		activeCeremonyIdRef.current = activeCeremonyId;
-	}, [activeCeremonyId]);
 
 	// Cooperative map activation state (prevents wheel scroll-trapping while scrolling page)
 	const [isMapInteracting, setIsMapInteracting] = useState(false);
@@ -216,73 +262,89 @@ export function BaliLandingSatelliteMap({
 	// Click outside the map container to release focus and restore smooth page scroll
 	useEffect(() => {
 		function handleClickOutside(event: MouseEvent) {
-			if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+			if (
+				wrapperRef.current &&
+				!wrapperRef.current.contains(event.target as Node)
+			) {
 				handleDeactivateMap();
 			}
 		}
 
 		if (isMapInteracting) {
 			window.addEventListener("pointerdown", handleClickOutside);
-			return () => window.removeEventListener("pointerdown", handleClickOutside);
+			return () =>
+				window.removeEventListener("pointerdown", handleClickOutside);
 		}
 	}, [isMapInteracting, handleDeactivateMap]);
 
-	// Open Compact Map Popup directly above the point
+	// Open Compact Map Popup directly above the ceremony point
 	const openCeremonyPopup = useCallback(
-		(
-			ceremony: DistrictCeremonySummary,
-			district?: BaliDistrictProperties | null,
-		) => {
+		(ceremony: BaliVillageCeremonyProfile) => {
 			const map = mapRef.current;
-			if (!map) return;
+			if (!map || !ceremony.venueLocation) return;
 
 			if (activePopupRef.current) {
 				activePopupRef.current.remove();
 				activePopupRef.current = null;
 			}
 
-			const badge = getStatusBadgeConfig(ceremony.status);
+			const badge = getStatusBadgeConfig(ceremony.primaryStatus);
 			const isSim = ceremony.isSimulation !== false;
+			const firstRoadName =
+				ceremony.roadSegments[0]?.roadName ||
+				ceremony.destinationName ||
+				"Ruas belum ditentukan";
+
 			const popupNode = document.createElement("div");
 			popupNode.className = "map-popup-card";
 			popupNode.innerHTML = `
 				<div class="map-popup-header">
 					<span class="map-popup-badge ${badge.className}">${badge.label}</span>
-					${isSim ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ''}
-					<span class="map-popup-location">${ceremony.desaAdatName}</span>
+					${isSim ? '<span class="map-popup-badge simulation-token">SIMULASI</span>' : ""}
+					<span class="map-popup-location"></span>
 				</div>
-				<h4 class="map-popup-title">${ceremony.title}</h4>
+				<h4 class="map-popup-title"></h4>
 				<div class="map-popup-meta-box">
 					<div class="map-popup-meta-row">
 						<span class="map-popup-meta-label">Jalur:</span>
-						<span class="map-popup-meta-val">${ceremony.roadName || "Koridor Wilayah"}</span>
+						<span class="map-popup-meta-val"></span>
 					</div>
 					<div class="map-popup-meta-row">
 						<span class="map-popup-meta-label">Waktu:</span>
-						<span class="map-popup-meta-val">${ceremony.windowWita || "08:00 - Selesai"}</span>
+						<span class="map-popup-meta-val"></span>
 					</div>
 				</div>
-				<button type="button" class="map-popup-btn" id="btn-compact-detail-${ceremony.id}">
+				<button type="button" class="map-popup-btn">
 					<span>Lihat Detail</span>
 					<span aria-hidden="true">→</span>
 				</button>
 			`;
 
-			const btn = popupNode.querySelector(`#btn-compact-detail-${ceremony.id}`);
+			const location = popupNode.querySelector(".map-popup-location");
+			const title = popupNode.querySelector(".map-popup-title");
+			const values = popupNode.querySelectorAll(".map-popup-meta-val");
+			if (location) location.textContent = ceremony.desaAdatName;
+			if (title) title.textContent = ceremony.ceremonyTitle;
+			if (values[0]) values[0].textContent = firstRoadName;
+			if (values[1])
+				values[1].textContent =
+					ceremony.scheduleWindowWita || "Waktu belum ditentukan";
+
+			const btn = popupNode.querySelector(".map-popup-btn");
 			if (btn) {
 				btn.addEventListener("click", () => {
 					setActiveDetailCeremony({
 						id: ceremony.id,
-						title: ceremony.title,
+						title: ceremony.ceremonyTitle,
 						desaAdatName: ceremony.desaAdatName,
-						kabupaten: district ? district.kabupaten : undefined,
+						kabupaten: ceremony.kabupaten,
 						slug: ceremony.slug,
-						status: ceremony.status,
-						dateLabel: ceremony.dateLabel,
-						windowWita: ceremony.windowWita,
+						status: ceremony.primaryStatus,
+						dateLabel: ceremony.scheduleDateLabel,
+						windowWita: ceremony.scheduleWindowWita,
 						sacredCenterName: ceremony.sacredCenterName,
-						roadName: ceremony.roadName,
-						detourRoute: ceremony.detourRoute,
+						roadName: firstRoadName,
+						detourRoute: ceremony.alternativeRouteSummary,
 						isSimulation: ceremony.isSimulation !== false,
 					});
 				});
@@ -302,11 +364,11 @@ export function BaliLandingSatelliteMap({
 					right: [-18, -20],
 				},
 				anchor: "bottom",
-				closeButton: false, // Clean popup without colliding close button
+				closeButton: false,
 				closeOnClick: false,
 				maxWidth: "248px",
 			})
-				.setLngLat(ceremony.coordinates)
+				.setLngLat(ceremony.venueLocation)
 				.setDOMContent(popupNode)
 				.addTo(map);
 
@@ -321,70 +383,14 @@ export function BaliLandingSatelliteMap({
 		[],
 	);
 
-	// Select and focus on a district, revealing its ceremony points
-	const handleSelectDistrict = useCallback(
-		(district: BaliDistrictProperties, focusCoords?: [number, number]) => {
-			setSelectedDistrict(district);
-			selectedDistrictRef.current = district;
-			const firstCeremony =
-				district.ceremonies.length > 0 ? district.ceremonies[0] : null;
-			const cId = firstCeremony ? firstCeremony.id : null;
-			setActiveCeremonyId(cId);
-			activeCeremonyIdRef.current = cId;
-
-			// Hide overview district pills when district is selected
-			districtPillsRef.current.forEach((m) => {
-				m.getElement().style.display = "none";
-			});
-
-			const map = mapRef.current;
-			if (!map) return;
-
-			// If district has a ceremony, center directly on the first ceremony with optimal zoom and padding for popup
-			if (firstCeremony) {
-				map.flyTo({
-					center: firstCeremony.coordinates,
-					zoom: 13.5,
-					padding: { top: 130, bottom: 40, left: 20, right: 20 },
-					duration: 800,
-					essential: true,
-				});
-				openCeremonyPopup(firstCeremony, district);
-			} else {
-				const targetCenter = focusCoords || district.center;
-				map.flyTo({
-					center: targetCenter,
-					zoom: Math.max(map.getZoom(), 12.0),
-					duration: 800,
-					essential: true,
-				});
-				if (activePopupRef.current) {
-					activePopupRef.current.remove();
-					activePopupRef.current = null;
-				}
-			}
-		},
-		[openCeremonyPopup],
-	);
-
-	// Reset district selection and return to whole island view
+	// Reset active ceremony selection and return to whole island view
 	const handleResetSelection = useCallback(() => {
-		setSelectedDistrict(null);
-		selectedDistrictRef.current = null;
 		setActiveCeremonyId(null);
-		activeCeremonyIdRef.current = null;
 
 		if (activePopupRef.current) {
 			activePopupRef.current.remove();
 			activePopupRef.current = null;
 		}
-
-		// Clear revealed ceremony pins and restore district pills
-		revealedMarkersRef.current.forEach((m) => m.remove());
-		revealedMarkersRef.current = [];
-		districtPillsRef.current.forEach((m) => {
-			m.getElement().style.display = "inline-flex";
-		});
 
 		const map = mapRef.current;
 		if (!map) return;
@@ -397,155 +403,49 @@ export function BaliLandingSatelliteMap({
 		});
 	}, []);
 
-	// Setup MapLibre layers for District Boundaries
-	const attachDistrictLayers = useCallback(
-		(mapInstance: maplibregl.Map) => {
-			if (!mapInstance.getSource("bali-districts")) {
-				mapInstance.addSource("bali-districts", {
-					type: "geojson",
-					data: districtFeaturesRef.current,
-				});
-			}
-
-			// Clean translucent fill layer for regional areas
-			if (!mapInstance.getLayer("bali-districts-fill")) {
-				mapInstance.addLayer({
-					id: "bali-districts-fill",
-					type: "fill",
-					source: "bali-districts",
-					paint: {
-						"fill-color": ["get", "fillColor"],
-						"fill-opacity": 0.35,
-					},
-				});
-			}
-
-			// Selected district outer white halo line
-			if (!mapInstance.getLayer("bali-districts-selected-halo")) {
-				mapInstance.addLayer({
-					id: "bali-districts-selected-halo",
-					type: "line",
-					source: "bali-districts",
-					paint: {
-						"line-color": "#FFFFFF",
-						"line-width": 5.5,
-						"line-opacity": 0,
-					},
-				});
-			}
-
-			// Distinct boundary lines between districts with their individual colors
-			if (!mapInstance.getLayer("bali-districts-line")) {
-				mapInstance.addLayer({
-					id: "bali-districts-line",
-					type: "line",
-					source: "bali-districts",
-					paint: {
-						"line-color": ["get", "borderColor"],
-						"line-width": 2.0,
-						"line-opacity": 0.75,
-					},
-				});
-			}
-
-			// Click handler on district area polygon
-			mapInstance.on("click", "bali-districts-fill", (e) => {
-				if (!e.features || e.features.length === 0) return;
-				const featId = e.features[0].properties?.id;
-				const found = districtFeaturesRef.current.features.find(
-					(f: { properties: BaliDistrictProperties }) =>
-						f.properties.id === featId,
-				);
-				if (found) {
-					handleSelectDistrict(found.properties, [e.lngLat.lng, e.lngLat.lat]);
-				}
+	// Attach only road segment corridor layers (no district polygon shapes)
+	const attachRoadLayers = useCallback((mapInstance: maplibregl.Map) => {
+		if (!mapInstance.getSource("landing-ceremony-roads")) {
+			mapInstance.addSource("landing-ceremony-roads", {
+				type: "geojson",
+				data: roadGeoJsonRef.current,
 			});
-
-			mapInstance.on("mouseenter", "bali-districts-fill", () => {
-				mapInstance.getCanvas().style.cursor = "pointer";
-			});
-
-			mapInstance.on("mouseleave", "bali-districts-fill", () => {
-				mapInstance.getCanvas().style.cursor = "";
-			});
-
-			// General click handler: if user clicks anywhere on map background, find closest district
-			mapInstance.on("click", (e) => {
-				const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
-					[e.point.x - 4, e.point.y - 4],
-					[e.point.x + 4, e.point.y + 4],
-				];
-				const hitFeatures = mapInstance.queryRenderedFeatures(bbox, {
-					layers: ["bali-districts-fill"],
-				});
-
-				if (hitFeatures.length === 0) {
-					// User clicked outside polygon: find nearest district center
-					const clickCoord: [number, number] = [e.lngLat.lng, e.lngLat.lat];
-					let nearestDist = Infinity;
-					let nearestDistrict: BaliDistrictProperties | null = null;
-
-					for (const feat of districtFeaturesRef.current.features) {
-						const dist = calculateDistance(clickCoord, feat.properties.center);
-						if (dist < nearestDist) {
-							nearestDist = dist;
-							nearestDistrict = feat.properties;
-						}
-					}
-
-					// If within reasonable distance in Bali (~35km), select it
-					if (nearestDistrict && nearestDist <= 35) {
-						handleSelectDistrict(nearestDistrict, clickCoord);
-					}
-				}
-			});
-		},
-		[handleSelectDistrict],
-	);
-
-	// Update district polygon layer high-contrast highlighting whenever selectedDistrict changes
-	useEffect(() => {
-		const map = mapRef.current;
-		if (!map || !isMapLoaded) return;
-
-		if (selectedDistrict) {
-			// High contrast: selected district is bold & vibrant; unselected districts dim to subtle background
-			map.setPaintProperty("bali-districts-fill", "fill-opacity", [
-				"case",
-				["==", ["get", "id"], selectedDistrict.id],
-				0.52,
-				0.08,
-			]);
-			map.setPaintProperty("bali-districts-line", "line-width", [
-				"case",
-				["==", ["get", "id"], selectedDistrict.id],
-				3.5,
-				1.2,
-			]);
-			map.setPaintProperty("bali-districts-line", "line-opacity", [
-				"case",
-				["==", ["get", "id"], selectedDistrict.id],
-				1.0,
-				0.25,
-			]);
-			if (map.getLayer("bali-districts-selected-halo")) {
-				map.setPaintProperty("bali-districts-selected-halo", "line-opacity", [
-					"case",
-					["==", ["get", "id"], selectedDistrict.id],
-					0.9,
-					0.0,
-				]);
-			}
-		} else {
-			// Normal balanced overview across Bali
-			map.setPaintProperty("bali-districts-fill", "fill-opacity", 0.35);
-			map.setPaintProperty("bali-districts-line", "line-width", 2.0);
-			map.setPaintProperty("bali-districts-line", "line-opacity", 0.75);
-			if (map.getLayer("bali-districts-selected-halo")) {
-				map.setPaintProperty("bali-districts-selected-halo", "line-opacity", 0);
-			}
 		}
-	}, [isMapLoaded, selectedDistrict]);
+
+		if (!mapInstance.getLayer("landing-ceremony-roads-halo")) {
+			mapInstance.addLayer({
+				id: "landing-ceremony-roads-halo",
+				type: "line",
+				source: "landing-ceremony-roads",
+				layout: {
+					"line-cap": "round",
+					"line-join": "round",
+				},
+				paint: {
+					"line-color": ["get", "halo"],
+					"line-width": 12,
+					"line-opacity": 0.9,
+				},
+			});
+		}
+
+		if (!mapInstance.getLayer("landing-ceremony-roads-line")) {
+			mapInstance.addLayer({
+				id: "landing-ceremony-roads-line",
+				type: "line",
+				source: "landing-ceremony-roads",
+				layout: {
+					"line-cap": "round",
+					"line-join": "round",
+				},
+				paint: {
+					"line-color": ["get", "stroke"],
+					"line-width": 5,
+					"line-opacity": 0.95,
+				},
+			});
+		}
+	}, []);
 
 	// Initialize MapLibre instance
 	useEffect(() => {
@@ -583,39 +483,10 @@ export function BaliLandingSatelliteMap({
 
 			mapInstance.on("load", () => {
 				if (!mapInstance) return;
-				attachDistrictLayers(mapInstance);
+				attachRoadLayers(mapInstance);
 				setIsMapLoaded(true);
 				setMapError(null);
 				mapInstance.resize();
-			});
-
-			// Auto-toggle visibility between overview district pills and detailed ceremony pins based on zoom
-			mapInstance.on("zoom", () => {
-				if (!mapInstance) return;
-				const zoom = mapInstance.getZoom();
-				const isZoomedOut = zoom < 11.2;
-
-				if (isZoomedOut) {
-					if (activePopupRef.current) {
-						activePopupRef.current.remove();
-						activePopupRef.current = null;
-					}
-					revealedMarkersRef.current.forEach((m) => {
-						m.getElement().style.display = "none";
-					});
-					districtPillsRef.current.forEach((m) => {
-						m.getElement().style.display = "inline-flex";
-					});
-				} else {
-					if (selectedDistrictRef.current) {
-						districtPillsRef.current.forEach((m) => {
-							m.getElement().style.display = "none";
-						});
-						revealedMarkersRef.current.forEach((m) => {
-							m.getElement().style.display = "block";
-						});
-					}
-				}
 			});
 
 			mapInstance.on("error", (e: { error?: { message?: string } }) => {
@@ -681,119 +552,98 @@ export function BaliLandingSatelliteMap({
 				activePopupRef.current.remove();
 				activePopupRef.current = null;
 			}
-			districtPillsRef.current.forEach((m) => m.remove());
-			districtPillsRef.current = [];
-			revealedMarkersRef.current.forEach((m) => m.remove());
-			revealedMarkersRef.current = [];
+			ceremonyMarkersRef.current.forEach((m) => m.remove());
+			ceremonyMarkersRef.current = [];
 			mapInstance?.remove();
 			mapRef.current = null;
 		};
-	}, [activeBasemap, attachDistrictLayers]);
+	}, [activeBasemap, attachRoadLayers]);
 
-	// Mount overview District Ceremony Count Pills
+	// Sync road segment data & ceremony location pins across Bali at all zoom levels
 	useEffect(() => {
 		const map = mapRef.current;
 		if (!map || !isMapLoaded) return;
 
-		const src = map.getSource("bali-districts") as maplibregl.GeoJSONSource | undefined;
-		if (src) {
-			src.setData(districtFeaturesData);
+		const roadSource = map.getSource("landing-ceremony-roads") as
+			| maplibregl.GeoJSONSource
+			| undefined;
+		if (roadSource) {
+			roadSource.setData(roadGeoJson);
 		}
 
-		districtPillsRef.current.forEach((m) => m.remove());
-		districtPillsRef.current = [];
+		ceremonyMarkersRef.current.forEach((m) => m.remove());
+		ceremonyMarkersRef.current = [];
 
-		districtFeaturesData.features.forEach(
-			(feat: { properties: BaliDistrictProperties }) => {
-				const dist = feat.properties;
-				if (!dist.ceremonies || dist.ceremonies.length === 0) return;
+		for (const ceremony of ceremonies) {
+			if (
+				!Array.isArray(ceremony.venueLocation) ||
+				ceremony.venueLocation.length !== 2 ||
+				!Number.isFinite(ceremony.venueLocation[0]) ||
+				!Number.isFinite(ceremony.venueLocation[1])
+			) {
+				continue;
+			}
 
-				const el = document.createElement("div");
-				el.className = "district-count-pill";
-				el.style.setProperty("--district-border", dist.borderColor);
-				el.innerHTML = `
-					<span class="district-count-name">${dist.name}</span>
-					<span class="district-count-badge">${dist.ceremonies.length} Acara</span>
-				`;
+			const badge = getStatusBadgeConfig(ceremony.primaryStatus);
+			const pinColor = badge.pinColor;
+			const isActive = activeCeremonyId === ceremony.id;
 
-				el.addEventListener("click", (e) => {
-					e.stopPropagation();
-					handleSelectDistrict(dist);
-				});
+			const el = document.createElement("div");
+			el.className = `standard-location-pin ${isActive ? "is-active" : ""}`;
+			el.setAttribute(
+				"aria-label",
+				`Lokasi acara: ${ceremony.sacredCenterName || ceremony.ceremonyTitle}${
+					ceremony.isSimulation !== false ? " (simulasi)" : ""
+				}`,
+			);
+			el.innerHTML = `
+				<div class="pin-inner">
+					<div class="pin-pulse-halo" style="background: ${pinColor}40;"></div>
+					<svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+						<path d="M16 2C9.37258 2 4 7.37258 4 14C4 24.5 16 39 16 39C16 39 28 24.5 28 14C28 7.37258 22.6274 2 16 2Z" fill="${pinColor}" stroke="#FFFFFF" stroke-width="1.8"/>
+						<circle cx="16" cy="14" r="5.5" fill="#FFFFFF"/>
+					</svg>
+				</div>
+				<div class="marker-hover-label"></div>
+			`;
+			const markerLabel = el.querySelector(".marker-hover-label");
+			if (markerLabel) {
+				markerLabel.textContent = ceremony.desaAdatName;
+			}
 
-				if (selectedDistrict && map.getZoom() >= 11.2) {
-					el.style.display = "none";
-				}
-
-				const marker = new maplibregl.Marker({ element: el, anchor: "center" })
-					.setLngLat(dist.center)
-					.addTo(map);
-
-				districtPillsRef.current.push(marker);
-			},
-		);
-
-		return () => {
-			districtPillsRef.current.forEach((m) => m.remove());
-			districtPillsRef.current = [];
-		};
-	}, [isMapLoaded, districtFeaturesData, selectedDistrict, handleSelectDistrict]);
-
-	// Dynamically reveal ceremony points on map ONLY when a district is selected (Teduh Teardrop Pins)
-	useEffect(() => {
-		const map = mapRef.current;
-		if (!map || !isMapLoaded) return;
-
-		// Clear existing revealed markers
-		revealedMarkersRef.current.forEach((m) => m.remove());
-		revealedMarkersRef.current = [];
-
-		// If no district is selected, map remains completely clean with NO dots/markers
-		if (!selectedDistrict) return;
-
-		// Reveal specific ceremony points for the selected district using Teduh teardrop location pins
-		if (selectedDistrict.ceremonies && selectedDistrict.ceremonies.length > 0) {
-			const pinColor = selectedDistrict.borderColor;
-			const isZoomedOut = map.getZoom() < 11.2;
-
-			selectedDistrict.ceremonies.forEach((c: DistrictCeremonySummary) => {
-				const el = document.createElement("div");
-				el.className = `standard-location-pin ${activeCeremonyId === c.id ? "is-active" : ""}`;
-				if (isZoomedOut) {
-					el.style.display = "none";
-				}
-				el.innerHTML = `
-					<div class="pin-inner">
-						<div class="pin-pulse-halo" style="background: ${pinColor}40;"></div>
-						<svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-							<path d="M16 2C9.37258 2 4 7.37258 4 14C4 24.5 16 39 16 39C16 39 28 24.5 28 14C28 7.37258 22.6274 2 16 2Z" fill="${pinColor}" stroke="#FFFFFF" stroke-width="1.8"/>
-							<circle cx="16" cy="14" r="5.5" fill="#FFFFFF"/>
-						</svg>
-					</div>
-					<div class="marker-hover-label">${c.desaAdatName}</div>
-				`;
-
-				el.addEventListener("click", (evt) => {
-					evt.stopPropagation();
-					setActiveCeremonyId(c.id);
-					openCeremonyPopup(c, selectedDistrict);
+			el.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				setActiveCeremonyId(ceremony.id);
+				openCeremonyPopup(ceremony);
+				if (ceremony.venueLocation) {
 					map.flyTo({
-						center: c.coordinates,
-						zoom: 13.5,
+						center: ceremony.venueLocation,
+						zoom: Math.max(map.getZoom(), 13.8),
 						padding: { top: 130, bottom: 40, left: 20, right: 20 },
-						duration: 600,
+						duration: 650,
 						essential: true,
 					});
-				});
-
-				const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
-					.setLngLat(c.coordinates)
-					.addTo(map);
-
-				revealedMarkersRef.current.push(marker);
+				}
 			});
+
+			const marker = new maplibregl.Marker({ element: el, anchor: "bottom" })
+				.setLngLat(ceremony.venueLocation)
+				.addTo(map);
+
+			ceremonyMarkersRef.current.push(marker);
 		}
-	}, [isMapLoaded, selectedDistrict, activeCeremonyId, openCeremonyPopup]);
+
+		return () => {
+			ceremonyMarkersRef.current.forEach((m) => m.remove());
+			ceremonyMarkersRef.current = [];
+		};
+	}, [
+		isMapLoaded,
+		ceremonies,
+		roadGeoJson,
+		activeCeremonyId,
+		openCeremonyPopup,
+	]);
 
 	return (
 		<div
@@ -822,7 +672,7 @@ export function BaliLandingSatelliteMap({
 			{/* Non-intrusive Interaction State Pill */}
 			{!isMapInteracting ? (
 				<div className="map-scroll-hint-pill">
-					<span>Klik peta untuk mengaktifkan zoom & jelajah</span>
+					<span>Klik peta untuk mengaktifkan zoom & pilih titik upacara</span>
 				</div>
 			) : (
 				<button
@@ -838,26 +688,26 @@ export function BaliLandingSatelliteMap({
 				</button>
 			)}
 
-			{/* Reset island view button if a district is currently selected */}
-			{selectedDistrict && (
+			{/* Reset island view button if a ceremony is currently selected */}
+			{activeCeremonyId && (
 				<button
 					type="button"
 					onClick={handleResetSelection}
 					style={{
 						position: "absolute",
-						bottom: 24,
-						right: 24,
+						bottom: 36,
+						right: 20,
 						zIndex: 5,
 						background: "rgba(255, 255, 255, 0.95)",
 						backdropFilter: "blur(8px)",
-						border: "1px solid rgba(228, 231, 229, 0.9)",
+						border: "none",
 						borderRadius: 9999,
 						padding: "8px 16px",
-						fontSize: 12,
-						fontWeight: 500,
+						fontSize: 12.5,
+						fontWeight: 600,
 						color: "#181B20",
 						cursor: "pointer",
-						boxShadow: "0 4px 14px rgba(0, 0, 0, 0.08)",
+						boxShadow: "0 4px 16px rgba(15, 23, 42, 0.14)",
 						display: "flex",
 						alignItems: "center",
 						gap: 6,
@@ -878,7 +728,7 @@ export function BaliLandingSatelliteMap({
 						background: "rgba(21, 30, 40, 0.88)",
 						backdropFilter: "blur(8px)",
 						WebkitBackdropFilter: "blur(8px)",
-						border: "1px solid rgba(255, 255, 255, 0.14)",
+						border: "none",
 						borderRadius: 9999,
 						padding: "10px 20px",
 						boxShadow: "0 8px 24px rgba(0, 0, 0, 0.35)",
@@ -892,7 +742,7 @@ export function BaliLandingSatelliteMap({
 						gap: 10,
 					}}
 				>
-					<span>Memuat Garis Wilayah & Perbatasan Kawasan Bali...</span>
+					<span>Memuat Titik Lokasi Upacara & Jalur Bali...</span>
 				</div>
 			)}
 

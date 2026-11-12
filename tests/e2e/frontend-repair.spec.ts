@@ -39,7 +39,7 @@ test('assistant sources and mobile drawer', async ({ page }) => {
     expect(await page.evaluate<string>("getComputedStyle(document.querySelector('.assistant-panel textarea')).fontSize")).toBe('16px');
     expect(await page.evaluate<number>("document.querySelector('.assistant-panel button[type=submit]').getBoundingClientRect().height")).toBeGreaterThanOrEqual(44);
     expect(await page.evaluate<string>("getComputedStyle(document.querySelector('.assistant-panel h2')).fontSize")).toBe('26px');
-    expect(await page.evaluate<string>("getComputedStyle(document.querySelector('.assistant-panel button[type=submit] span')).fontSize")).toBe('16px');
+    expect(await page.evaluate<string>("getComputedStyle(document.querySelector('.assistant-panel button[type=submit]')).fontSize")).toBe('16px');
     await page.screenshot({ path: `test-results/assistant-repair-${width}.png`, fullPage: true });
   }
 });

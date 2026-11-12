@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ApiClientError, apiFetch } from "../../src/react-app/lib/api-client";
 import {
-	BALI_VILLAGE_CEREMONIES,
 	MAPTILER_API_KEY,
 	MAPTILER_STYLE_URL,
-	buildBaliVillageMapSvgDataUri,
 } from "../../src/react-app/lib/bali-villages";
+import { BALI_DISTRICTS_DATA } from "../../src/react-app/lib/bali-districts";
 import {
 	OPERATIONAL_DISCLAIMERS,
 	UX_EMPTY_COPY,
@@ -31,6 +30,18 @@ import {
 } from "../../src/react-app/lib/wita";
 
 describe("B01 Frontend Foundation & Rangkai UI Domain Helpers", () => {
+	it("preserves disconnected road parts without joining invalid coordinates", () => {
+		const event = { id: "event", title: "Latihan", slug: "latihan", category: null, description: null, venueName: null, startsAt: null, endsAt: null, status: "active", publishedAt: null, organizationName: "Organisasi", village: "Bali", district: "Bali" };
+		const road = { id: "road", roadSegmentId: "segment", plannedFrom: null, plannedTo: null, impactType: "closure" as const, diversionNote: null, geometry: { type: "MultiLineString", coordinates: [[[115.1, -8.1], [115.2, -8.2]], [[115.3, -8.3], [115.4, -8.4]], [[115.5, -8.5], [null, -8.6], [115.7, -8.7]]] } };
+		const segment = mapPublicEventToCeremonyProfile(event, [road]).roadSegments[0];
+		expect(segment.coordinateParts).toEqual([[[115.1, -8.1], [115.2, -8.2]], [[115.3, -8.3], [115.4, -8.4]]]);
+	});
+	it("does not summarize mixed open and unconfirmed roads as open", () => {
+		const event = { id: "event", title: "Latihan", slug: "latihan", category: null, description: null, venueName: null, startsAt: null, endsAt: null, status: "active", publishedAt: null, organizationName: "Organisasi", village: "Bali", district: "Bali" };
+		const road = { id: "open", roadSegmentId: "road", plannedFrom: null, plannedTo: null, impactType: "closure" as const, diversionNote: null, operationalStatus: { effectiveStatus: "open" as const, rawStatus: "open" as const, isStale: false, observedAt: null, expiresAt: null } };
+		expect(mapPublicEventToCeremonyProfile(event, [road]).primaryStatus).toBe("open");
+		expect(mapPublicEventToCeremonyProfile(event, [road, { ...road, id: "stale", operationalStatus: { ...road.operationalStatus, isStale: true } }]).primaryStatus).toBe("unknown");
+	});
 	it("keeps missing or stale status unconfirmed and treats missing mode as simulation", () => {
 		const event = { id: "event", title: "Latihan", slug: "latihan", category: null, description: null, venueName: null, startsAt: null, endsAt: null, status: "active", publishedAt: null, organizationName: "Organisasi", village: "Bali", district: "Bali" };
 		const profile = mapPublicEventToCeremonyProfile(event, [{ id: "impact", roadSegmentId: "road", plannedFrom: null, plannedTo: null, impactType: "closure", diversionNote: null, operationalStatus: { effectiveStatus: "unconfirmed", rawStatus: "open", isStale: true, observedAt: null, expiresAt: null } }]);
@@ -42,6 +53,7 @@ describe("B01 Frontend Foundation & Rangkai UI Domain Helpers", () => {
 	it("formats UTC timestamps into Asia/Makassar (WITA, UTC+8) accurately", () => {
 		expect(WITA_TIMEZONE).toBe("Asia/Makassar");
 		expect(WITA_LABEL).toBe("WITA");
+		expect(formatWitaRange(null, null)).toBe("Jadwal belum ditentukan");
 
 		const formatted = formatWitaDateTime("2026-11-05T01:30:00Z");
 		expect(formatted).toContain("2026");
@@ -212,47 +224,68 @@ describe("B01 Frontend Foundation & Rangkai UI Domain Helpers", () => {
 		}
 	});
 
-	it("generates Bali Desa Adat ceremony profiles and SVG corridor maps with road status routes", () => {
-		expect(BALI_VILLAGE_CEREMONIES.length).toBeGreaterThanOrEqual(4);
-		const ubud = BALI_VILLAGE_CEREMONIES[0];
-		expect(ubud.desaAdatName).toContain("Desa Adat Ubud");
-		expect(ubud.roadSegments.length).toBeGreaterThanOrEqual(3);
+	it("contains zero static dummy ceremonies in BALI_DISTRICTS_DATA and populates ceremonies strictly from backend events", () => {
+		for (const feature of BALI_DISTRICTS_DATA.features) {
+			expect(feature.properties.hasCeremony).toBe(false);
+			expect(feature.properties.ceremonyCount).toBe(0);
+			expect(feature.properties.ceremonies).toEqual([]);
+		}
 
-		const svgUri = buildBaliVillageMapSvgDataUri(
-			ubud,
-			ubud.roadSegments[0]?.id,
-		);
-		expect(svgUri.startsWith("data:image/svg+xml;utf8,")).toBe(true);
-		const decodedSvg = decodeURIComponent(
-			svgUri.replace("data:image/svg+xml;utf8,", ""),
-		);
-		expect(decodedSvg).toContain("Pura Dalem Ubud");
-		expect(decodedSvg).toContain("Jl. Raya Ubud");
+		const emptyBuilt = buildDistrictFeaturesFromEvents([]);
+		expect(emptyBuilt.features.every((f) => f.properties.ceremonyCount === 0)).toBe(true);
 	});
 
-	it("provides valid MapTiler configuration and comprehensive village allocation data (parking, notices, pecalang)", () => {
+	it("provides valid MapTiler configuration and maps backend event profiles accurately", () => {
 		expect(typeof MAPTILER_API_KEY).toBe("string");
 		if (MAPTILER_API_KEY) {
 			expect(MAPTILER_STYLE_URL).toContain("api.maptiler.com");
 		}
 
-		for (const village of BALI_VILLAGE_CEREMONIES) {
-			// Center coordinates in Bali: lat between -9.0 and -8.0, lon between 114.5 and 115.8
-			expect(village.mapCenter[0]).toBeGreaterThan(114.5);
-			expect(village.mapCenter[0]).toBeLessThan(115.8);
-			expect(village.mapCenter[1]).toBeGreaterThan(-9.0);
-			expect(village.mapCenter[1]).toBeLessThan(-8.0);
+		const profile = mapPublicEventToCeremonyProfile(
+			{
+				id: "evt-ubud-1",
+				title: "Karya Pujawali Pura Dalem Ubud",
+				slug: "pujawali-ubud",
+				category: "pujawali",
+				description: "Upacara pujawali",
+				venueName: "Pura Dalem Ubud",
+				venueLocation: { type: "Point", coordinates: [115.2625, -8.5069] },
+				startsAt: "2026-11-14T00:00:00Z",
+				endsAt: "2026-11-14T05:30:00Z",
+				status: "published",
+				publishedAt: "2026-11-10T00:00:00Z",
+				organizationName: "Desa Adat Ubud",
+				village: "Ubud",
+				district: "Ubud",
+				isSimulation: false,
+			},
+			[
+				{
+					id: "road-1",
+					roadSegmentId: "seg-1",
+					displayName: "Jl. Raya Ubud",
+					plannedFrom: "2026-11-14T00:00:00Z",
+					plannedTo: "2026-11-14T05:30:00Z",
+					impactType: "closure",
+					diversionNote: "Dialihkan ke Jl. Sugriwa",
+					geometry: {
+						type: "LineString",
+						coordinates: [
+							[115.261, -8.5068],
+							[115.264, -8.507],
+						],
+					},
+				},
+			],
+		);
 
-			// Road segments have valid GeoJSON coordinates
-			for (const seg of village.roadSegments) {
-				expect(seg.coordinates.length).toBeGreaterThanOrEqual(2);
-			}
-
-			// Village allocation & citizen data
-			expect(village.parkingLots.length).toBeGreaterThanOrEqual(2);
-			expect(village.pecalangPosts.length).toBeGreaterThanOrEqual(2);
-			expect(village.communityNotices.length).toBeGreaterThanOrEqual(2);
-		}
+		expect(profile.desaAdatName).toContain("Desa Adat Ubud");
+		expect(profile.venueLocation).toEqual([115.2625, -8.5069]);
+		expect(profile.mapCenter[0]).toBeGreaterThan(114.5);
+		expect(profile.mapCenter[0]).toBeLessThan(115.8);
+		expect(profile.mapCenter[1]).toBeGreaterThan(-9.0);
+		expect(profile.mapCenter[1]).toBeLessThan(-8.0);
+		expect(profile.roadSegments[0]?.coordinates.length).toBe(2);
 	});
 
 	it("validates human-verified map-drawn road segments and normalizes enums for backend contracts", () => {
@@ -333,5 +366,11 @@ describe("B01 Frontend Foundation & Rangkai UI Domain Helpers", () => {
 		expect(summaries[1].isSimulation).toBe(false);
 		// Missing case (fail-safe defaults true)
 		expect(summaries[2].isSimulation).toBe(true);
+		expect(summaries.every((summary) => summary.hasVenueLocation === false)).toBe(true);
+
+		const point: [number, number] = [115.263, -8.685];
+		const located = mapPublicEventToCeremonyProfile({ ...baseEvent, id: "located", venueLocation: { type: "Point", coordinates: point } });
+		const locatedDistrict = buildDistrictFeaturesFromEvents([located]).features.find((f) => f.properties.name.toLowerCase().includes("denpasar selatan"));
+		expect(locatedDistrict?.properties.ceremonies[0]).toMatchObject({ hasVenueLocation: true, coordinates: point });
 	});
 });

@@ -1,8 +1,3 @@
-import { AlertDialog } from "@astryxdesign/core/AlertDialog";
-import { Banner } from "@astryxdesign/core/Banner";
-import { Token } from "@astryxdesign/core/Token";
-import { VStack } from "@astryxdesign/core/Stack";
-import { Text } from "@astryxdesign/core/Text";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -36,7 +31,7 @@ import {
 	UserPlus,
 	Users,
 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import {
 	ImpactPlannerPanel,
@@ -57,8 +52,11 @@ import {
 } from "../components/rangkai";
 import { BaliMapTilerView } from "../features/map/BaliMapTilerView";
 import { DashboardRoadMapInput } from "../features/map/DashboardRoadMapInput";
+import { VenueLocationInput } from "../features/map/VenueLocationInput";
+import { RoadStatusConfirmDialog } from "../components/rangkai/RoadStatusConfirmDialog";
 import { TeduhSpatialMapConsole } from "../features/map/TeduhSpatialMapConsole";
 import { type BaliVillageCeremonyProfile } from "../lib/bali-villages";
+import { ApiClientError } from "../lib/api-client";
 import { OPERATIONAL_DISCLAIMERS } from "../lib/constants";
 import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
 import {
@@ -73,6 +71,7 @@ import {
 	fetchEventDetail,
 	fetchEventRoadImpacts,
 	fetchPublicCleanupSummary,
+	fetchPublicAlternativeRoutes,
 	fetchPublicEventDetail,
 	fetchPublicEventRoads,
 	fetchPublicEvents,
@@ -100,6 +99,8 @@ import {
 	uploadCleanupEvidence,
 	uploadEventDocument,
 	verifyCleanupTask,
+	IMPACT_TYPE_OPTIONS,
+	getImpactTypeLabel,
 } from "../lib/events-api";
 import {
 	createInvitation,
@@ -109,8 +110,7 @@ import {
 } from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
 import type { OperationalRoadStatus } from "../lib/road-status";
-import { formatWitaDateTime, formatWitaRange } from "../lib/wita";
-import { IMPACT_TYPE_OPTIONS, getImpactTypeLabel } from "./EventWizardPage";
+import { formatWitaDateTime, formatWitaRange, isTimestampExpired } from "../lib/wita";
 import { LandingPage } from "./LandingPage";
 
 /**
@@ -291,7 +291,7 @@ export function PublicEventsListPage() {
 									display: "inline-flex",
 									alignItems: "center",
 									gap: 8,
-									background: "#264D3B",
+									background: "#4D702F",
 									color: "#FFFFFF",
 									padding: "10px 20px",
 									borderRadius: 9999,
@@ -340,7 +340,7 @@ export function PublicEventsListPage() {
 											</span>
 											<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
 												{evt.isSimulation ? (
-													<Token color="orange" size="sm" label="SIMULASI" />
+													<span className="map-popup-badge simulation-token">SIMULASI</span>
 												) : null}
 												<span
 													className={`road-status-badge ${statusBadgeClass}`}
@@ -388,7 +388,7 @@ export function PublicEventsListPage() {
 											to={`/peta?village=${eventSlug}`}
 											style={{
 												fontSize: 13.5,
-												color: "#264D3B",
+												color: "#4D702F",
 												textDecoration: "none",
 												fontWeight: 500,
 											}}
@@ -427,6 +427,7 @@ export function PublicEventDetailPage({
 }) {
 	const { slug } = useParams<{ slug: string }>();
 	const [selectedSegmentId, setSelectedSegmentId] = useState<string>("");
+	const [statusClock, setStatusClock] = useState(() => Date.now());
 	const detailRef = useRef<HTMLElement>(null);
 
 	const publicEventQuery = useQuery({
@@ -454,10 +455,28 @@ export function PublicEventDetailPage({
 		retry: false,
 	});
 
+	const alternativeRoutesQuery = useQuery({
+		queryKey: ["public", "events", slug, "alternative-routes"],
+		queryFn: () => fetchPublicAlternativeRoutes(slug!),
+		enabled: Boolean(slug),
+		staleTime: 30_000,
+	});
+
 	const apiEvent = publicEventQuery.data?.event;
+	useEffect(() => {
+		const now = Date.now();
+		const deadlines = (liveRoadsQuery.data?.roads ?? []).map((road) => road.operationalStatus?.expiresAt ? Date.parse(road.operationalStatus.expiresAt) : NaN).filter((time) => Number.isFinite(time) && time > now);
+		if (!deadlines.length) return;
+		const delay = Math.min(Math.max(Math.min(...deadlines) - now + 25, 25), 2_147_000_000);
+		const timer = setTimeout(() => setStatusClock(Date.now()), delay);
+		return () => clearTimeout(timer);
+	}, [liveRoadsQuery.data, statusClock]);
 	const rawRoads = useMemo(
-		() => liveRoadsQuery.data?.roads ?? liveRoadsQuery.data?.roadImpacts ?? [],
-		[liveRoadsQuery.data],
+		() => (liveRoadsQuery.data?.roads ?? liveRoadsQuery.data?.roadImpacts ?? []).map((road) => road.operationalStatus ? {
+			...road,
+			operationalStatus: { ...road.operationalStatus, isStale: road.operationalStatus.isStale || liveRoadsQuery.isError || isTimestampExpired(road.operationalStatus.expiresAt, new Date(Math.max(statusClock, liveRoadsQuery.dataUpdatedAt))) },
+		} : road),
+		[liveRoadsQuery.data, liveRoadsQuery.dataUpdatedAt, liveRoadsQuery.isError, statusClock],
 	);
 
 	const spatialProfile: BaliVillageCeremonyProfile | null = useMemo(() => {
@@ -484,6 +503,10 @@ export function PublicEventDetailPage({
 				</div>
 			</main>
 		);
+	}
+
+	if (publicEventQuery.isError && (!(publicEventQuery.error instanceof ApiClientError) || publicEventQuery.error.status !== 404)) {
+		return <main className="teduh-page-shell"><div className="teduh-page-container"><section className="teduh-empty-surface" role="alert"><h1>Rincian acara belum dapat dimuat</h1><p>Periksa koneksi dan coba lagi.</p><button type="button" className="teduh-btn-secondary" onClick={() => void publicEventQuery.refetch()}>Coba lagi</button></section></div></main>;
 	}
 
 	if (!apiEvent || !spatialProfile) {
@@ -526,7 +549,7 @@ export function PublicEventDetailPage({
 									display: "inline-flex",
 									alignItems: "center",
 									gap: 8,
-									background: "#264D3B",
+									background: "#4D702F",
 									color: "#FFFFFF",
 									padding: "10px 20px",
 									borderRadius: 9999,
@@ -560,8 +583,7 @@ export function PublicEventDetailPage({
 		);
 	}
 
-	const activeSegmentId =
-		selectedSegmentId || spatialProfile.roadSegments[0]?.id || "";
+	const activeSegmentId = selectedSegmentId;
 	const schedule = formatWitaEventSchedule(apiEvent.startsAt, apiEvent.endsAt);
 	const cleanupData = cleanupSummaryQuery.data;
 
@@ -641,6 +663,10 @@ export function PublicEventDetailPage({
 				<BaliMapTilerView
 					village={spatialProfile}
 					allVillages={[spatialProfile]}
+					showAllVillagesMarkers={false}
+					showDistrictBoundaries={false}
+					fitDataReady={!liveRoadsQuery.isLoading && !alternativeRoutesQuery.isLoading}
+					alternativeRoutes={alternativeRoutesQuery.isError ? [] : alternativeRoutesQuery.data?.alternativeRoutes}
 					selectedSegmentId={activeSegmentId}
 					onSelectSegment={setSelectedSegmentId}
 					height="100%"
@@ -707,14 +733,10 @@ export function PublicEventDetailPage({
 					</div>
 
 					{apiEvent.isSimulation ? (
-						<div style={{ marginBottom: 16 }}>
-							<Banner
-								status="warning"
-								collapsible={false}
-								title="SIMULASI — Bukan Penutupan Jalan Sebenarnya"
-								description="Kegiatan ini dipublikasikan dalam mode simulasi atau latihan koordinasi desa adat. Ruas jalan dan status buka-tutup tidak mencerminkan penutupan operasional resmi di lapangan."
-							/>
-						</div>
+						<section className="mb-4 rounded-xl bg-amber-50 p-4 text-amber-950" aria-label="Informasi simulasi">
+							<strong>SIMULASI — Bukan Penutupan Jalan Sebenarnya</strong>
+							<p>Kegiatan ini dipublikasikan dalam mode simulasi atau latihan koordinasi desa adat. Ruas jalan dan status buka-tutup tidak mencerminkan penutupan operasional resmi di lapangan.</p>
+						</section>
 					) : null}
 
 					<h1 className="teduh-detail-title">{apiEvent.title}</h1>
@@ -724,7 +746,7 @@ export function PublicEventDetailPage({
 						<div className="teduh-meta-block">
 							<span className="teduh-meta-label">Waktu Pelaksanaan (WITA)</span>
 							<div className="teduh-meta-value">
-								<Clock size={16} color="#264D3B" />
+								<Clock size={16} color="#4D702F" />
 								<span style={{ fontVariantNumeric: "tabular-nums" }}>
 									{schedule.dateLabel} • {schedule.windowWita}
 								</span>
@@ -734,7 +756,7 @@ export function PublicEventDetailPage({
 						<div className="teduh-meta-block">
 							<span className="teduh-meta-label">Lokasi & Wilayah Adat</span>
 							<div className="teduh-meta-value">
-								<MapPin size={16} color="#264D3B" />
+								<MapPin size={16} color="#4D702F" />
 								<span>
 									{apiEvent.venueName || apiEvent.village || apiEvent.organizationName}
 								</span>
@@ -744,7 +766,7 @@ export function PublicEventDetailPage({
 						<div className="teduh-meta-block">
 							<span className="teduh-meta-label">Penyelenggara Terverifikasi</span>
 							<div className="teduh-meta-value">
-								<ShieldCheck size={16} color="#264D3B" />
+								<ShieldCheck size={16} color="#4D702F" />
 								<span>
 									{apiEvent.organizerName || apiEvent.organizationName}
 								</span>
@@ -754,9 +776,9 @@ export function PublicEventDetailPage({
 						<div className="teduh-meta-block">
 							<span className="teduh-meta-label">Ruas Jalan Terdampak</span>
 							<div className="teduh-meta-value">
-								<Navigation size={16} color="#264D3B" />
+								<Navigation size={16} color="#4D702F" />
 								<span>
-									{rawRoads.length} Ruas ({spatialProfile.primaryStatus === "closed" ? "Tutup Total" : spatialProfile.primaryStatus === "intermittent" ? "Buka-Tutup" : "Normal"})
+									{liveRoadsQuery.isLoading || liveRoadsQuery.isError ? "Data ruas belum tersedia" : `${rawRoads.length} Ruas (${spatialProfile.primaryStatus === "closed" ? "Tutup Total" : spatialProfile.primaryStatus === "intermittent" ? "Buka-Tutup" : spatialProfile.primaryStatus === "open" ? "Dibuka" : "Belum Dikonfirmasi"})`}
 								</span>
 							</div>
 						</div>
@@ -776,7 +798,7 @@ export function PublicEventDetailPage({
 							{apiEvent.description ? (
 								<div className="teduh-surface-card" data-gsap="scroll-card">
 									<h3 className="teduh-card-label">
-										<FileText size={15} color="#264D3B" />
+										<FileText size={15} color="#4D702F" />
 										<span>Deskripsi Kegiatan</span>
 									</h3>
 									<p className="teduh-card-body">{apiEvent.description}</p>
@@ -786,7 +808,7 @@ export function PublicEventDetailPage({
 							{apiEvent.processionDescription ? (
 								<div className="teduh-surface-card" data-gsap="scroll-card">
 									<h3 className="teduh-card-label">
-										<Milestone size={15} color="#264D3B" />
+										<Milestone size={15} color="#4D702F" />
 										<span>Rute & Jalur Prosesi</span>
 									</h3>
 									<p className="teduh-card-body">
@@ -798,7 +820,7 @@ export function PublicEventDetailPage({
 							{apiEvent.trafficImpactDescription ? (
 								<div className="teduh-surface-card" data-gsap="scroll-card">
 									<h3 className="teduh-card-label">
-										<AlertTriangle size={15} color="#264D3B" />
+										<AlertTriangle size={15} color="#4D702F" />
 										<span>Ringkasan Dampak & Pengalihan Arus</span>
 									</h3>
 									<p className="teduh-card-body">
@@ -824,12 +846,17 @@ export function PublicEventDetailPage({
 					>
 						<div>
 							<h2 className="teduh-section-heading">
-								Peta Lokasi & Ruas Jalan Terdampak ({rawRoads.length})
+								Peta Lokasi & Ruas Jalan Terdampak{!liveRoadsQuery.isLoading && !liveRoadsQuery.isError ? ` (${rawRoads.length})` : ""}
 							</h2>
 							<p style={{ margin: 0, fontSize: 15, color: "#545B67" }}>
 								Klik salah satu ruas jalan di daftar untuk menyorot koridor pada
 								peta.
 							</p>
+							{!spatialProfile.venueLocation ? (
+								<p className="teduh-venue-unconfirmed-note">
+									Titik lokasi belum ditentukan.
+								</p>
+							) : null}
 						</div>
 					</div>
 
@@ -842,6 +869,8 @@ export function PublicEventDetailPage({
 										Memuat data ruas jalan terverifikasi...
 									</p>
 								</div>
+							) : liveRoadsQuery.isError ? (
+								<p role="alert">Data ruas jalan belum dapat dimuat. <button type="button" className="teduh-btn-secondary" onClick={() => void liveRoadsQuery.refetch()}>Coba lagi</button></p>
 							) : rawRoads.length === 0 ? (
 								<div className="teduh-surface-card">
 									<h3 className="teduh-card-label">
@@ -859,7 +888,7 @@ export function PublicEventDetailPage({
 										road.plannedTo,
 									);
 									const effStatus =
-										road.operationalStatus?.effectiveStatus === "unconfirmed"
+										road.operationalStatus?.isStale || road.operationalStatus?.effectiveStatus === "unconfirmed"
 											? "unknown"
 											: ((road.operationalStatus?.effectiveStatus ??
 													"unknown") as OperationalRoadStatus);
@@ -922,6 +951,23 @@ export function PublicEventDetailPage({
 												{road.coverageArea || apiEvent.village} • Berlaku:{" "}
 												{roadSchedule.dateLabel} ({roadSchedule.windowWita})
 											</div>
+											<div className="teduh-road-meta-grid">
+												<p className="teduh-road-meta-pill">
+													Rencana: {getImpactTypeLabel(road.impactType)}
+												</p>
+												<p className="teduh-road-meta-pill">
+													Pengamatan:{" "}
+													{road.operationalStatus?.observedAt
+														? formatWitaDateTime(road.operationalStatus.observedAt)
+														: "Belum ada laporan"}
+												</p>
+												<p className="teduh-road-meta-pill">
+													Berlaku sampai:{" "}
+													{road.operationalStatus?.expiresAt
+														? formatWitaDateTime(road.operationalStatus.expiresAt)
+														: "Belum ditentukan"}
+												</p>
+											</div>
 										</button>
 									);
 								})
@@ -933,6 +979,10 @@ export function PublicEventDetailPage({
 							<BaliMapTilerView
 								village={spatialProfile}
 								allVillages={[spatialProfile]}
+								showAllVillagesMarkers={false}
+								showDistrictBoundaries={false}
+								fitDataReady={!liveRoadsQuery.isLoading && !alternativeRoutesQuery.isLoading}
+								alternativeRoutes={alternativeRoutesQuery.isError ? [] : alternativeRoutesQuery.data?.alternativeRoutes}
 								selectedSegmentId={activeSegmentId}
 								onSelectSegment={setSelectedSegmentId}
 								height="100%"
@@ -971,7 +1021,7 @@ export function PublicEventDetailPage({
 						<div className="teduh-info-cards-grid">
 							<div className="teduh-surface-card" data-gsap="scroll-card">
 								<h3 className="teduh-card-label">
-									<ClipboardCheck size={15} color="#264D3B" />
+									<ClipboardCheck size={15} color="#4D702F" />
 									<span>Status Tugas Kebersihan</span>
 								</h3>
 								<div className="teduh-stat-number">
@@ -984,7 +1034,7 @@ export function PublicEventDetailPage({
 
 							<div className="teduh-surface-card" data-gsap="scroll-card">
 								<h3 className="teduh-card-label">
-									<Scale size={15} color="#264D3B" />
+									<Scale size={15} color="#4D702F" />
 									<span>Berat Sampah Terukur (Ditimbang)</span>
 								</h3>
 								<div className="teduh-stat-number">
@@ -997,7 +1047,7 @@ export function PublicEventDetailPage({
 
 							<div className="teduh-surface-card" data-gsap="scroll-card">
 								<h3 className="teduh-card-label">
-									<PackageCheck size={15} color="#264D3B" />
+									<PackageCheck size={15} color="#4D702F" />
 									<span>Estimasi & Jumlah Karung Sampah</span>
 								</h3>
 								<div className="teduh-stat-number">
@@ -1017,7 +1067,7 @@ export function PublicEventDetailPage({
 				{/* 6. HONEST OPERATIONAL DISCLAIMER */}
 				<footer className="teduh-detail-disclaimer" data-gsap="scroll-section">
 					<div className="teduh-disclaimer-icon">
-						<Info size={18} color="#264D3B" />
+						<Info size={18} color="#4D702F" />
 					</div>
 					<div className="teduh-disclaimer-text">
 						<p style={{ margin: "0 0 6px 0", fontSize: 13.5, color: "#181B20", fontWeight: 500 }}>
@@ -1144,6 +1194,9 @@ export function WorkflowRouteShellPage({
 	// Document & Review Tab State
 	const [docTitle, setDocTitle] = useState("");
 	const [docVenue, setDocVenue] = useState("");
+	const [docVenueLongitude, setDocVenueLongitude] = useState("");
+	const [docVenueLatitude, setDocVenueLatitude] = useState("");
+	const [docVenueDirty, setDocVenueDirty] = useState(false);
 	const [docStartsWita, setDocStartsWita] = useState("");
 	const [docEndsWita, setDocEndsWita] = useState("");
 	const [docTrafficNote, setDocTrafficNote] = useState("");
@@ -1151,6 +1204,7 @@ export function WorkflowRouteShellPage({
 	const [hydratedDocEventId, setHydratedDocEventId] = useState<string | null>(
 		null,
 	);
+	const [hydratedVenueKey, setHydratedVenueKey] = useState<string | null>(null);
 
 	if (rawEvent && hydratedDocEventId !== rawEvent.id) {
 		setHydratedDocEventId(rawEvent.id);
@@ -1161,6 +1215,25 @@ export function WorkflowRouteShellPage({
 		setDocEndsWita(fromIsoToWitaInput(rawEvent.endsAt));
 		setDocTrafficNote((rec.trafficImpactDescription as string) || "");
 		setDocPermitRef(rawEvent.permitReference || "");
+	}
+
+	const currentVenueKey = rawEvent
+		? `${rawEvent.id}:${rawEvent.venueLocation?.coordinates?.join(",") ?? ""}`
+		: null;
+	if (rawEvent && currentVenueKey !== hydratedVenueKey) {
+		setHydratedVenueKey(currentVenueKey);
+		if (!docVenueDirty) {
+			setDocVenueLongitude(
+				rawEvent.venueLocation?.coordinates
+					? String(rawEvent.venueLocation.coordinates[0])
+					: "",
+			);
+			setDocVenueLatitude(
+				rawEvent.venueLocation?.coordinates
+					? String(rawEvent.venueLocation.coordinates[1])
+					: "",
+			);
+		}
 	}
 
 	// Roads Tab State ("draw" vs "catalog")
@@ -1189,7 +1262,7 @@ export function WorkflowRouteShellPage({
 	const [pendingStatusChange, setPendingStatusChange] = useState<{
 		segmentId: string;
 		roadName: string;
-		nextStatus: OperationalRoadStatus;
+		nextStatus: Exclude<OperationalRoadStatus, "unknown">;
 	} | null>(null);
 	const [fieldNote, setFieldNote] = useState("");
 	const [statusFeedback, setStatusFeedback] = useState<{
@@ -1302,15 +1375,40 @@ export function WorkflowRouteShellPage({
 			if (!isRealUuidEvent) {
 				throw new Error("Kegiatan belum memiliki UUID valid.");
 			}
+			const hasVenueCoords =
+				docVenueLongitude.trim() !== "" || docVenueLatitude.trim() !== "";
+			const lng = Number(docVenueLongitude);
+			const lat = Number(docVenueLatitude);
+			if (
+				hasVenueCoords &&
+				(!docVenueLongitude.trim() ||
+					!docVenueLatitude.trim() ||
+					!Number.isFinite(lng) ||
+					!Number.isFinite(lat) ||
+					lng < 114.3 ||
+					lng > 115.9 ||
+					lat < -8.95 ||
+					lat > -7.95)
+			) {
+				throw new Error(
+					"Koordinat lokasi harus berada di wilayah Bali (bujur 114.3–115.9, lintang -8.95–-7.95).",
+				);
+			}
 			await saveExtractedFields(eventId, {
 				title: docTitle.trim() || rawEvent?.title || "Upacara Adat",
 				category: normalizeEventCategory(rawEvent?.category) || "upacara_adat",
 				venueName: docVenue.trim() || null,
+				...(hasVenueCoords
+					? { venueLocation: { type: "Point" as const, coordinates: [lng, lat] as [number, number] } }
+					: docVenueDirty
+						? { venueLocation: null }
+						: {}),
 				startsAt: toWitaIsoTimestamp(docStartsWita),
 				endsAt: toWitaIsoTimestamp(docEndsWita),
 				permitReference: docPermitRef.trim() || null,
 				trafficImpactDescription: docTrafficNote.trim() || null,
 			});
+			setDocVenueDirty(false);
 			if (markReviewed) {
 				await transitionEventToReview(eventId);
 			}
@@ -1961,24 +2059,14 @@ export function WorkflowRouteShellPage({
 
 			{/* Status Feedback Banner */}
 			{statusFeedback ? (
-				<div className="mb-6">
-					<Banner
-						status={statusFeedback.type}
-						collapsible={false}
-						title="Informasi Operasional"
-						description={statusFeedback.message}
-					/>
+				<div role={statusFeedback.type === "error" ? "alert" : "status"} className={`mb-6 rounded-xl p-4 ${statusFeedback.type === "error" ? "bg-red-50 text-red-900" : statusFeedback.type === "warning" ? "bg-amber-50 text-amber-950" : statusFeedback.type === "success" ? "bg-green-50 text-green-900" : "bg-blue-50 text-blue-900"}`}>
+					<strong>Informasi Operasional</strong><p>{statusFeedback.message}</p>
 				</div>
 			) : null}
 
 			{!isRealUuidEvent ? (
-				<div className="mb-6">
-					<Banner
-						status="warning"
-						collapsible={false}
-						title="Pilih Kegiatan Upacara yang Valid"
-						description="URL ini belum merujuk pada UUID kegiatan yang tersimpan di pangkalan data. Silakan pilih kegiatan dari Dashboard atau buat pengumuman baru."
-					/>
+				<div role="alert" className="mb-6 rounded-xl bg-amber-50 p-4 text-amber-950">
+					<strong>Pilih Kegiatan Upacara yang Valid</strong><p>URL ini belum merujuk pada UUID kegiatan yang tersimpan di pangkalan data. Silakan pilih kegiatan dari Dashboard atau buat pengumuman baru.</p>
 				</div>
 			) : null}
 
@@ -2125,6 +2213,18 @@ export function WorkflowRouteShellPage({
 									className="teduh-form-textarea text-base text-stone-900 bg-white border-stone-200"
 								/>
 							</div>
+
+							<div className="sm:col-span-2">
+								<VenueLocationInput
+									longitude={docVenueLongitude}
+									latitude={docVenueLatitude}
+									onChange={(lng, lat) => {
+										setDocVenueDirty(true);
+										setDocVenueLongitude(lng);
+										setDocVenueLatitude(lat);
+									}}
+								/>
+							</div>
 						</div>
 
 						<div className="flex flex-wrap items-center justify-between gap-3 pt-2">
@@ -2194,7 +2294,7 @@ export function WorkflowRouteShellPage({
 								<button
 									type="button"
 									onClick={() => setRoadInputMode("draw")}
-									className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg text-base font-semibold min-h-[48px] transition-colors ${
+									className={`inline-flex items-center gap-1.5 px-3.5 py-3 rounded-lg text-xs font-semibold min-h-[49px] transition-colors ${
 										roadInputMode === "draw"
 											? "bg-emerald-800 text-white shadow-2xs"
 											: "text-stone-600 hover:text-stone-900"
@@ -2206,7 +2306,7 @@ export function WorkflowRouteShellPage({
 								<button
 									type="button"
 									onClick={() => setRoadInputMode("catalog")}
-									className={`inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-lg text-base font-semibold min-h-[48px] transition-colors ${
+									className={`inline-flex items-center gap-1.5 px-3.5 py-3 rounded-lg text-xs font-semibold min-h-[49px] transition-colors ${
 										roadInputMode === "catalog"
 											? "bg-emerald-800 text-white shadow-2xs"
 											: "text-stone-600 hover:text-stone-900"
@@ -2676,35 +2776,19 @@ export function WorkflowRouteShellPage({
 							</div>
 						)}
 
-						<AlertDialog
-							isOpen={Boolean(pendingStatusChange)}
-							onOpenChange={(open) => {
-								if (!open) setPendingStatusChange(null);
-							}}
-							onAction={() => {
+						<RoadStatusConfirmDialog
+							roadName={pendingStatusChange?.roadName ?? null}
+							nextStatus={pendingStatusChange?.nextStatus ?? null}
+							pending={updateStatusMutation.isPending}
+							onCancel={() => setPendingStatusChange(null)}
+							onConfirm={() => {
 								if (!pendingStatusChange) return;
-								void updateStatusMutation.mutateAsync({
+								updateStatusMutation.mutate({
 									impactId: pendingStatusChange.segmentId,
-									nextStatus: pendingStatusChange.nextStatus as
-										| "open"
-										| "intermittent"
-										| "closed",
+									nextStatus: pendingStatusChange.nextStatus,
 									note: fieldNote || undefined,
 								});
 							}}
-							title="Konfirmasi Perubahan Status Jalan"
-							description={
-								pendingStatusChange
-									? `Ubah status "${pendingStatusChange.roadName}" menjadi ${pendingStatusChange.nextStatus.toUpperCase()}? Pembaruan akan dicatat pada log audit dan langsung tampil di peta publik.`
-									: ""
-							}
-							actionLabel="Simpan Status"
-							cancelLabel="Batal"
-							actionVariant={
-								pendingStatusChange?.nextStatus === "closed"
-									? "destructive"
-									: "primary"
-							}
 						/>
 					</div>
 				</div>
@@ -2715,12 +2799,9 @@ export function WorkflowRouteShellPage({
 			{/* =================================================================== */}
 			{currentTabValue === "cleanup" && (isOrganizer || canCleanup) ? (
 				<div className="space-y-6">
-					<Banner
-						status="info"
-						collapsible={false}
-						title="Independensi Kebersihan & Pembukaan Jalan"
-						description={OPERATIONAL_DISCLAIMERS.CLEANUP_INDEPENDENCE_NOTE}
-					/>
+					<section className="rounded-xl bg-blue-50 p-4 text-blue-900" aria-label="Independensi Kebersihan dan Pembukaan Jalan">
+						<strong>Independensi Kebersihan &amp; Pembukaan Jalan</strong><p>{OPERATIONAL_DISCLAIMERS.CLEANUP_INDEPENDENCE_NOTE}</p>
+					</section>
 
 					<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
 						{/* Left Column: Cleanup Tasks & Photo Evidence */}
@@ -3076,18 +3157,19 @@ export function WorkflowRouteShellPage({
 								<h2 className="teduh-workspace-card-title">
 									Buat Tautan Undangan Petugas
 								</h2>
-								<Text type="body" color="secondary" className="text-base text-stone-600 mt-1 leading-relaxed">
+								<p className="text-base text-stone-600 mt-1 leading-relaxed">
 									Hasilkan tautan undangan resmi sekali pakai (berlaku 7 hari)
 									untuk dibagikan kepada Pecalang atau petugas kebersihan via WhatsApp.
-								</Text>
+								</p>
 							</div>
 
-							<VStack gap={3}>
+							<div className="flex flex-col gap-3">
 								<div>
-									<Text type="label" weight="semibold" className="block text-base text-stone-900 mb-1">
+									<label htmlFor="invitation-email" className="block text-base font-semibold text-stone-900 mb-1">
 										Email Penerima Undangan *
-									</Text>
+									</label>
 									<input
+										id="invitation-email"
 										type="email"
 										required
 										value={inviteEmail}
@@ -3098,10 +3180,11 @@ export function WorkflowRouteShellPage({
 								</div>
 
 								<div>
-									<Text type="label" weight="semibold" className="block text-base text-stone-900 mb-1">
+									<label htmlFor="invitation-role" className="block text-base font-semibold text-stone-900 mb-1">
 										Peran Undangan
-									</Text>
+									</label>
 									<select
+										id="invitation-role"
 										value={inviteRole}
 										onChange={(e) =>
 											setInviteRole(
@@ -3120,11 +3203,11 @@ export function WorkflowRouteShellPage({
 								</div>
 
 								{inviteRole === "officer" ? (
-									<VStack gap={2} className="pt-1">
-										<Text type="label" weight="semibold" className="block text-base text-stone-900">
+									<fieldset className="flex flex-col gap-2 pt-1">
+										<legend className="block text-base font-semibold text-stone-900">
 											Hak Akses Penugasan Lapangan:
-										</Text>
-										<label className="flex items-start gap-2.5 rounded-xl border border-stone-200 bg-white p-3 cursor-pointer hover:bg-stone-100 transition-colors">
+										</legend>
+										<label className="flex items-start gap-2.5 rounded-xl border border-stone-200 bg-stone-50 p-3 cursor-pointer hover:bg-stone-100 transition-colors">
 											<input
 												type="checkbox"
 												checked={inviteCanTraffic}
@@ -3157,9 +3240,9 @@ export function WorkflowRouteShellPage({
 												</span>
 											</div>
 										</label>
-									</VStack>
+									</fieldset>
 								) : null}
-							</VStack>
+							</div>
 
 							<button
 								type="button"

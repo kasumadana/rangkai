@@ -50,6 +50,12 @@ export const REQUIRED_GEOMETRY_SPECS: readonly RequiredGeometrySpec[] = [
 		type: "LINESTRING",
 		srid: 4326,
 	},
+	{
+		table: "events",
+		column: "venue_location",
+		type: "POINT",
+		srid: 4326,
+	},
 ];
 
 export interface RequiredIndexSpec {

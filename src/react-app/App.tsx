@@ -1,13 +1,8 @@
-import { LinkProvider } from "@astryxdesign/core/Link";
-import { ToastViewport } from "@astryxdesign/core/Toast";
-import { Theme } from "@astryxdesign/core/theme";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
-import { defaultThemeSlug, themes } from "../astryx-themes";
 import {
 	PublicShellLayout,
-	RouterLinkBridge,
 	WorkspaceShellLayout,
 } from "./components/layout/AppShellLayout";
 import { createAppQueryClient } from "./lib/query-client";
@@ -27,14 +22,11 @@ import {
 } from "./pages/RouteViews";
 import { SettingsPage } from "./pages/SettingsPage";
 import { PublicAssistantPage } from "./pages/PublicAssistantPage";
-import { UiSystemCatalogPage } from "./pages/UiSystemCatalogPage";
 
 export function App() {
 	const [queryClient] = useState(() => createAppQueryClient());
 
 	return (
-		<Theme theme={themes[defaultThemeSlug]} mode="light">
-			<LinkProvider component={RouterLinkBridge}>
 				<QueryClientProvider client={queryClient}>
 					<BrowserRouter>
 						<Routes>
@@ -160,16 +152,13 @@ export function App() {
 									<Route key={path} path={path} element={<WorkflowRouteShellPage stepCode="Tugas Lapangan" title="Tugas Lapangan" subtitle="Perbarui tugas yang ditugaskan kepada Anda." requirementRef="Petugas Lapangan" />} />
 								))}
 								<Route path="/settings" element={<SettingsPage />} />
-								<Route path="/ui-system" element={<UiSystemCatalogPage />} />
+								<Route path="/ui-system" element={<Navigate to="/events" replace />} />
 							</Route>
 
 							<Route path="*" element={<Navigate to="/" replace />} />
 						</Routes>
 					</BrowserRouter>
-					<ToastViewport position="bottomEnd" />
 				</QueryClientProvider>
-			</LinkProvider>
-		</Theme>
 	);
 }
 

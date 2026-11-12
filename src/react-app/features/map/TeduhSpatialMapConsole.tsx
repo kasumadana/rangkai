@@ -1,6 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Token } from "@astryxdesign/core/Token";
-import { Stack } from "@astryxdesign/core/Stack";
 import {
 	ArrowRight,
 	Clock,
@@ -400,8 +398,8 @@ export function TeduhSpatialMapConsole() {
 									style={{
 										fontSize: 11,
 										fontWeight: 500,
-										color: "#264D3B",
-										background: "#ECF3EF",
+										color: "#4D702F",
+										background: "#F0F4EB",
 										padding: "2px 8px",
 										borderRadius: 9999,
 									}}
@@ -443,12 +441,12 @@ export function TeduhSpatialMapConsole() {
 								}}
 							>
 								<div>
-									<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+									<div className="flex flex-wrap items-center gap-1">
 										<span className="text-sm font-medium text-stone-900">{c.ceremonyTitle}</span>
 										{c.isSimulation !== false ? (
-											<Token color="orange" size="sm" label="SIMULASI" />
+											<span className="map-popup-badge simulation-token">SIMULASI</span>
 										) : null}
-									</Stack>
+									</div>
 									<div className="text-xs text-stone-600 mt-0.5">
 										{c.desaAdatName} • {c.kabupaten}
 									</div>
@@ -622,7 +620,7 @@ export function TeduhSpatialMapConsole() {
 									gap: 6,
 									fontSize: 13,
 									fontWeight: 500,
-									color: "#264D3B",
+									color: "#4D702F",
 									textDecoration: "none",
 								}}
 							>
@@ -730,7 +728,7 @@ export function TeduhSpatialMapConsole() {
 					style={{
 						background: "none",
 						border: "none",
-						color: "#264D3B",
+						color: "#4D702F",
 						padding: "4px 2px",
 						display: "flex",
 						alignItems: "center",
@@ -819,7 +817,7 @@ export function TeduhSpatialMapConsole() {
 									fontSize: 14,
 								}}
 							>
-								<ShieldCheck size={18} color="#264D3B" />
+								<ShieldCheck size={18} color="#4D702F" />
 								<span>Panel Petugas Desa</span>
 							</Link>
 							<button
@@ -889,11 +887,11 @@ export function TeduhSpatialMapConsole() {
 							<span
 								style={{
 									fontSize: 14,
-									fontWeight: 500,
+									fontWeight: 600,
 									color: "#181B20",
 								}}
 							>
-								Panduan Peta Kawasan Bali
+								Panduan Peta Titik Upacara Bali
 							</span>
 							<button
 								type="button"
@@ -925,13 +923,13 @@ export function TeduhSpatialMapConsole() {
 							}}
 						>
 							<li>
-								<strong>Pilih Wilayah</strong> dengan klik area berwarna di peta atau gunakan kotak pencarian.
+								<strong>Pilih Titik Upacara</strong> dengan klik pin lokasi di peta atau gunakan kotak pencarian daerah.
 							</li>
 							<li>
-								<strong>Klik Titik Upacara</strong> untuk melihat kartu ringkas lokasi dan jam kegiatan.
+								<strong>Tinjau Kartu Ringkas</strong> untuk melihat status penutupan jalan dan jadwal WITA.
 							</li>
 							<li>
-								<strong>Klik Lihat Detail</strong> untuk membuka panel rincian ruas jalan terdampak.
+								<strong>Klik Lihat Detail</strong> untuk membuka rincian ruas jalan terdampak & jalur alternatif.
 							</li>
 						</ol>
 					</div>
@@ -1057,15 +1055,15 @@ export function TeduhSpatialMapConsole() {
 						<div className="drawer-header">
 							<div style={{ flex: 1, minWidth: 0 }}>
 								<div className="mb-1.5">
-									<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+									<div className="flex flex-wrap items-center gap-1">
 										<span className="drawer-location-tag">
 											{activeVillage.desaAdatName} • {activeVillage.kabupaten}
 										</span>
 										{activeVillage.isSimulation !== false ? (
-											<Token color="orange" size="sm" label="SIMULASI" />
+											<span className="map-popup-badge simulation-token">SIMULASI</span>
 										) : null}
 										<RoadStatusBadge status={activeVillage.primaryStatus} />
-									</Stack>
+									</div>
 								</div>
 								<h3 className="drawer-title">
 									{activeVillage.ceremonyTitle}
@@ -1094,7 +1092,7 @@ export function TeduhSpatialMapConsole() {
 									<div className="drawer-info-item">
 										<span className="drawer-info-label">Jadwal Pelaksanaan</span>
 										<div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-											<Clock size={15} color="#264D3B" />
+											<Clock size={15} color="#4D702F" />
 											<span className="drawer-info-value tabular-nums">
 												{activeVillage.scheduleDateLabel} • {activeVillage.scheduleWindowWita}
 											</span>

@@ -1,7 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { Token } from "@astryxdesign/core/Token";
-import { HStack } from "@astryxdesign/core/Stack";
-import { Text } from "@astryxdesign/core/Text";
 import {
 	Building2,
 	CheckCircle2,
@@ -103,6 +100,27 @@ export function OrganizerDashboardPage() {
 		});
 	}, [allEvents, searchQuery]);
 
+	const kpiCounts = useMemo(() => {
+		let draftReview = 0;
+		let publishedActive = 0;
+		let completedCancelled = 0;
+		for (const evt of allEvents) {
+			if (evt.status === "draft" || evt.status === "review") {
+				draftReview += 1;
+			} else if (evt.status === "published" || evt.status === "active") {
+				publishedActive += 1;
+			} else {
+				completedCancelled += 1;
+			}
+		}
+		return {
+			total: allEvents.length,
+			draftReview,
+			publishedActive,
+			completedCancelled,
+		};
+	}, [allEvents]);
+
 	const orgNameById = useMemo(() => {
 		const map = new Map<string, string>();
 		for (const org of organizations) {
@@ -140,7 +158,7 @@ export function OrganizerDashboardPage() {
 
 					<Link
 						to="/dashboard/events/new"
-						className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#264D3B] text-base font-semibold text-white hover:bg-[#1d3c2e] transition-colors no-underline shadow-xs"
+						className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#4D702F] text-sm font-semibold text-white hover:bg-[#405E28] transition-colors no-underline shadow-xs"
 					>
 						<PlusCircle className="w-4 h-4" />
 						<span>Buat Kegiatan Baru</span>
@@ -169,7 +187,7 @@ export function OrganizerDashboardPage() {
 					<div className="flex items-center gap-2 shrink-0">
 						<Link
 							to="/onboarding/organization"
-							className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#264D3B] text-base font-semibold text-white hover:bg-[#1d3c2e] transition-colors no-underline"
+							className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-[#4D702F] text-xs font-semibold text-white hover:bg-[#405E28] transition-colors no-underline"
 						>
 							<Building2 className="w-3.5 h-3.5" />
 							<span>Daftarkan Desa Adat</span>
@@ -184,12 +202,62 @@ export function OrganizerDashboardPage() {
 				</div>
 			) : null}
 
+			{/* KPI Summary Row: Restrained & Proportional */}
+			<div className="teduh-kpi-grid">
+				<div className="teduh-kpi-card">
+					<span className="teduh-kpi-label">Total Kegiatan</span>
+					<span className="teduh-kpi-value">{kpiCounts.total}</span>
+					<span className="teduh-kpi-meta">
+						Terdaftar pada pangkalan data operasional
+					</span>
+				</div>
+				<div className="teduh-kpi-card">
+					<span className="teduh-kpi-label">Draf &amp; Ditinjau</span>
+					<span className="teduh-kpi-value">{kpiCounts.draftReview}</span>
+					<span className="teduh-kpi-meta">
+						Menunggu verifikasi panitia sebelum terbit
+					</span>
+				</div>
+				<div className="teduh-kpi-card">
+					<span className="teduh-kpi-label">Diumumkan &amp; Aktif</span>
+					<span className="teduh-kpi-value text-[#4D702F]">
+						{kpiCounts.publishedActive}
+					</span>
+					<span className="teduh-kpi-meta">
+						Tampil pada peta publik &amp; pantauan Pecalang
+					</span>
+				</div>
+				<div className="teduh-kpi-card">
+					<span className="teduh-kpi-label">Selesai / Arsip</span>
+					<span className="teduh-kpi-value">{kpiCounts.completedCancelled}</span>
+					<span className="teduh-kpi-meta">
+						Riwayat kegiatan dan dokumentasi pasca-acara
+					</span>
+				</div>
+			</div>
+
 			{/* Filter & Search Bar */}
 			<div className="teduh-workspace-card p-4">
 				<div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3 min-w-0">
-					<select aria-label="Filter status kegiatan" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as StatusFilterValue)} className="w-full sm:w-auto rounded-xl border border-stone-300 bg-white px-4 py-2 text-base">
-						{STATUS_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-					</select>
+					<div className="flex flex-wrap items-center gap-1.5 min-w-0">
+						{STATUS_FILTER_OPTIONS.map((opt) => {
+							const active = statusFilter === opt.value;
+							return (
+								<button
+									key={opt.value}
+									type="button"
+									onClick={() => setStatusFilter(opt.value)}
+									className={`px-3.5 py-2.5 rounded-xl text-base font-semibold transition-colors ${
+										active
+											? "bg-[#4D702F] text-white"
+											: "bg-[#F3F1EC] text-[#585854] hover:text-[#181817]"
+									}`}
+								>
+									{opt.label}
+								</button>
+							);
+						})}
+					</div>
 
 					<div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-2.5 w-full xl:w-auto min-w-0">
 						{organizations.length > 0 ? (
@@ -203,7 +271,7 @@ export function OrganizerDashboardPage() {
 										saveOrganizationId(val);
 									}
 								}}
-								className="w-full sm:w-auto sm:max-w-xs max-w-full min-w-0 rounded-xl border border-[#E5E3DC] bg-white px-3.5 py-2.5 text-lg font-medium text-[#181817] truncate focus:outline-none focus:border-[#264D3B]"
+								className="w-full sm:w-auto sm:max-w-xs max-w-full min-w-0 rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] px-3.5 py-2.5 text-lg font-medium text-[#181817] truncate focus:outline-none focus:border-[#4D702F]"
 							>
 								<option value="all">Semua Desa Adat Saya</option>
 								{organizations.map((org) => (
@@ -222,7 +290,7 @@ export function OrganizerDashboardPage() {
 								value={searchQuery}
 								onChange={(e) => setSearchQuery(e.target.value)}
 								placeholder="Cari nama upacara, lokasi, surat..."
-								className="w-full rounded-xl border border-[#E5E3DC] bg-white pl-9 pr-3.5 py-2.5 text-lg text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#264D3B]"
+								className="w-full rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] pl-9 pr-3.5 py-2.5 text-lg text-[#181817] placeholder:text-[#8A8984] focus:outline-none focus:border-[#4D702F]"
 							/>
 						</div>
 					</div>
@@ -267,7 +335,7 @@ export function OrganizerDashboardPage() {
 									</button>
 									<Link
 										to="/dashboard/events/new"
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#264D3B] text-base font-semibold text-white hover:bg-[#1d3c2e] no-underline"
+										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4D702F] text-xs font-semibold text-white hover:bg-[#405E28] no-underline"
 									>
 										<PlusCircle className="w-4 h-4" />
 										<span>Buat Draf Pengumuman</span>
@@ -298,64 +366,59 @@ export function OrganizerDashboardPage() {
 									key={evt.id}
 									data-testid="event-row"
 									data-event-id={evt.id}
-									className="rounded-2xl border border-[#E2E4E8] bg-white p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-sm min-w-0"
+									className="rounded-2xl bg-white p-4 sm:p-5 shadow-xs transition-shadow hover:shadow-md min-w-0"
 								>
 									<div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 min-w-0">
 										<div className="min-w-0 flex-1 space-y-2">
-											<HStack gap={2} align="center" wrap="wrap">
-												<span className="text-base sm:text-base font-medium text-[#264D3B] bg-[#EBF3EE] px-2.5 py-0.5 rounded-full shrink-0">
+											<div className="flex flex-wrap items-center gap-2">
+												<span className="text-xs sm:text-sm font-medium text-[#4D702F] bg-[#F0F4EB] px-2.5 py-0.5 rounded-full shrink-0">
 													{categoryLabel}
 												</span>
 												<div className="min-w-0 max-w-full">
-													<Text type="body" weight="medium">{STATUS_LABELS[evt.status]}</Text>
+													<span className="font-medium">{STATUS_LABELS[evt.status]}</span>
 												</div>
 												{evt.isSimulation !== false ? (
 													<div className="shrink-0">
-														<Token color="orange" size="sm" label="SIMULASI" />
+														<span className="map-popup-badge simulation-token">SIMULASI</span>
 													</div>
 												) : null}
 												{evt.permitReference ? (
-													<Text type="code" color="secondary" className="text-base font-mono shrink-0">
+													<span className="text-xs font-mono shrink-0 text-stone-600">
 														No: {evt.permitReference}
-													</Text>
+													</span>
 												) : null}
-											</HStack>
+											</div>
 
-											<Text
-												type="large"
-												weight="bold"
-												as="h2"
-												className="text-base sm:text-lg text-[#181817] leading-snug m-0 break-words"
-											>
+											<h2 className="text-base sm:text-lg font-bold text-[#181817] leading-snug m-0 break-words">
 												{evt.title}
-											</Text>
+											</h2>
 
-											<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-base sm:text-base text-[#545B67] pt-0.5">
-												<HStack gap={1.5} align="center" className="min-w-0">
-													<Building2 className="w-4 h-4 text-[#264D3B] shrink-0" />
-													<Text type="body" weight="medium" className="text-[#181817] break-words">
+											<div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm sm:text-base text-[#545B67] pt-0.5">
+												<div className="flex items-center gap-1.5 min-w-0">
+													<Building2 className="w-4 h-4 text-[#4D702F] shrink-0" />
+													<span className="font-medium text-[#181817] truncate max-w-[260px] break-words">
 														{orgLabel}
-													</Text>
-												</HStack>
-												<HStack gap={1.5} align="center" className="min-w-0">
+													</span>
+												</div>
+												<div className="flex items-center gap-1.5 min-w-0">
 													<MapPinned className="w-4 h-4 text-[#545B67] shrink-0" />
-													<Text type="body" color="secondary" className="break-words">
+													<span className="truncate max-w-[240px] break-words">
 														{evt.venueName || "Lokasi belum diisi"}
-													</Text>
-												</HStack>
-												<HStack gap={1.5} align="center" className="min-w-0 max-w-full">
-													<Clock className="w-4 h-4 text-[#264D3B] shrink-0" />
-													<Text type="body" color="secondary" className="tabular-nums break-words">
+													</span>
+												</div>
+												<div className="flex items-center gap-1.5 min-w-0 max-w-full">
+													<Clock className="w-4 h-4 text-[#4D702F] shrink-0" />
+													<span className="tabular-nums break-words">
 														{scheduleText}
-													</Text>
-												</HStack>
+													</span>
+												</div>
 											</div>
 										</div>
 
 										<div className="flex sm:flex-row lg:flex-col items-start sm:items-center lg:items-end gap-2 shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-[#F0EFEA]">
 											<Link
 												to={`/dashboard/events/${evt.id}`}
-												className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#264D3B] text-white text-base font-semibold hover:bg-[#1d3c2e] transition-colors no-underline shadow-xs"
+												className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-[#4D702F] text-white text-base font-semibold hover:bg-[#405E28] transition-colors no-underline shadow-xs shrink-0"
 											>
 												<FileText className="w-4 h-4" />
 												<span>Kelola Kegiatan</span>
@@ -364,7 +427,7 @@ export function OrganizerDashboardPage() {
 											(evt.status === "published" || evt.status === "active") ? (
 												<Link
 													to={`/events/${evt.publicSlug}`}
-													className="inline-flex items-center gap-1 text-base sm:text-base font-semibold text-[#264D3B] hover:underline no-underline shrink-0"
+													className="inline-flex items-center gap-1 text-sm sm:text-base font-semibold text-[#4D702F] hover:underline no-underline shrink-0"
 												>
 													<CheckCircle2 className="w-4 h-4" />
 													<span>Lihat Publik</span>
