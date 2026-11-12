@@ -10,3 +10,7 @@ Use native model selection and verify the requested and effective model in the l
 6. Use native notifications and handoffs without polling. Preserve secrets and domain invariants; merge, push, deployment and production changes require applicable authorization and gates. Report external acceptance separately from software verification.
 
 Model selection: https://developers.openai.com/api/docs/guides/model-selection. Reasoning effort: https://developers.openai.com/api/docs/guides/reasoning. API model catalog: https://developers.openai.com/api/docs/models. API token prices do not establish Orca or Codex subscription usage, quota or savings.
+
+## Current user workflow override (2026-11-12)
+
+Use one Codex session as planner, executor and reviewer. Execute local tests before self-review. Do not create workers automatically. Additional Codex workers require a concrete need; prefer the current session to conserve quota. Do not delete worktrees or merge without user approval. This overrides the earlier default dispatch and independent-audit steps above.
