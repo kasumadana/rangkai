@@ -21,6 +21,7 @@ import {
 	type RoadImpactRecord,
 	type RoadSegmentRecord,
 } from "../../lib/events-api";
+import { snapCoordinatesToRoad } from "../../lib/routing-engine";
 
 export type DashboardMapInteractionMode = "draw" | "catalog" | "operational";
 
@@ -202,10 +203,11 @@ export function DashboardRoadMapInput({
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
 	const mapRef = useRef<maplibregl.Map | null>(null);
 	const drawnMarkersRef = useRef<maplibregl.Marker[]>([]);
-	const impactMarkersRef = useRef<maplibregl.Marker[]>([]);
 
 	const [baseStyle, setBaseStyle] = useState<"street" | "satellite">("street");
 	const [isMapLoaded, setIsMapLoaded] = useState(false);
+	const [styleEpoch, setStyleEpoch] = useState(0);
+	const [isSnappingRoad, setIsSnappingRoad] = useState(false);
 	const [mapError, setMapError] = useState<string | null>(null);
 	const [selectedQuickArea, setSelectedQuickArea] = useState<string>("");
 
@@ -296,6 +298,9 @@ export function DashboardRoadMapInput({
 				setMapError(null);
 				mapInstance?.resize();
 			});
+			mapInstance.on("style.load", () => {
+				setStyleEpoch((epoch) => epoch + 1);
+			});
 
 			mapInstance.on("click", (e: maplibregl.MapMouseEvent) => {
 				if (!mapInstance) return;
@@ -366,8 +371,6 @@ export function DashboardRoadMapInput({
 			resizeObserver?.disconnect();
 			drawnMarkersRef.current.forEach((m) => m.remove());
 			drawnMarkersRef.current = [];
-			impactMarkersRef.current.forEach((m) => m.remove());
-			impactMarkersRef.current = [];
 			mapInstance?.remove();
 			mapRef.current = null;
 		};
@@ -387,11 +390,20 @@ export function DashboardRoadMapInput({
 		const next = baseStyle === "street" ? "satellite" : "street";
 		setBaseStyle(next);
 		if (!map) return;
-		setIsMapLoaded(false);
 		map.setStyle(next === "street" ? STREET_STYLE : SATELLITE_STYLE);
-		map.once("styledata", () => {
-			setIsMapLoaded(true);
-		});
+	}
+
+	async function handleSnapDrawnToRoad() {
+		if (drawnCoordinates.length < 2 || !onChangeDrawnCoordinates) return;
+		setIsSnappingRoad(true);
+		try {
+			const snapped = await snapCoordinatesToRoad(drawnCoordinates);
+			if (snapped.coordinates.length >= 2) {
+				onChangeDrawnCoordinates(snapped.coordinates);
+			}
+		} finally {
+			setIsSnappingRoad(false);
+		}
 	}
 
 	// Render Catalog Road Segments + Event Road Impacts + Drawn LineString
@@ -518,45 +530,6 @@ export function DashboardRoadMapInput({
 			});
 		}
 
-		// Render label pins at midpoint of each attached road impact
-		impactMarkersRef.current.forEach((m) => m.remove());
-		impactMarkersRef.current = [];
-		for (const imp of roadImpacts) {
-			const coords = extractCoordinatesFromGeometry(imp.geometry);
-			if (coords.length < 2) continue;
-			const mid = coords[Math.floor(coords.length / 2)];
-			if (!mid) continue;
-
-			const badge = document.createElement("button");
-			badge.type = "button";
-			const color = getImpactColor(imp, mode);
-			const isSelected = imp.id === selectedImpactId;
-			badge.style.cssText = `
-				background: ${isSelected ? color : "#FFFFFF"};
-				color: ${isSelected ? "#FFFFFF" : "#181B20"};
-				border: 2px solid ${color};
-				border-radius: 999px;
-				padding: 3px 10px;
-				font-size: 11px;
-				font-weight: 600;
-				font-family: 'Plus Jakarta Sans', sans-serif;
-				box-shadow: 0 3px 10px rgba(0,0,0,0.16);
-				cursor: pointer;
-				white-space: nowrap;
-			`;
-			badge.textContent = imp.displayName || "Ruas Terdampak";
-			badge.addEventListener("click", (ev) => {
-				ev.stopPropagation();
-				onSelectImpactRef.current?.(imp.id);
-				map.flyTo({ center: mid, zoom: 15.8, duration: 700 });
-			});
-
-			const marker = new maplibregl.Marker({ element: badge, anchor: "bottom" })
-				.setLngLat(mid)
-				.addTo(map);
-			impactMarkersRef.current.push(marker);
-		}
-
 		// 3. Active Drawn Coordinates LineString & Vertex Pins
 		const drawnSourceId = "dashboard-drawn-source";
 		const drawnGeoJson = {
@@ -637,6 +610,7 @@ export function DashboardRoadMapInput({
 		});
 	}, [
 		isMapLoaded,
+		styleEpoch,
 		mode,
 		catalogSegments,
 		selectedCatalogSegmentId,
@@ -783,7 +757,102 @@ export function DashboardRoadMapInput({
 				</div>
 			</div>
 
-			{/* Main Map Canvas */}
+			{/* Contextual Instruction Bar ABOVE Map (keeps map canvas 100% unobstructed) */}
+			<div className="teduh-dashboard-map-hint">
+				{mode === "draw" ? (
+					<>
+						<span className="teduh-hint-dot is-draw" />
+						<span>
+							<strong>Klik langsung di atas jalan pada peta</strong> untuk menandai
+							titik awal hingga akhir penutupan ({drawnCoordinates.length} titik
+							ditandai).
+						</span>
+					</>
+				) : mode === "catalog" ? (
+					<>
+						<span className={`teduh-hint-dot ${isCatalogError ? "is-danger" : "is-catalog"}`} />
+						{isCatalogError ? (
+							<span role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+								<strong>{catalogErrorMessage || "Gagal memuat katalog terverifikasi."}</strong>
+								{catalogRequestId ? `(ID: ${catalogRequestId})` : ""}
+								{onRetryCatalog ? (
+									<button
+										type="button"
+										onClick={onRetryCatalog}
+										style={{
+											padding: "8px 14px",
+											minHeight: 49,
+											borderRadius: 8,
+											background: "#C8322B",
+											color: "#FFFFFF",
+											fontWeight: 600,
+											fontSize: 12,
+											border: "none",
+											cursor: "pointer",
+										}}
+									>
+										Coba Lagi
+									</button>
+								) : null}
+							</span>
+						) : (
+							<span>
+								Klik garis jalan biru putus-putus pada peta atau pilih dari daftar
+								katalog di bawah ({catalogSegments.length} ruas tersedia).
+							</span>
+						)}
+					</>
+				) : (
+					<>
+						<span className="teduh-hint-dot is-ops" />
+						<span>
+							Klik garis ruas jalan pada peta untuk memilih dan memperbarui status
+							Pecalang.
+						</span>
+					</>
+				)}
+			</div>
+
+			{/* Draw Controls Bar (Snap to Road / Undo / Clear) when points are placed */}
+			{mode === "draw" && drawnCoordinates.length > 0 ? (
+				<div className="teduh-dashboard-map-draw-actions">
+					{drawnCoordinates.length >= 2 ? (
+						<button
+							type="button"
+							className="teduh-map-tool-btn"
+							onClick={handleSnapDrawnToRoad}
+							disabled={isSnappingRoad}
+						>
+							<MapPin size={13} />
+							<span>
+								{isSnappingRoad
+									? "Merapikan Jalur..."
+									: "Sesuaikan ke Jalur Jalan"}
+							</span>
+						</button>
+					) : null}
+					<button
+						type="button"
+						className="teduh-map-tool-btn"
+						onClick={() =>
+							onChangeDrawnCoordinates?.(drawnCoordinates.slice(0, -1))
+						}
+					>
+						<Undo2 size={13} />
+						<span>Hapus Titik Terakhir</span>
+					</button>
+					<button
+						type="button"
+						className="teduh-map-tool-btn is-danger"
+						onClick={() => onChangeDrawnCoordinates?.([])}
+					>
+						<RotateCcw size={13} />
+						<span>Ulangi Garis</span>
+					</button>
+				</div>
+			) : null}
+
+			{/* Main Map Canvas (Unobstructed) */}
 			<div
 				style={{
 					position: "relative",
@@ -803,105 +872,6 @@ export function DashboardRoadMapInput({
 					}}
 				/>
 
-				{/* Contextual Instruction Floating Banner inside Map */}
-				<div className="teduh-dashboard-map-hint">
-					{mode === "draw" ? (
-						<>
-							<span className="teduh-hint-dot is-draw" />
-							<span>
-								<strong>Klik langsung di atas jalan pada peta</strong> untuk menandai
-								titik awal hingga akhir penutupan ({drawnCoordinates.length} titik
-								ditandai).
-							</span>
-						</>
-					) : mode === "catalog" ? (
-						<>
-							<span className={`teduh-hint-dot ${isCatalogError ? "is-danger" : "is-catalog"}`} />
-							{isCatalogError ? (
-								<span role="alert" style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-									<strong>{catalogErrorMessage || "Gagal memuat katalog terverifikasi."}</strong>
-									{catalogRequestId ? `(ID: ${catalogRequestId})` : ""}
-									{onRetryCatalog ? (
-										<button
-											type="button"
-											onClick={onRetryCatalog}
-											style={{
-												padding: "2px 8px",
-												borderRadius: 4,
-												background: "#C8322B",
-												color: "#FFFFFF",
-												fontWeight: 600,
-												fontSize: 11,
-												border: "none",
-												cursor: "pointer",
-											}}
-										>
-											Coba Lagi
-										</button>
-									) : null}
-								</span>
-							) : (
-								<span>
-									Klik garis jalan biru putus-putus pada peta atau pilih dari daftar
-									katalog di bawah ({catalogSegments.length} ruas tersedia).
-								</span>
-							)}
-						</>
-					) : (
-						<>
-							<span className="teduh-hint-dot is-ops" />
-							<span>
-								Klik label ruas jalan pada peta untuk memilih dan memperbarui status
-								Pecalang.
-							</span>
-						</>
-					)}
-				</div>
-
-				{/* Floating Draw Controls (Undo / Clear) when points are placed */}
-				{mode === "draw" && drawnCoordinates.length > 0 ? (
-					<div className="teduh-dashboard-map-draw-actions">
-						<button
-							type="button"
-							className="teduh-map-tool-btn"
-							onClick={() =>
-								onChangeDrawnCoordinates?.(drawnCoordinates.slice(0, -1))
-							}
-						>
-							<Undo2 size={13} />
-							<span>Hapus Titik Terakhir</span>
-						</button>
-						<button
-							type="button"
-							className="teduh-map-tool-btn is-danger"
-							onClick={() => onChangeDrawnCoordinates?.([])}
-						>
-							<RotateCcw size={13} />
-							<span>Ulangi Garis</span>
-						</button>
-					</div>
-				) : null}
-
-				{/* Legend Bottom Left */}
-				<div className="teduh-dashboard-map-legend">
-					{mode !== "operational" ? <span className="teduh-legend-item">Rencana dampak:</span> : null}
-					<span className="teduh-legend-item">
-						<i style={{ background: "#C8322B" }} /> Ditutup Penuh
-					</span>
-					<span className="teduh-legend-item">
-						<i style={{ background: "#D97706" }} /> Buka-Tutup / Penyempitan
-					</span>
-					<span className="teduh-legend-item">
-						<i style={{ background: "#4D702F" }} /> Terbuka / Normal
-					</span>
-					{mode === "operational" ? <span className="teduh-legend-item"><i style={{ background: "#6B7280" }} /> Belum dikonfirmasi</span> : null}
-					{mode !== "operational" ? (
-						<span className="teduh-legend-item">
-							<i style={{ background: "#0284C7" }} /> Katalog Terverifikasi
-						</span>
-					) : null}
-				</div>
-
 				{mapError ? (
 					<div
 						style={{
@@ -919,6 +889,26 @@ export function DashboardRoadMapInput({
 					>
 						{mapError}
 					</div>
+				) : null}
+			</div>
+
+			{/* Legend Bar BELOW Map (keeps map canvas unobstructed) */}
+			<div className="teduh-dashboard-map-legend">
+				{mode !== "operational" ? <span className="teduh-legend-item">Rencana dampak:</span> : null}
+				<span className="teduh-legend-item">
+					<i style={{ background: "#C8322B" }} /> Ditutup Penuh
+				</span>
+				<span className="teduh-legend-item">
+					<i style={{ background: "#D97706" }} /> Buka-Tutup / Penyempitan
+				</span>
+				<span className="teduh-legend-item">
+					<i style={{ background: "#4D702F" }} /> Terbuka / Normal
+				</span>
+				{mode === "operational" ? <span className="teduh-legend-item"><i style={{ background: "#6B7280" }} /> Belum dikonfirmasi</span> : null}
+				{mode !== "operational" ? (
+					<span className="teduh-legend-item">
+						<i style={{ background: "#0284C7" }} /> Katalog Terverifikasi
+					</span>
 				) : null}
 			</div>
 		</div>

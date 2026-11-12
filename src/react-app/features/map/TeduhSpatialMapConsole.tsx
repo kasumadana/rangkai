@@ -19,9 +19,10 @@ import {
 } from "../../components/rangkai";
 import { useAuthSession, useSignOutMutation } from "../../lib/auth";
 import type { BaliDistrictProperties } from "../../lib/bali-districts";
-import type {
-	BaliVillageCeremonyProfile,
-	VillageRoadRouteSegment,
+import {
+	BALI_ISLAND_CENTER,
+	type BaliVillageCeremonyProfile,
+	type VillageRoadRouteSegment,
 } from "../../lib/bali-villages";
 import {
 	buildDistrictFeaturesFromEvents,
@@ -34,7 +35,13 @@ import {
 	type RoadImpactRecord,
 } from "../../lib/events-api";
 import { useGsapPageReveal } from "../../lib/gsap-motion";
-import { BaliMapTilerView } from "./BaliMapTilerView";
+import {
+	calculateUserBypassRoute,
+	deriveDefaultSimulatedUserOrigin,
+	isWithinBaliBounds,
+	type UserGuidanceRoute,
+} from "../../lib/routing-engine";
+import { BaliMapTilerView, type MapBasemapStyle } from "./BaliMapTilerView";
 
 export function TeduhSpatialMapConsole() {
 	const [searchParams, setSearchParams] = useSearchParams();
@@ -81,8 +88,22 @@ export function TeduhSpatialMapConsole() {
 	const searchDropdownRef = useRef<HTMLDivElement>(null);
 	const mobileSearchRef = useRef<HTMLDivElement>(null);
 
-	// Guide panel dismissed state — defaults to false so it shows on initial visit; dismisses completely on X click
-	const [isGuideDismissed, setIsGuideDismissed] = useState<boolean>(false);
+	// Guide panel dismissed state — defaults to true so the map canvas stays unobstructed by default
+	const [isGuideDismissed, setIsGuideDismissed] = useState<boolean>(true);
+
+	// Basemap style & User Location Tracking + Green Guidance Route state
+	const [activeBasemap, setActiveBasemap] =
+		useState<MapBasemapStyle>("satellite");
+	const [userLocation, setUserLocation] = useState<[number, number] | null>(
+		null,
+	);
+	const [userOriginMode, setUserOriginMode] = useState<
+		"gps" | "simulated" | "manual" | null
+	>(null);
+	const [isLocatingUser, setIsLocatingUser] = useState(false);
+	const [isPickingUserOrigin, setIsPickingUserOrigin] = useState(false);
+	const [userGuidanceRoute, setUserGuidanceRoute] =
+		useState<UserGuidanceRoute | null>(null);
 
 	// Live coordinates status pill
 	const [cursorCoords, setCursorCoords] = useState<string>(
@@ -199,6 +220,92 @@ export function TeduhSpatialMapConsole() {
 		}
 		return allCeremonyProfiles[0];
 	}, [allCeremonyProfiles, selectedEventKey]);
+
+	// Recompute green bypass route whenever userLocation or activeVillage changes
+	useEffect(() => {
+		let cancelled = false;
+		if (!userLocation || !activeVillage) {
+			return;
+		}
+		const mergedCeremony: BaliVillageCeremonyProfile = {
+			...activeVillage,
+			alternativeRoutes: [
+				...(altRoutesData?.alternativeRoutes ?? []).map((r) => ({
+					id: r.id,
+					name: r.name,
+					description: r.description ?? undefined,
+					coordinates: r.geometry?.coordinates ?? [],
+				})),
+				...(activeVillage.alternativeRoutes ?? []),
+			],
+		};
+		calculateUserBypassRoute({
+			userOrigin: userLocation,
+			ceremony: mergedCeremony,
+		}).then((route) => {
+			if (!cancelled) {
+				setUserGuidanceRoute(route);
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [userLocation, activeVillage, altRoutesData]);
+
+	const handleTrackUserLocation = () => {
+		const targetCeremony = activeVillage ?? allCeremonyProfiles[0] ?? null;
+		const applyCoord = (
+			coord: [number, number],
+			mode: "gps" | "simulated" | "manual",
+		) => {
+			setUserLocation(coord);
+			setUserOriginMode(mode);
+			setIsLocatingUser(false);
+			setIsPickingUserOrigin(false);
+			setCursorCoords(
+				`${Math.abs(coord[1]).toFixed(4)}° S, ${coord[0].toFixed(4)}° E`,
+			);
+			if (targetCeremony && !selectedEventKey) {
+				setSelectedEventKey(targetCeremony.slug || targetCeremony.id);
+			}
+		};
+
+		if (
+			typeof navigator !== "undefined" &&
+			"geolocation" in navigator &&
+			typeof navigator.geolocation.getCurrentPosition === "function"
+		) {
+			setIsLocatingUser(true);
+			navigator.geolocation.getCurrentPosition(
+				(pos) => {
+					const candidate: [number, number] = [
+						Number(pos.coords.longitude.toFixed(6)),
+						Number(pos.coords.latitude.toFixed(6)),
+					];
+					if (isWithinBaliBounds(candidate)) {
+						applyCoord(candidate, "gps");
+					} else {
+						const fallbackOrigin = targetCeremony
+							? deriveDefaultSimulatedUserOrigin(targetCeremony)
+							: BALI_ISLAND_CENTER;
+						applyCoord(fallbackOrigin, "simulated");
+					}
+				},
+				() => {
+					const fallbackOrigin = targetCeremony
+						? deriveDefaultSimulatedUserOrigin(targetCeremony)
+						: BALI_ISLAND_CENTER;
+					applyCoord(fallbackOrigin, "simulated");
+				},
+				{ enableHighAccuracy: true, timeout: 3500, maximumAge: 30000 },
+			);
+		} else {
+			const fallbackOrigin = targetCeremony
+				? deriveDefaultSimulatedUserOrigin(targetCeremony)
+				: BALI_ISLAND_CENTER;
+			applyCoord(fallbackOrigin, "simulated");
+		}
+	};
 
 	// Compute dynamic district features strictly from backend events
 	const districtFeaturesData = useMemo(
@@ -895,15 +1002,71 @@ export function TeduhSpatialMapConsole() {
 				</div>
 			)}
 
-			{/* 4. FLOATING CONTROLS: GPS LOCATE BUTTON & RESET OVERVIEW */}
+			{/* 4. FLOATING CONTROLS: BASEMAP SWITCHER, GPS LOCATE & GREEN ROUTE BUTTON, & RESET OVERVIEW */}
 			<div className="map-floating-controls">
-				{(selectedRegionName || isDrawerOpen) && (
+				{/* Basemap Mode Switcher Pill (Satelit | Peta Jalan) */}
+				<div
+					role="group"
+					aria-label="Pilih tampilan peta dasar"
+					style={{
+						display: "inline-flex",
+						alignItems: "center",
+						background: "rgba(24, 27, 32, 0.90)",
+						backdropFilter: "blur(8px)",
+						padding: 3,
+						borderRadius: 9999,
+						boxShadow: "0 4px 14px rgba(0, 0, 0, 0.16)",
+						border: "1px solid rgba(255, 255, 255, 0.18)",
+					}}
+				>
+					<button
+						type="button"
+						onClick={() => setActiveBasemap("satellite")}
+						aria-pressed={activeBasemap === "satellite"}
+						style={{
+							border: "none",
+							borderRadius: 9999,
+							padding: "6px 12px",
+							fontSize: 12,
+							fontWeight: 600,
+							cursor: "pointer",
+							background:
+								activeBasemap === "satellite" ? "#FFFFFF" : "transparent",
+							color: activeBasemap === "satellite" ? "#181B20" : "#E2E8F0",
+						}}
+					>
+						Satelit
+					</button>
+					<button
+						type="button"
+						onClick={() => setActiveBasemap("osm")}
+						aria-pressed={activeBasemap === "osm"}
+						style={{
+							border: "none",
+							borderRadius: 9999,
+							padding: "6px 12px",
+							fontSize: 12,
+							fontWeight: 600,
+							cursor: "pointer",
+							background: activeBasemap === "osm" ? "#FFFFFF" : "transparent",
+							color: activeBasemap === "osm" ? "#181B20" : "#E2E8F0",
+						}}
+					>
+						Peta Jalan
+					</button>
+				</div>
+
+				{(selectedRegionName || isDrawerOpen || userLocation) && (
 					<button
 						type="button"
 						className="map-reset-btn"
 						onClick={() => {
 							setSelectedRegionName(null);
 							setIsDrawerOpen(false);
+							setUserLocation(null);
+							setUserOriginMode(null);
+							setUserGuidanceRoute(null);
+							setIsPickingUserOrigin(false);
 							setSearchParams({});
 						}}
 						title="Tampilkan Seluruh Wilayah Bali"
@@ -915,26 +1078,160 @@ export function TeduhSpatialMapConsole() {
 				<button
 					type="button"
 					className="map-gps-btn"
-					onClick={() => {
-						if (navigator.geolocation) {
-							navigator.geolocation.getCurrentPosition(
-								(pos) => {
-									setCursorCoords(
-										`${pos.coords.latitude.toFixed(4)}° S, ${pos.coords.longitude.toFixed(4)}° E`,
-									);
-								},
-								() => {
-									setCursorCoords("8.4095° S, 115.1889° E");
-								},
-							);
-						}
-					}}
-					title="Pusatkan ke Lokasi Saya"
+					onClick={handleTrackUserLocation}
+					aria-pressed={Boolean(userLocation)}
+					style={
+						userLocation
+							? {
+									background: "#16A34A",
+									color: "#FFFFFF",
+									borderColor: "#16A34A",
+								}
+							: undefined
+					}
+					title={
+						isLocatingUser
+							? "Mencari Lokasi..."
+							: "Pusatkan ke Lokasi Saya & Tampilkan Rute Alternatif Hijau"
+					}
 					aria-label="Pusatkan Peta ke Lokasi Saya"
 				>
 					<Locate size={20} />
 				</button>
 			</div>
+
+			{/* Active User Location & Green Guidance Route Card (Compact, non-obstructive above bottom statusbar) */}
+			{userLocation && userGuidanceRoute && (
+				<div
+					style={{
+						position: "absolute",
+						bottom: 98,
+						left: 24,
+						zIndex: 450,
+						maxWidth: "min(380px, calc(100vw - 48px))",
+						background: "rgba(255, 255, 255, 0.96)",
+						backdropFilter: "blur(10px)",
+						borderRadius: 16,
+						padding: "12px 14px",
+						boxShadow: "0 10px 28px rgba(15, 23, 42, 0.18)",
+						border: "1px solid rgba(22, 163, 74, 0.4)",
+						fontSize: 12.5,
+						color: "#181B20",
+					}}
+				>
+					<div
+						style={{
+							display: "flex",
+							alignItems: "center",
+							justifyContent: "space-between",
+							gap: 8,
+							marginBottom: 4,
+						}}
+					>
+						<span
+							style={{
+								fontWeight: 700,
+								color: "#15803D",
+								display: "inline-flex",
+								alignItems: "center",
+								gap: 6,
+							}}
+						>
+							<span
+								aria-hidden="true"
+								style={{
+									width: 9,
+									height: 9,
+									borderRadius: 9999,
+									background: "#16A34A",
+								}}
+							/>
+							Garis Hijau: {userGuidanceRoute.routeName}
+						</span>
+						<button
+							type="button"
+							onClick={() => {
+								setUserLocation(null);
+								setUserOriginMode(null);
+								setUserGuidanceRoute(null);
+								setIsPickingUserOrigin(false);
+							}}
+							aria-label="Tutup panduan rute"
+							style={{
+								background: "none",
+								border: "none",
+								cursor: "pointer",
+								color: "#64748B",
+								padding: 2,
+								display: "flex",
+							}}
+						>
+							<X size={15} />
+						</button>
+					</div>
+					<div
+						style={{
+							fontSize: 11.5,
+							color: "#475569",
+							marginBottom: 8,
+							lineHeight: 1.4,
+						}}
+					>
+						Estimasi{" "}
+						<strong>
+							~
+							{Math.max(
+								1,
+								Math.round(userGuidanceRoute.distanceMeters / 100) / 10,
+							)}{" "}
+							km ({userGuidanceRoute.estimatedMinutes} menit)
+						</strong>{" "}
+						• Menghindari{" "}
+						<strong style={{ color: "#B91C1C" }}>
+							{userGuidanceRoute.avoidedRoadNames[0] || "ruas jalan ditutup"}
+						</strong>
+						{userOriginMode === "simulated"
+							? " (Titik awal simulasi di sekitar lokasi acara)."
+							: "."}
+					</div>
+					<div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+						<button
+							type="button"
+							onClick={() => setIsPickingUserOrigin((prev) => !prev)}
+							style={{
+								border: "1px solid #CBD5E1",
+								borderRadius: 9999,
+								padding: "5px 11px",
+								fontSize: 11.5,
+								fontWeight: 600,
+								background: isPickingUserOrigin ? "#FEF3C7" : "#F8FAFC",
+								color: "#181B20",
+								cursor: "pointer",
+							}}
+						>
+							{isPickingUserOrigin
+								? "Klik titik di peta..."
+								: "Pilih Titik Lokasi di Peta"}
+						</button>
+						<a
+							href={userGuidanceRoute.googleMapsUrl}
+							target="_blank"
+							rel="noopener noreferrer"
+							style={{
+								borderRadius: 9999,
+								padding: "5px 12px",
+								fontSize: 11.5,
+								fontWeight: 600,
+								background: "#16A34A",
+								color: "#FFFFFF",
+								textDecoration: "none",
+							}}
+						>
+							Buka Google Maps ↗
+						</a>
+					</div>
+				</div>
+			)}
 
 			{/* 5. BOTTOM STATUSBAR PILL */}
 			<div className="map-statusbar">
@@ -993,6 +1290,19 @@ export function TeduhSpatialMapConsole() {
 					}}
 					minimalControls={true}
 					height="100%"
+					basemapStyle={activeBasemap}
+					onBasemapStyleChange={setActiveBasemap}
+					userLocation={userLocation}
+					userGuidanceRoute={userGuidanceRoute}
+					isPickingUserOrigin={isPickingUserOrigin}
+					onPickUserOrigin={(picked) => {
+						setUserLocation(picked);
+						setUserOriginMode("manual");
+						setIsPickingUserOrigin(false);
+						setCursorCoords(
+							`${Math.abs(picked[1]).toFixed(4)}° S, ${picked[0].toFixed(4)}° E`,
+						);
+					}}
 				/>
 			</div>
 

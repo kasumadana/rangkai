@@ -22,6 +22,7 @@ import {
 	fetchPublicAlternativeRoutes,
 	revokeAlternativeRoute,
 } from "../../lib/events-api";
+import { snapCoordinatesToRoad } from "../../lib/routing-engine";
 
 /**
  * Parses user input into a list of [longitude, latitude] coordinates.
@@ -118,6 +119,7 @@ export function OrganizerAlternativeRoutesManager({
 	// SPEC-08: Empty initial coordinates; never start with arbitrary Sanur coordinates
 	const [coordinatesInput, setCoordinatesInput] = useState("");
 	const [isRoadFollowingConfirmed, setIsRoadFollowingConfirmed] = useState(false);
+	const [isSnappingRoute, setIsSnappingRoute] = useState(false);
 	const [formError, setFormError] = useState<string | null>(null);
 	const [feedbackMsg, setFeedbackMsg] = useState<{
 		type: "success" | "error";
@@ -406,6 +408,39 @@ export function OrganizerAlternativeRoutesManager({
 						<p className="text-[11px] text-stone-500 mt-1">
 							Masukkan koordinat berurutan di wilayah Bali (bujur 114.4°..115.8°, lintang -8.9°..-8.0°). Anda juga dapat menempelkan potongan GeoJSON LineString.
 						</p>
+						{parsedResult.coords.length >= 2 ? (
+							<div className="mt-2">
+								<button
+									type="button"
+									disabled={isSnappingRoute}
+									onClick={async () => {
+										setIsSnappingRoute(true);
+										try {
+											const snapped = await snapCoordinatesToRoad(
+												parsedResult.coords,
+											);
+											if (snapped.coordinates.length >= 2) {
+												setCoordinatesInput(
+													snapped.coordinates
+														.map(([lng, lat]) => `${lng}, ${lat}`)
+														.join("\n"),
+												);
+											}
+										} finally {
+											setIsSnappingRoute(false);
+										}
+									}}
+									className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-emerald-700 bg-emerald-50 text-emerald-900 text-xs font-semibold hover:bg-emerald-100 min-h-[49px] cursor-pointer"
+								>
+									<Compass className="w-4 h-4" />
+									<span>
+										{isSnappingRoute
+											? "Menyesuaikan ke Jalur Jalan..."
+											: "Sesuaikan Rute Mengikuti Jalur Jalan"}
+									</span>
+								</button>
+							</div>
+						) : null}
 					</div>
 
 					{/* Geometric Preview Box (SPEC-08) */}
@@ -485,7 +520,7 @@ export function OrganizerAlternativeRoutesManager({
 						<button
 							type="submit"
 							disabled={createMutation.isPending || !isRoadFollowingConfirmed || parsedResult.coords.length < 2}
-							className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-800 text-white text-sm font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[48px] cursor-pointer shadow-2xs"
+							className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-800 text-white text-sm font-semibold hover:bg-emerald-900 disabled:opacity-50 min-h-[49px] cursor-pointer shadow-2xs"
 						>
 							{createMutation.isPending ? (
 								<>
@@ -506,7 +541,7 @@ export function OrganizerAlternativeRoutesManager({
 								setIsAdding(false);
 								setFormError(null);
 							}}
-							className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-stone-300 bg-white text-sm font-semibold text-stone-600 hover:bg-stone-100 min-h-[48px] cursor-pointer"
+							className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-stone-300 bg-white text-sm font-semibold text-stone-600 hover:bg-stone-100 min-h-[49px] cursor-pointer"
 						>
 							Batal
 						</button>

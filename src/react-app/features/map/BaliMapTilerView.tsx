@@ -18,6 +18,14 @@ import {
 	type CeremonyDetailItem,
 	type RoadSegmentFallbackItem,
 } from "../../components/rangkai";
+import {
+	calculateUserBypassRoute,
+	deriveDefaultSimulatedUserOrigin,
+	isWithinBaliBounds,
+	type UserGuidanceRoute,
+} from "../../lib/routing-engine";
+
+export type MapBasemapStyle = "satellite" | "osm";
 
 interface BaliMapTilerViewProps {
 	village?: BaliVillageCeremonyProfile | null;
@@ -45,6 +53,12 @@ interface BaliMapTilerViewProps {
 	minimalControls?: boolean;
 	fitDataReady?: boolean;
 	showDistrictBoundaries?: boolean;
+	basemapStyle?: MapBasemapStyle;
+	onBasemapStyleChange?: (style: MapBasemapStyle) => void;
+	userLocation?: [number, number] | null;
+	userGuidanceRoute?: UserGuidanceRoute | null;
+	isPickingUserOrigin?: boolean;
+	onPickUserOrigin?: (coord: [number, number]) => void;
 }
 
 function getStatusColor(status: OperationalRoadStatus): string {
@@ -115,6 +129,27 @@ const SATELLITE_STYLE: maplibregl.StyleSpecification = {
 	],
 };
 
+const OSM_STYLE: maplibregl.StyleSpecification = {
+	version: 8,
+	sources: {
+		"osm-tiles": {
+			type: "raster",
+			tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+			tileSize: 256,
+			attribution: "© OpenStreetMap contributors • Rangkai Bali",
+		},
+	},
+	layers: [
+		{
+			id: "osm-layer",
+			type: "raster",
+			source: "osm-tiles",
+			minzoom: 0,
+			maxzoom: 19,
+		},
+	],
+};
+
 export function BaliMapTilerView({
 	village = null,
 	allVillages = [],
@@ -128,14 +163,54 @@ export function BaliMapTilerView({
 	onOpenCeremonyDetail,
 	minimalControls = false,
 	fitDataReady = true,
+	basemapStyle: controlledBasemapStyle,
+	onBasemapStyleChange,
+	userLocation: controlledUserLocation,
+	userGuidanceRoute: controlledUserGuidanceRoute,
+	isPickingUserOrigin = false,
+	onPickUserOrigin,
 }: BaliMapTilerViewProps) {
 	const mapContainerRef = useRef<HTMLDivElement | null>(null);
 	const mapRef = useRef<maplibregl.Map | null>(null);
 	const allVillagesMarkersRef = useRef<maplibregl.Marker[]>([]);
+	const userMarkerRef = useRef<maplibregl.Marker | null>(null);
 	const activePopupRef = useRef<maplibregl.Popup | null>(null);
 	const fittedEventRef = useRef<string | null>(null);
 	const focusedSegmentRef = useRef<string | null>(null);
 	const onOpenCeremonyDetailRef = useRef(onOpenCeremonyDetail);
+	const appliedBasemapRef = useRef<MapBasemapStyle>("satellite");
+
+	const [internalBasemapStyle, setInternalBasemapStyle] =
+		useState<MapBasemapStyle>("satellite");
+	const effectiveBasemapStyle = controlledBasemapStyle ?? internalBasemapStyle;
+
+	const handleBasemapChange = useCallback(
+		(nextStyle: MapBasemapStyle) => {
+			if (onBasemapStyleChange) {
+				onBasemapStyleChange(nextStyle);
+			} else {
+				setInternalBasemapStyle(nextStyle);
+			}
+		},
+		[onBasemapStyleChange],
+	);
+
+	// Internal standalone user location & green route state (used when parent does not pass controlledUserLocation)
+	const [internalUserLocation, setInternalUserLocation] = useState<
+		[number, number] | null
+	>(null);
+	const [internalGuidanceRoute, setInternalGuidanceRoute] =
+		useState<UserGuidanceRoute | null>(null);
+	const [isInternalLocating, setIsInternalLocating] = useState(false);
+
+	const effectiveUserLocation =
+		controlledUserLocation !== undefined
+			? controlledUserLocation
+			: internalUserLocation;
+	const effectiveGuidanceRoute =
+		controlledUserGuidanceRoute !== undefined
+			? controlledUserGuidanceRoute
+			: internalGuidanceRoute;
 
 	const districtFeaturesData = useMemo(
 		() => buildDistrictFeaturesFromEvents(allVillages),
@@ -161,7 +236,7 @@ export function BaliMapTilerView({
 		const map = mapRef.current;
 		if (
 			!map ||
-			!isMapLoaded ||
+			Boolean(mapError) ||
 			venueLng === undefined ||
 			venueLat === undefined ||
 			!sacredCenterName
@@ -180,7 +255,15 @@ export function BaliMapTilerView({
 		return () => {
 			marker.remove();
 		};
-	}, [isMapLoaded, venueLng, venueLat, sacredCenterName, isVillageSimulation]);
+	}, [
+		mapAttempt,
+		mapError,
+		isMapLoaded,
+		venueLng,
+		venueLat,
+		sacredCenterName,
+		isVillageSimulation,
+	]);
 
 	const minHeightValue = typeof height === "number" ? height : 500;
 
@@ -313,6 +396,8 @@ export function BaliMapTilerView({
 				activePopupRef.current.remove();
 				activePopupRef.current = null;
 			}
+			userMarkerRef.current?.remove();
+			userMarkerRef.current = null;
 			allVillagesMarkersRef.current.forEach((m) => m.remove());
 			allVillagesMarkersRef.current = [];
 			mapInstance?.remove();
@@ -320,6 +405,142 @@ export function BaliMapTilerView({
 		};
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [mapAttempt]);
+
+	// Switch basemap style dynamically when effectiveBasemapStyle changes
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map || !isMapLoaded) return;
+		if (appliedBasemapRef.current === effectiveBasemapStyle) return;
+		appliedBasemapRef.current = effectiveBasemapStyle;
+		map.setStyle(
+			effectiveBasemapStyle === "osm" ? OSM_STYLE : SATELLITE_STYLE,
+		);
+	}, [effectiveBasemapStyle, isMapLoaded]);
+
+	// Standalone user location route calculation when used on /events/:slug or /events/:slug/map
+	useEffect(() => {
+		if (controlledUserGuidanceRoute !== undefined) return;
+		let cancelled = false;
+		const targetVillage = village ?? allVillages[0] ?? null;
+		if (!internalUserLocation || !targetVillage) {
+			setInternalGuidanceRoute(null);
+			return;
+		}
+		calculateUserBypassRoute({
+			userOrigin: internalUserLocation,
+			ceremony: targetVillage,
+		}).then((route) => {
+			if (!cancelled) {
+				setInternalGuidanceRoute(route);
+			}
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [
+		controlledUserGuidanceRoute,
+		internalUserLocation,
+		village,
+		allVillages,
+	]);
+
+	const handleStandaloneTrackLocation = useCallback(() => {
+		if (internalUserLocation) {
+			setInternalUserLocation(null);
+			setInternalGuidanceRoute(null);
+			return;
+		}
+		const targetVillage = village ?? allVillages[0] ?? null;
+		const applyCoord = (coord: [number, number]) => {
+			setInternalUserLocation(coord);
+			setIsInternalLocating(false);
+			const map = mapRef.current;
+			if (map) {
+				const bounds = new maplibregl.LngLatBounds(coord, coord);
+				if (targetVillage) {
+					bounds.extend(
+						targetVillage.venueLocation ?? targetVillage.mapCenter,
+					);
+					for (const seg of targetVillage.roadSegments || []) {
+						for (const pt of seg.coordinates || []) {
+							bounds.extend(pt);
+						}
+					}
+				}
+				map.fitBounds(bounds, {
+					padding: 65,
+					maxZoom: 15.2,
+					duration: 750,
+				});
+			}
+		};
+
+		if (
+			typeof navigator !== "undefined" &&
+			"geolocation" in navigator &&
+			typeof navigator.geolocation.getCurrentPosition === "function"
+		) {
+			setIsInternalLocating(true);
+			navigator.geolocation.getCurrentPosition(
+				(pos) => {
+					const candidate: [number, number] = [
+						Number(pos.coords.longitude.toFixed(6)),
+						Number(pos.coords.latitude.toFixed(6)),
+					];
+					if (isWithinBaliBounds(candidate)) {
+						applyCoord(candidate);
+					} else {
+						applyCoord(
+							targetVillage
+								? deriveDefaultSimulatedUserOrigin(targetVillage)
+								: BALI_ISLAND_CENTER,
+						);
+					}
+				},
+				() => {
+					applyCoord(
+						targetVillage
+							? deriveDefaultSimulatedUserOrigin(targetVillage)
+							: BALI_ISLAND_CENTER,
+					);
+				},
+				{ enableHighAccuracy: true, timeout: 3500, maximumAge: 30000 },
+			);
+		} else {
+			applyCoord(
+				targetVillage
+					? deriveDefaultSimulatedUserOrigin(targetVillage)
+					: BALI_ISLAND_CENTER,
+			);
+		}
+	}, [internalUserLocation, village, allVillages]);
+
+	// Click on map to pick custom user origin when isPickingUserOrigin is active
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map || !isMapLoaded || !isPickingUserOrigin || !onPickUserOrigin) {
+			return;
+		}
+		const canvas = map.getCanvas();
+		const prevCursor = canvas.style.cursor;
+		canvas.style.cursor = "crosshair";
+
+		const handleMapClick = (e: maplibregl.MapMouseEvent) => {
+			const picked: [number, number] = [
+				Number(e.lngLat.lng.toFixed(6)),
+				Number(e.lngLat.lat.toFixed(6)),
+			];
+			if (isWithinBaliBounds(picked)) {
+				onPickUserOrigin(picked);
+			}
+		};
+
+		map.on("click", handleMapClick);
+		return () => {
+			canvas.style.cursor = prevCursor;
+			map.off("click", handleMapClick);
+		};
+	}, [isMapLoaded, isPickingUserOrigin, onPickUserOrigin]);
 
 	// Fit once after the event's spatial data has loaded; status polling must not move the camera.
 	useEffect(() => {
@@ -450,7 +671,8 @@ export function BaliMapTilerView({
 	const openCompactPopupForVillage = useCallback(
 		(v: BaliVillageCeremonyProfile) => {
 			const map = mapRef.current;
-			if (!map || !v.venueLocation) return;
+			const pinCoords = v.venueLocation ?? v.mapCenter;
+			if (!map || !pinCoords) return;
 
 			if (activePopupRef.current) {
 				activePopupRef.current.remove();
@@ -545,7 +767,7 @@ export function BaliMapTilerView({
 				closeOnClick: false,
 				maxWidth: "248px",
 			})
-				.setLngLat(v.venueLocation)
+				.setLngLat(pinCoords)
 				.setDOMContent(popupNode)
 				.addTo(map);
 
@@ -569,12 +791,19 @@ export function BaliMapTilerView({
 		allVillagesMarkersRef.current = [];
 
 		allVillages.forEach((v) => {
-			if (!v.venueLocation) return;
+			const pinCoords = v.venueLocation ?? v.mapCenter;
+			if (!pinCoords) return;
 			const pinColor = getStatusColor(v.primaryStatus);
 			const isCurrent = village ? v.id === village.id : false;
 
 			const pinEl = document.createElement("div");
 			pinEl.className = `standard-location-pin ${isCurrent ? "is-active" : ""}`;
+			pinEl.setAttribute(
+				"aria-label",
+				`Lokasi acara: ${v.sacredCenterName || v.ceremonyTitle}${
+					v.isSimulation !== false ? " (simulasi)" : ""
+				}`,
+			);
 			pinEl.innerHTML = `
 				<div class="pin-inner">
 					<div class="pin-pulse-halo" style="background: ${pinColor}40;"></div>
@@ -607,8 +836,8 @@ export function BaliMapTilerView({
 					}
 				}
 				map.flyTo({
-					center: v.venueLocation || v.mapCenter,
-					zoom: Math.max(map.getZoom(), 13.5),
+					center: pinCoords,
+					zoom: Math.max(map.getZoom(), 14),
 					padding: isMobile
 						? { top: 130, bottom: 40, left: 20, right: 20 }
 						: { top: 60, bottom: 40, left: 20, right: 460 },
@@ -620,7 +849,7 @@ export function BaliMapTilerView({
 				element: pinEl,
 				anchor: "bottom",
 			})
-				.setLngLat(v.venueLocation)
+				.setLngLat(pinCoords)
 				.addTo(map);
 			allVillagesMarkersRef.current.push(pinMarker);
 		});
@@ -776,13 +1005,16 @@ export function BaliMapTilerView({
 		if (!map || !isMapLoaded) return;
 
 		const sourceId = "rangkai-alt-routes-source";
+		const haloLayerId = "rangkai-alt-routes-halo";
 		const lineLayerId = "rangkai-alt-routes-line";
 
+		const sourceVillagesForAlt = village ? [village] : allVillages;
 		const activeAltRoutes = [
 			...(alternativeRoutes || []),
-			...(village?.alternativeRoutes || []),
+			...sourceVillagesForAlt.flatMap((v) => v.alternativeRoutes || []),
 		];
 
+		const seenIds = new Set<string>();
 		const geojsonData = {
 			type: "FeatureCollection" as const,
 			features: activeAltRoutes
@@ -805,7 +1037,12 @@ export function BaliMapTilerView({
 						coords,
 					};
 				})
-				.filter((r) => r.coords.length >= 2)
+				.filter((r) => {
+					if (r.coords.length < 2) return false;
+					if (seenIds.has(r.id)) return false;
+					seenIds.add(r.id);
+					return true;
+				})
 				.map((r) => ({
 					type: "Feature" as const,
 					id: r.id,
@@ -829,6 +1066,20 @@ export function BaliMapTilerView({
 			map.addSource(sourceId, {
 				type: "geojson",
 				data: geojsonData,
+			});
+
+			map.addLayer({
+				id: haloLayerId,
+				type: "line",
+				source: sourceId,
+				layout: {
+					"line-join": "round",
+					"line-cap": "round",
+				},
+				paint: {
+					"line-color": "rgba(255, 255, 255, 0.85)",
+					"line-width": 8,
+				},
 			});
 
 			map.addLayer({
@@ -878,7 +1129,113 @@ export function BaliMapTilerView({
 				map.getCanvas().style.cursor = "";
 			});
 		}
-	}, [alternativeRoutes, village, isMapLoaded, styleEpoch]);
+	}, [alternativeRoutes, village, allVillages, isMapLoaded, styleEpoch]);
+
+	// Render User Location Marker & Green Guidance Route Line (#16A34A)
+	useEffect(() => {
+		const map = mapRef.current;
+		if (!map || !isMapLoaded) return;
+
+		const sourceId = "rangkai-user-guidance-source";
+		const haloLayerId = "rangkai-user-guidance-halo";
+		const lineLayerId = "rangkai-user-guidance-line";
+
+		const routeCoords = effectiveGuidanceRoute?.coordinates ?? [];
+		const geojsonData = {
+			type: "FeatureCollection" as const,
+			features:
+				routeCoords.length >= 2
+					? [
+							{
+								type: "Feature" as const,
+								properties: {
+									name:
+										effectiveGuidanceRoute?.routeName ||
+										"Rute Alternatif Anda",
+								},
+								geometry: {
+									type: "LineString" as const,
+									coordinates: routeCoords,
+								},
+							},
+						]
+					: [],
+		};
+
+		if (map.getSource(sourceId)) {
+			(map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(
+				geojsonData,
+			);
+		} else {
+			map.addSource(sourceId, {
+				type: "geojson",
+				data: geojsonData,
+			});
+
+			map.addLayer({
+				id: haloLayerId,
+				type: "line",
+				source: sourceId,
+				layout: {
+					"line-join": "round",
+					"line-cap": "round",
+				},
+				paint: {
+					"line-color": "rgba(255, 255, 255, 0.92)",
+					"line-width": 10,
+				},
+			});
+
+			map.addLayer({
+				id: lineLayerId,
+				type: "line",
+				source: sourceId,
+				layout: {
+					"line-join": "round",
+					"line-cap": "round",
+				},
+				paint: {
+					"line-color": "#16A34A",
+					"line-width": 5.5,
+				},
+			});
+		}
+
+		userMarkerRef.current?.remove();
+		userMarkerRef.current = null;
+
+		if (effectiveUserLocation) {
+			const el = document.createElement("div");
+			el.setAttribute("aria-label", "Lokasi Anda");
+			el.style.cssText =
+				"width:22px;height:22px;border-radius:9999px;background:#16A34A;border:3px solid #FFFFFF;box-shadow:0 0 0 6px rgba(22,163,74,0.28),0 4px 10px rgba(15,23,42,0.35);cursor:pointer;";
+			el.title = "Lokasi Anda (Titik Awal Rute Alternatif)";
+			userMarkerRef.current = new maplibregl.Marker({
+				element: el,
+				anchor: "center",
+			})
+				.setLngLat(effectiveUserLocation)
+				.addTo(map);
+
+			if (routeCoords.length >= 2) {
+				const bounds = new maplibregl.LngLatBounds(
+					effectiveUserLocation,
+					effectiveUserLocation,
+				);
+				routeCoords.forEach((pt) => bounds.extend(pt));
+				map.fitBounds(bounds, {
+					padding: { top: 80, bottom: 90, left: 70, right: 70 },
+					maxZoom: 15.2,
+					duration: 750,
+				});
+			}
+		}
+	}, [
+		effectiveUserLocation,
+		effectiveGuidanceRoute,
+		isMapLoaded,
+		styleEpoch,
+	]);
 
 	function handleToggleOverview() {
 		const map = mapRef.current;
@@ -961,7 +1318,7 @@ export function BaliMapTilerView({
 				</div>
 			)}
 
-			{/* Controls top right (Bali Overview Toggle) - hidden in minimalControls mode */}
+			{/* Controls top right (Basemap Mode Switcher + User Route + Bali Overview Toggle) - hidden in minimalControls mode */}
 			{!minimalControls && (
 				<div
 					style={{
@@ -969,10 +1326,103 @@ export function BaliMapTilerView({
 						top: height === "100%" ? 84 : 14,
 						right: 54,
 						display: "flex",
+						flexWrap: "wrap",
+						alignItems: "center",
+						justifyContent: "flex-end",
 						gap: 6,
-						zIndex: 5,
+						zIndex: 6,
 					}}
 				>
+					<div
+						role="group"
+						aria-label="Pilih tampilan peta dasar"
+						style={{
+							display: "inline-flex",
+							alignItems: "center",
+							background: "rgba(24, 27, 32, 0.88)",
+							backdropFilter: "blur(8px)",
+							padding: 2.5,
+							borderRadius: 8,
+							boxShadow: "0 2px 10px rgba(0,0,0,0.14)",
+						}}
+					>
+						<button
+							type="button"
+							onClick={() => handleBasemapChange("satellite")}
+							aria-pressed={effectiveBasemapStyle === "satellite"}
+							style={{
+								border: "none",
+								borderRadius: 6,
+								padding: "5px 10px",
+								fontSize: 11.5,
+								fontWeight: 600,
+								cursor: "pointer",
+								background:
+									effectiveBasemapStyle === "satellite"
+										? "#FFFFFF"
+										: "transparent",
+								color:
+									effectiveBasemapStyle === "satellite"
+										? "#18181B"
+										: "#E2E8F0",
+							}}
+						>
+							Satelit
+						</button>
+						<button
+							type="button"
+							onClick={() => handleBasemapChange("osm")}
+							aria-pressed={effectiveBasemapStyle === "osm"}
+							style={{
+								border: "none",
+								borderRadius: 6,
+								padding: "5px 10px",
+								fontSize: 11.5,
+								fontWeight: 600,
+								cursor: "pointer",
+								background:
+									effectiveBasemapStyle === "osm"
+										? "#FFFFFF"
+										: "transparent",
+								color:
+									effectiveBasemapStyle === "osm"
+										? "#18181B"
+										: "#E2E8F0",
+							}}
+						>
+							Peta Jalan
+						</button>
+					</div>
+
+					{controlledUserLocation === undefined && (
+						<button
+							type="button"
+							onClick={handleStandaloneTrackLocation}
+							aria-pressed={Boolean(effectiveUserLocation)}
+							style={{
+								background: effectiveUserLocation
+									? "#16A34A"
+									: "rgba(255, 255, 255, 0.95)",
+								color: effectiveUserLocation ? "#FFFFFF" : "#18181B",
+								border: "none",
+								borderRadius: 8,
+								padding: "6px 12px",
+								fontFamily: "var(--font-family)",
+								fontSize: 11.5,
+								fontWeight: 600,
+								cursor: "pointer",
+								boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
+								backdropFilter: "blur(8px)",
+							}}
+						>
+							{isInternalLocating
+								? "Mencari Lokasi..."
+								: effectiveUserLocation
+									? "Rute Anda Aktif"
+									: "Lokasi Saya & Rute"}
+						</button>
+					)}
+
 					<button
 						type="button"
 						onClick={handleToggleOverview}
@@ -1108,6 +1558,20 @@ export function BaliMapTilerView({
 						/>{" "}
 						Jalur alternatif
 					</div>
+					{effectiveUserLocation ? (
+						<div className="map-legend-item">
+							<span
+								aria-hidden="true"
+								style={{
+									display: "inline-block",
+									width: 12,
+									height: 4,
+									background: "#16A34A",
+								}}
+							/>{" "}
+							Rute alternatif Anda
+						</div>
+					) : null}
 					{village && village.isSimulation !== false ? (
 						<div className="map-legend-item">Garis putus: simulasi</div>
 					) : null}

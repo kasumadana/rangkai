@@ -90,3 +90,52 @@ test("map failure exposes the road list and can be retried", async ({ page }) =>
 	await expect(page.getByText(/Peta tidak tersedia/i).first()).toBeVisible({ timeout: 15000 });
 	await expect(page.getByText("Jalan Uji").first()).toBeVisible();
 });
+
+test("landing map and /peta support street/satellite switch, user location tracking, and green alternative route guidance", async ({ page }) => {
+	await page.setViewportSize({ width: 1280, height: 860 });
+
+	// 1. Verify Landing Page (/) map controls
+	await page.goto("/");
+	const landingMapGroup = page.getByRole("group", { name: "Pilih tampilan peta dasar" });
+	await landingMapGroup.scrollIntoViewIfNeeded();
+
+	const landingSatBtn = landingMapGroup.getByRole("button", { name: "Satelit" });
+	const landingStreetBtn = landingMapGroup.getByRole("button", { name: "Peta Jalan" });
+	await expect(landingSatBtn).toBeVisible();
+	await expect(landingStreetBtn).toBeVisible();
+
+	await landingStreetBtn.click();
+	await expect(landingStreetBtn).toHaveAttribute("aria-pressed", "true");
+
+	const landingLocateBtn = page.getByRole("button", {
+		name: /Lokasi Saya & Rute Alternatif|Rute Alternatif Aktif/i,
+	});
+	await expect(landingLocateBtn).toBeVisible();
+	await landingLocateBtn.click();
+
+	await expect(page.getByText(/Garis Hijau:/i).first()).toBeVisible({ timeout: 10000 });
+	await expect(page.getByRole("link", { name: /Navigasi Google Maps/i })).toBeVisible();
+	await expect(page.locator('[aria-label="Lokasi Anda"]')).toHaveCount(1);
+
+	// 2. Verify Public Spatial Map Console (/peta) controls
+	await page.goto("/peta");
+	const petaMapGroup = page.getByRole("group", { name: "Pilih tampilan peta dasar" }).first();
+	const petaSatBtn = petaMapGroup.getByRole("button", { name: "Satelit" });
+	const petaStreetBtn = petaMapGroup.getByRole("button", { name: "Peta Jalan" });
+	await expect(petaSatBtn).toBeVisible();
+	await expect(petaStreetBtn).toBeVisible();
+
+	await petaStreetBtn.click();
+	await expect(petaStreetBtn).toHaveAttribute("aria-pressed", "true");
+
+	const petaLocateBtn = page.getByRole("button", {
+		name: "Pusatkan Peta ke Lokasi Saya",
+	});
+	await expect(petaLocateBtn).toBeVisible();
+	await petaLocateBtn.click();
+
+	await expect(page.getByText(/Garis Hijau:/i).first()).toBeVisible({ timeout: 10000 });
+	await expect(page.getByRole("link", { name: /Buka Google Maps/i })).toBeVisible();
+	await expect(page.locator('[aria-label="Lokasi Anda"]')).toHaveCount(1);
+});
+

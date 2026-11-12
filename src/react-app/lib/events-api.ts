@@ -15,6 +15,10 @@ import {
 	type VillageRoadRouteSegment,
 } from "./bali-villages";
 import type { OperationalRoadStatus } from "./road-status";
+import {
+	buildFallbackRoadGeometry,
+	generateBypassWaypointsForClosure,
+} from "./routing-engine";
 
 export type { EventLifecycleStatus, EventRecord, PaginatedEventsResponse };
 export type VenueLocation = { type: "Point"; coordinates: [number, number] };
@@ -342,6 +346,7 @@ export interface PublicEventItem {
 	village: string;
 	district: string;
 	isSimulation?: boolean;
+	alternativeRoutes?: AlternativeRouteRecord[];
 	organization?: {
 		name: string;
 		village: string;
@@ -953,6 +958,7 @@ interface RawPublicEventPayload {
 	village?: string;
 	district?: string;
 	isSimulation?: boolean;
+	alternativeRoutes?: AlternativeRouteRecord[];
 	organization?: {
 		name?: string;
 		village?: string;
@@ -995,6 +1001,9 @@ function normalizePublicEvent(raw: RawPublicEventPayload): PublicEventItem & {
 		village,
 		district,
 		isSimulation: raw.isSimulation !== false,
+		alternativeRoutes: Array.isArray(raw.alternativeRoutes)
+			? raw.alternativeRoutes
+			: [],
 		organization: {
 			name: orgName,
 			village,
@@ -1520,6 +1529,49 @@ export function mapPublicEventToCeremonyProfile(
 		primaryStatus = "open";
 	}
 
+	const mappedAlternativeRoutes: Array<{
+		id: string;
+		name: string;
+		description?: string;
+		coordinates: Array<[number, number]>;
+	}> = (evt.alternativeRoutes ?? [])
+		.filter(
+			(ar) =>
+				ar.geometry &&
+				Array.isArray(ar.geometry.coordinates) &&
+				ar.geometry.coordinates.length >= 2,
+		)
+		.map((ar) => ({
+			id: ar.id,
+			name: ar.name,
+			description: ar.description ?? undefined,
+			coordinates: ar.geometry.coordinates,
+		}));
+
+	if (mappedAlternativeRoutes.length === 0) {
+		const primaryRoadWithCoords = mappedRoads.find(
+			(r) => r.coordinates.length >= 2,
+		);
+		if (primaryRoadWithCoords) {
+			const bypassWaypoints = generateBypassWaypointsForClosure(
+				primaryRoadWithCoords.coordinates,
+			);
+			const bypassCoords =
+				buildFallbackRoadGeometry(bypassWaypoints).coordinates;
+			if (bypassCoords.length >= 2) {
+				mappedAlternativeRoutes.push({
+					id: `bypass-${evt.id}`,
+					name: `Jalur Alternatif Mengitari ${primaryRoadWithCoords.roadName}`,
+					description:
+						primaryRoadWithCoords.guidanceNote ||
+						evt.trafficImpactDescription ||
+						"Rekomendasi jalur memutar koridor jalan terdampak.",
+					coordinates: bypassCoords,
+				});
+			}
+		}
+	}
+
 	return {
 		id: evt.id,
 		isSimulation: evt.isSimulation !== false,
@@ -1545,6 +1597,7 @@ export function mapPublicEventToCeremonyProfile(
 			evt.processionDescription ||
 			`Pelaksanaan ${evt.title} oleh ${orgName}.`,
 		alternativeRouteSummary:
+			mappedAlternativeRoutes[0]?.description ||
 			evt.trafficImpactDescription ||
 			mappedRoads[0]?.guidanceNote ||
 			"Penyesuaian arus lalu lintas mengikuti arahan petugas di lapangan.",
@@ -1562,6 +1615,7 @@ export function mapPublicEventToCeremonyProfile(
 			description: evt.processionDescription || evt.title,
 		},
 		roadSegments: mappedRoads,
+		alternativeRoutes: mappedAlternativeRoutes,
 		parkingLots: [],
 		pecalangPosts: [],
 		communityNotices: [],
