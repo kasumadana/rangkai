@@ -3,21 +3,18 @@ import {
 	ArrowRight,
 	Clock,
 	Locate,
-	LogOut,
-	Menu,
 	RotateCcw,
 	Search,
-	ShieldCheck,
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import {
 	CeremonyDetailModal,
 	RoadStatusBadge,
 	type CeremonyDetailItem,
 } from "../../components/rangkai";
-import { useAuthSession, useSignOutMutation } from "../../lib/auth";
+import { ProfileMenu } from "../../components/ui/ProfileMenu";
 import type { BaliDistrictProperties } from "../../lib/bali-districts";
 import type {
 	BaliVillageCeremonyProfile,
@@ -39,12 +36,6 @@ import { BaliMapTilerView } from "./BaliMapTilerView";
 export function TeduhSpatialMapConsole() {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const mapViewportRef = useRef<HTMLDivElement>(null);
-	const menuRef = useRef<HTMLElement>(null);
-	const menuTriggerRef = useRef<HTMLButtonElement>(null);
-	const location = useLocation();
-
-	const { data: sessionData } = useAuthSession();
-	const signOutMutation = useSignOutMutation();
 
 	useGsapPageReveal(mapViewportRef, []);
 
@@ -80,36 +71,6 @@ export function TeduhSpatialMapConsole() {
 	// Search dropdown state
 	const [searchQuery, setSearchQuery] = useState("");
 	const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
-	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-	useEffect(() => {
-		if (!isMobileMenuOpen) return;
-		const menu = menuRef.current;
-		const trigger = menuTriggerRef.current;
-		const siblings = Array.from(mapViewportRef.current?.children ?? []).filter((element): element is HTMLElement => element instanceof HTMLElement && element !== menu && !element.classList.contains("mobile-nav-overlay"));
-		const previousInert = siblings.map((element) => element.inert);
-		siblings.forEach((element) => { element.inert = true; });
-		const focusable = () => Array.from(menu?.querySelectorAll<HTMLElement>('a[href], button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])') ?? []);
-		focusable()[0]?.focus();
-		function onKeyDown(event: KeyboardEvent) {
-			if (event.key === "Escape") { event.preventDefault(); setIsMobileMenuOpen(false); return; }
-			if (event.key !== "Tab") return;
-			const items = focusable();
-			if (!items.length) { event.preventDefault(); return; }
-			if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items[items.length - 1].focus(); }
-			else if (!event.shiftKey && document.activeElement === items[items.length - 1]) { event.preventDefault(); items[0].focus(); }
-		}
-		document.addEventListener("keydown", onKeyDown);
-		return () => {
-			document.removeEventListener("keydown", onKeyDown);
-			siblings.forEach((element, index) => { element.inert = previousInert[index]; });
-			trigger?.focus();
-		};
-	}, [isMobileMenuOpen]);
-	const [previousLocation, setPreviousLocation] = useState(location);
-	if (previousLocation !== location) {
-		setPreviousLocation(location);
-		setIsMobileMenuOpen(false);
-	}
 	const searchDropdownRef = useRef<HTMLDivElement>(null);
 	const mobileSearchRef = useRef<HTMLDivElement>(null);
 
@@ -586,82 +547,7 @@ export function TeduhSpatialMapConsole() {
 					{searchDropdownNode}
 				</div>
 
-				{/* Right Capsule: 3 Clean Nav Links + Officer Auth */}
-				<div className="map-desktop-topbar-right">
-					<nav style={{ display: "flex", alignItems: "center", gap: 4 }}>
-						<Link to="/" className="map-nav-link">
-							Beranda
-						</Link>
-						<Link to="/peta" className="map-nav-link is-active">
-							Peta Kawasan
-						</Link>
-						<Link to="/events" className="map-nav-link">
-							Jadwal Upacara
-						</Link>
-						<Link to="/tanya" className="map-nav-link">Tanya kegiatan</Link>
-					</nav>
-
-					<div className="map-topbar-divider" />
-
-					{sessionData?.user ? (
-						<div
-							style={{
-								display: "flex",
-								alignItems: "center",
-								gap: 8,
-								paddingLeft: 4,
-							}}
-						>
-							<Link
-								to="/dashboard"
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									gap: 6,
-									fontSize: 13,
-									fontWeight: 500,
-									color: "#4D702F",
-									textDecoration: "none",
-								}}
-							>
-								<span>Panel Petugas</span>
-							</Link>
-							<button
-								type="button"
-								onClick={() => signOutMutation.mutate()}
-								title="Keluar Akun"
-								style={{
-									background: "none",
-									border: "none",
-									cursor: "pointer",
-									color: "#64748B",
-									display: "flex",
-								}}
-							>
-								<LogOut size={16} />
-							</button>
-						</div>
-					) : (
-						<Link
-							to="/login"
-							style={{
-								display: "inline-flex",
-								alignItems: "center",
-								gap: 6,
-								padding: "7px 14px",
-								borderRadius: 9999,
-								background: "#9E2A2B",
-								color: "#FFFFFF",
-								fontSize: 12.5,
-								fontWeight: 500,
-								textDecoration: "none",
-							}}
-						>
-							<ShieldCheck size={14} />
-							<span>Akses Petugas</span>
-						</Link>
-					)}
-				</div>
+				<div className="map-desktop-topbar-right"><ProfileMenu /></div>
 			</header>
 
 			{/* 2. MOBILE TOP SEARCH CAPSULE (< 860px) WITH HAMBURGER MENU */}
@@ -721,151 +607,11 @@ export function TeduhSpatialMapConsole() {
 						<X size={16} />
 					</button>
 				)}
-				<button
-					type="button"
-					onClick={() => setIsMobileMenuOpen(true)}
-					ref={menuTriggerRef}
-					style={{
-						background: "none",
-						border: "none",
-						color: "#4D702F",
-						padding: "4px 2px",
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "center",
-						cursor: "pointer",
-						flexShrink: 0,
-					}}
-					aria-label="Buka Menu"
-				>
-					<Menu size={20} />
-				</button>
+				<ProfileMenu />
 
 				{/* Live Dropdown Results (Mobile) */}
 				{searchDropdownNode}
 			</div>
-
-			{/* Mobile Slide-Over Menu for Map Console */}
-			{isMobileMenuOpen && <>
-			<div
-				className={`mobile-nav-overlay ${isMobileMenuOpen ? "is-visible" : ""}`}
-				onClick={() => setIsMobileMenuOpen(false)}
-			/>
-			<aside
-				ref={menuRef}
-				role="dialog"
-				aria-modal="true"
-				onClick={(event) => { if ((event.target as HTMLElement).closest("a[href]")) setIsMobileMenuOpen(false); }}
-				className={`mobile-nav-menu ${isMobileMenuOpen ? "is-open" : ""}`}
-				aria-label="Menu Ponsel Peta"
-			>
-				<div className="mobile-nav-top">
-					<div className="mobile-nav-header">
-						<Link to="/" className="navbar-brand">
-							<img src="/logo.png" alt="Rangkai Logo" style={{ height: 32 }} />
-						</Link>
-						<button
-							type="button"
-							onClick={() => setIsMobileMenuOpen(false)}
-							style={{ background: "none", border: "none", cursor: "pointer", color: "#545B67" }}
-							aria-label="Tutup menu"
-						>
-							<X size={24} />
-						</button>
-					</div>
-
-					<div className="mobile-nav-links">
-						<Link
-							to="/"
-							className="mobile-nav-link"
-							onClick={() => setIsMobileMenuOpen(false)}
-						>
-							Beranda
-						</Link>
-						<Link
-							to="/peta"
-							className="mobile-nav-link is-active"
-							onClick={() => setIsMobileMenuOpen(false)}
-						>
-							Peta Kawasan
-						</Link>
-						<Link
-							to="/events"
-							className="mobile-nav-link"
-							onClick={() => setIsMobileMenuOpen(false)}
-						>
-							Jadwal Upacara
-						</Link>
-						<Link to="/tanya" className="mobile-nav-link" onClick={() => setIsMobileMenuOpen(false)}>Tanya kegiatan</Link>
-					</div>
-				</div>
-
-				<div style={{ paddingTop: 20, borderTop: "1px solid #E2E4E8" }}>
-					{sessionData?.user ? (
-						<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-							<Link
-								to="/dashboard"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: 10,
-									padding: "10px 14px",
-									background: "#F4F4F3",
-									borderRadius: 12,
-									textDecoration: "none",
-									color: "#181B20",
-									fontSize: 14,
-								}}
-							>
-								<ShieldCheck size={18} color="#4D702F" />
-								<span>Panel Petugas Desa</span>
-							</Link>
-							<button
-								type="button"
-								onClick={() => signOutMutation.mutate()}
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: 10,
-									padding: "10px 14px",
-									background: "none",
-									border: "1px solid #E2E4E8",
-									borderRadius: 12,
-									color: "#B91C1C",
-									fontSize: 14,
-									cursor: "pointer",
-								}}
-							>
-								<LogOut size={18} />
-								<span>Keluar Akun</span>
-							</button>
-						</div>
-					) : (
-						<Link
-							to="/login"
-							style={{
-								display: "flex",
-								alignItems: "center",
-								justifyContent: "center",
-								gap: 8,
-								width: "100%",
-								padding: "12px 20px",
-								borderRadius: 9999,
-								background: "#9E2A2B",
-								color: "#FFFFFF",
-								textDecoration: "none",
-								fontWeight: 500,
-								fontSize: 14.5,
-								boxSizing: "border-box",
-							}}
-						>
-							<ShieldCheck size={18} />
-							<span>Akses Petugas Desa</span>
-						</Link>
-					)}
-				</div>
-			</aside>
-			</>}
 
 			{/* 3. GUIDED 3-STEP EXPLORATION PANEL (Dismisses completely when X is clicked) */}
 			{!isGuideDismissed && (

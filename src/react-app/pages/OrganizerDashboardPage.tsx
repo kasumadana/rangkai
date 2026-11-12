@@ -100,26 +100,6 @@ export function OrganizerDashboardPage() {
 		});
 	}, [allEvents, searchQuery]);
 
-	const kpiCounts = useMemo(() => {
-		let draftReview = 0;
-		let publishedActive = 0;
-		let completedCancelled = 0;
-		for (const evt of allEvents) {
-			if (evt.status === "draft" || evt.status === "review") {
-				draftReview += 1;
-			} else if (evt.status === "published" || evt.status === "active") {
-				publishedActive += 1;
-			} else {
-				completedCancelled += 1;
-			}
-		}
-		return {
-			total: allEvents.length,
-			draftReview,
-			publishedActive,
-			completedCancelled,
-		};
-	}, [allEvents]);
 
 	const orgNameById = useMemo(() => {
 		const map = new Map<string, string>();
@@ -201,40 +181,6 @@ export function OrganizerDashboardPage() {
 					</div>
 				</div>
 			) : null}
-
-			{/* KPI Summary Row: Restrained & Proportional */}
-			<div className="teduh-kpi-grid">
-				<div className="teduh-kpi-card">
-					<span className="teduh-kpi-label">Total Kegiatan</span>
-					<span className="teduh-kpi-value">{kpiCounts.total}</span>
-					<span className="teduh-kpi-meta">
-						Terdaftar pada pangkalan data operasional
-					</span>
-				</div>
-				<div className="teduh-kpi-card">
-					<span className="teduh-kpi-label">Draf &amp; Ditinjau</span>
-					<span className="teduh-kpi-value">{kpiCounts.draftReview}</span>
-					<span className="teduh-kpi-meta">
-						Menunggu verifikasi panitia sebelum terbit
-					</span>
-				</div>
-				<div className="teduh-kpi-card">
-					<span className="teduh-kpi-label">Diumumkan &amp; Aktif</span>
-					<span className="teduh-kpi-value text-[#4D702F]">
-						{kpiCounts.publishedActive}
-					</span>
-					<span className="teduh-kpi-meta">
-						Tampil pada peta publik &amp; pantauan Pecalang
-					</span>
-				</div>
-				<div className="teduh-kpi-card">
-					<span className="teduh-kpi-label">Selesai / Arsip</span>
-					<span className="teduh-kpi-value">{kpiCounts.completedCancelled}</span>
-					<span className="teduh-kpi-meta">
-						Riwayat kegiatan dan dokumentasi pasca-acara
-					</span>
-				</div>
-			</div>
 
 			{/* Filter & Search Bar */}
 			<div className="teduh-workspace-card p-4">

@@ -1,6 +1,5 @@
 @layer theme, base, components, utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/preflight.css" layer(base);
@@ -40,21 +39,21 @@
 		--font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 		--font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
 		--font-family-body: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-		--font-family-heading: 'Fraunces', Georgia, serif;
-		--font-serif: 'Fraunces', Georgia, serif;
-		--font-family-serif: 'Fraunces', Georgia, serif;
-		--font-mono: 'JetBrains Mono', monospace;
+		--font-family-heading: 'Lora', Georgia, serif;
+		--font-serif: 'Lora', Georgia, serif;
+		--font-family-serif: 'Lora', Georgia, serif;
+		--font-mono: 'Plus Jakarta Sans', system-ui, sans-serif;
 
-		--color-background: #FBFBFA;
-		--color-background-body: #FBFBFA;
+		--color-background: #FFFFFF;
+		--color-background-body: #FFFFFF;
 		--color-surface: #FFFFFF;
 		--color-surface-subtle: #F4F4F3;
 		--color-surface-soft-pine: #F0F4EB;
 
-		--color-primary: #5C8437;
-		--color-primary-hover: #496A2C;
-		--color-btn-primary: #9E2A2B; /* Terracotta Crimson */
-		--color-btn-primary-hover: #832223;
+		--color-primary: #4D702F;
+		--color-primary-hover: #405E28;
+		--color-btn-primary: #4D702F; /* Terracotta Crimson */
+		--color-btn-primary-hover: #405E28;
 		--color-secondary: #C25E24; /* Saffron Ochre */
 		--color-secondary-soft: #FEF6F0;
 
@@ -63,7 +62,7 @@
 		--color-text-body: #545B67; /* Weathered Slate */
 		--color-text-muted: #64748B;
 
-		--color-border: #E2E4E8;
+		--color-border: #D1D5DB;
 		--color-border-subtle: #E2E4E8;
 		--color-border-strong: #CBD5E1;
 
@@ -84,11 +83,11 @@
 		--container-max: 1180px;
 		--container-max-wide: 1340px;
 		--radius-full: 9999px;
-		--radius-2xl: 28px;
-		--radius-xl: 20px;
-		--radius-lg: 16px;
-		--radius-md: 12px;
-		--radius-sm: 8px;
+		--radius-2xl: 4px;
+		--radius-xl: 4px;
+		--radius-lg: 4px;
+		--radius-md: 4px;
+		--radius-sm: 4px;
 
 		--transition-fast: 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 		--transition-base: 0.28s cubic-bezier(0.16, 1, 0.3, 1);
@@ -4358,7 +4357,7 @@
 .teduh-detail-title,
 .teduh-section-heading,
 .teduh-workspace-title {
-	font-family: 'Fraunces', Georgia, serif !important;
+	font-family: 'Lora', Georgia, serif !important;
 	font-weight: 300 !important;
 	letter-spacing: -0.015em;
 }
@@ -4479,8 +4478,8 @@
 }
 
 .teduh-workspace-sidebar {
-	background: #F8F7F4;
-	border-right: 1px solid #E6E4DF;
+	background: var(--color-surface);
+	border-right: 1px solid var(--color-border);
 	padding: 22px 16px;
 	display: flex;
 	flex-direction: column;
@@ -4510,7 +4509,7 @@
 	align-items: center;
 	gap: 10px;
 	padding: 10px 12px;
-	border-radius: 12px;
+	border-radius: 4px;
 	font-size: 1rem;
 	min-height: 44px;
 	font-weight: 500;
@@ -4525,7 +4524,7 @@
 }
 
 .teduh-sidebar-link:hover {
-	background: rgba(92, 132, 55, 0.07);
+	background: #F3F4F6;
 	color: #181B20;
 }
 
@@ -4533,7 +4532,7 @@
 	background: #4D702F;
 	color: #FFFFFF;
 	font-weight: 600;
-	box-shadow: 0 4px 12px rgba(92, 132, 55, 0.18);
+	box-shadow: none;
 }
 
 .teduh-sidebar-link.is-disabled {
@@ -5156,3 +5155,28 @@
 .waste-scenario-panel h3 {
   font-size: 1rem;
 }
+
+/* Shared navigation and overview */
+.simple-topbar { display:flex; align-items:center; justify-content:space-between; padding: 1rem 2rem; background:var(--color-surface); position:relative; z-index:20; }
+.simple-topbar img, .teduh-workspace-brand img { max-height:2.5rem; width:auto; }
+.simple-footer { padding:2rem; background:var(--color-surface); }
+.simple-footer nav { display:flex; flex-wrap:wrap; gap:1.5rem; }
+.profile-menu { position:relative; }
+.profile-trigger, .profile-popover button, .simple-button { border:1px solid var(--color-border); border-radius:4px; background:white; color:var(--color-text-title); padding:.5rem 1rem; min-height:3rem; font-weight:600; }
+.profile-popover { position:absolute; right:0; top:100%; z-index:110; width:min(20rem, 90vw); display:grid; gap:.5rem; padding:1rem; background:white; border:1px solid var(--color-border); border-radius:8px; box-shadow:0 2px 8px rgb(0 0 0 / 6%); overflow-wrap:anywhere; }
+.profile-popover p { margin:0; }
+.profile-popover a { padding:.5rem 0; }
+.profile-popover label, .profile-popover select { display:block; width:100%; }
+.stable-navigation { display:flex; flex-direction:column; min-height:100%; width:100%; gap:.5rem; }
+.sidebar-bottom { margin-top:auto; }
+.context-navigation { display:grid; padding-left:1rem; gap:.5rem; overflow-wrap:anywhere; }
+.context-navigation p, .workspace-context { color:var(--color-text-body); margin:0; }
+.overview-page { display:grid; gap:1.5rem; }
+.overview-page h1 { font-size:1.625rem; font-weight:600; }
+.overview-page h2 { font-size:1rem; font-weight:600; }
+.overview-page section { display:grid; gap:1rem; }
+.overview-page li { padding:.5rem 0; overflow-wrap:anywhere; }
+.overview-page header { display:grid; gap:1rem; justify-items:start; }
+.teduh-workspace-shell, .teduh-workspace-sidebar, .teduh-workspace-main, .teduh-workspace-topbar { background:white; }
+.teduh-workspace-sidebar { align-self:stretch; }
+@media(max-width:768px) { .simple-topbar { padding:1rem; } }

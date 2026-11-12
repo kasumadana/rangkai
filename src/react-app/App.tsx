@@ -11,6 +11,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { OrganizationOnboardingPage } from "./pages/OrganizationOnboardingPage";
 import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
+import { OrganizerOverviewPage } from "./pages/OrganizerOverviewPage";
 import { OrganizerDashboardPage } from "./pages/OrganizerDashboardPage";
 import { FieldTaskListPage } from "./pages/FieldTaskListPage";
 import {
@@ -64,7 +65,7 @@ export function App() {
 							<Route element={<WorkspaceShellLayout />}>
 								<Route
 									path="/dashboard"
-									element={<OrganizerDashboardPage />}
+									element={<OrganizerOverviewPage />}
 								/>
 								<Route
 									path="/dashboard/events"

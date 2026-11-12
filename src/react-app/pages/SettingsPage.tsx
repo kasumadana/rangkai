@@ -1,21 +1,14 @@
 import {
 	ArrowLeft,
 	CheckCircle2,
-	Clock,
-	Database,
-	Globe,
-	KeyRound,
-	LogOut,
 	PlusCircle,
-	Sparkles,
 } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import {
 	useAuthSession,
 	useCreateOrganizationMutation,
 	useMyOrganizationsQuery,
-	useSignOutMutation,
 } from "../lib/auth";
 import {
 	getSavedOrganizationId,
@@ -23,11 +16,9 @@ import {
 } from "../lib/events-api";
 
 export function SettingsPage() {
-	const navigate = useNavigate();
 	const { data: sessionData, isLoading: isSessionLoading } = useAuthSession();
 	const myOrgsQuery = useMyOrganizationsQuery();
 	const createOrgMutation = useCreateOrganizationMutation();
-	const signOutMutation = useSignOutMutation();
 
 	const myOrganizations = useMemo(
 		() => myOrgsQuery.data?.organizations ?? [],
@@ -208,41 +199,7 @@ export function SettingsPage() {
 						)}
 
 						<div className="flex flex-wrap items-center justify-end gap-2 pt-2">
-							{!isSessionLoading && sessionData?.user ? (
-								<button
-									type="button"
-									disabled={signOutMutation.isPending}
-									onClick={() => {
-										signOutMutation.mutate(undefined, {
-											onSuccess: () => navigate("/login"),
-										});
-									}}
-									className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E8B4B4] bg-[#FDF2F2] text-xs font-semibold text-[#9E2A2B] hover:bg-[#fae5e5] transition-colors"
-								>
-									<LogOut className="w-3.5 h-3.5" />
-									<span>
-										{signOutMutation.isPending
-											? "Mengeluarkan Sesi..."
-											: "Keluar dari Akun"}
-									</span>
-								</button>
-							) : (
-								<div className="flex items-center gap-2">
-									<Link
-										to="/login"
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#4D702F] text-xs font-semibold text-white hover:bg-[#405E28] no-underline"
-									>
-										<KeyRound className="w-3.5 h-3.5" />
-										<span>Masuk Akun Petugas</span>
-									</Link>
-									<Link
-										to="/register"
-										className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#E5E3DC] bg-white text-xs font-semibold text-[#181817] hover:bg-[#F3F1EC] no-underline"
-									>
-										<span>Daftar Akun Baru</span>
-									</Link>
-								</div>
-							)}
+							{!sessionData?.user && <Link to="/login">Masuk</Link>}
 						</div>
 					</div>
 
@@ -415,78 +372,7 @@ export function SettingsPage() {
 					</div>
 				</div>
 
-				{/* Right Column: Operational Standards & System Architecture */}
-				<div className="xl:col-span-5 space-y-6">
-					<div className="teduh-workspace-card space-y-4">
-						<h2 className="teduh-workspace-card-title">
-							Standar Operasional &amp; Integrasi Sistem
-						</h2>
-						<div className="space-y-3 text-xs">
-							<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-start gap-3">
-								<Clock className="w-4 h-4 text-[#4D702F] shrink-0 mt-0.5" />
-								<div>
-									<p className="font-bold text-[#181817]">
-										Zona Waktu Operasional WITA
-									</p>
-									<p className="text-[#585854]">
-										Seluruh jadwal kegiatan dan masa berlaku laporan Pecalang
-										ditampilkan dalam Asia/Makassar (UTC+8).
-									</p>
-								</div>
-							</div>
 
-							<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-start gap-3">
-								<Database className="w-4 h-4 text-[#4D702F] shrink-0 mt-0.5" />
-								<div>
-									<p className="font-bold text-[#181817]">
-										Neon PostgreSQL + PostGIS
-									</p>
-									<p className="text-[#585854]">
-										Geometri ruas jalan disimpan sebagai LineString terverifikasi
-										dan riwayat pembaruan jalan bersifat append-only.
-									</p>
-								</div>
-							</div>
-
-							<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-start gap-3">
-								<Sparkles className="w-4 h-4 text-[#4D702F] shrink-0 mt-0.5" />
-								<div>
-									<p className="font-bold text-[#181817]">
-										Ekstraksi AI Multimodal Terkendali
-									</p>
-									<p className="text-[#585854]">
-										Google Gemini mengekstrak draf surat edaran menjadi JSON
-										terstruktur. Hasil AI tidak pernah diterbitkan otomatis
-										tanpa verifikasi panitia.
-									</p>
-								</div>
-							</div>
-
-							<div className="rounded-xl border border-[#E5E3DC] bg-[#FBFBFA] p-3 flex items-start gap-3">
-								<Globe className="w-4 h-4 text-[#4D702F] shrink-0 mt-0.5" />
-								<div>
-									<p className="font-bold text-[#181817]">
-										Cloudflare R2 Private Storage
-									</p>
-									<p className="text-[#585854]">
-										Dokumen surat edaran asli dan foto bukti kebersihan disimpan
-										secara privat dan tidak diekspos ke endpoint publik.
-									</p>
-								</div>
-							</div>
-						</div>
-
-						<div className="rounded-xl border border-[#DCE8D3] bg-[#F0F4EB] p-3.5 text-xs text-[#4D702F] space-y-1">
-							<p className="font-bold">Batasan Hukum &amp; Wewenang Rangkai</p>
-							<p className="leading-relaxed">
-								Rangkai adalah sistem koordinasi operasional upacara adat dan
-								bukan izin penutupan jalan resmi kepolisian/Dishub. Penyelesaian
-								kebersihan tidak pernah membuka kembali ruas jalan secara
-								otomatis tanpa pembaruan dari petugas lapangan berwenang.
-							</p>
-						</div>
-					</div>
-				</div>
 			</div>
 		</div>
 	);
