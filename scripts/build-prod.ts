@@ -8,6 +8,8 @@
  */
 
 import cp from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 process.env.CLOUDFLARE_ENV = "production";
 const npmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -18,6 +20,11 @@ try {
 		stdio: "inherit",
 		env: { ...process.env, CLOUDFLARE_ENV: "production" },
 	});
+	const devVarsArtifact = path.resolve(process.cwd(), "dist/rangkai/.dev.vars");
+	if (fs.existsSync(devVarsArtifact)) {
+		fs.rmSync(devVarsArtifact, { force: true });
+		console.log("[build:prod] Removed local .dev.vars from production build output.");
+	}
 	console.log("[build:prod] Production bundle built successfully.");
 } catch (err: unknown) {
 	const status =

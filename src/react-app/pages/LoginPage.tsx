@@ -141,8 +141,8 @@ export function LoginPage() {
 									display: "inline-block",
 									padding: "3px 10px",
 									borderRadius: 9999,
-									background: "#ECF3EF",
-									color: "#264D3B",
+									background: "#F0F4EB",
+									color: "#4D702F",
 									fontSize: 12,
 									fontWeight: 600,
 									marginBottom: 10,
@@ -183,7 +183,7 @@ export function LoginPage() {
 								<span style={{ fontSize: 14, fontWeight: 600, color: "#181B20" }}>
 									{activeOrg.name}
 								</span>
-								<span style={{ fontSize: 12, color: "#264D3B", fontWeight: 500 }}>
+								<span style={{ fontSize: 12, color: "#4D702F", fontWeight: 500 }}>
 									Peran: {activeOrg.role === "organizer" ? "Prajuru / Pengelola Organisasi" : "Petugas Lapangan"}
 								</span>
 							</div>
@@ -192,8 +192,7 @@ export function LoginPage() {
 						<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 							<Link
 								to="/dashboard"
-								className="teduh-pill-action"
-								style={{ justifyContent: "center", padding: "12px 18px", fontSize: 14 }}
+								className="ui-button ui-button-primary"
 							>
 								<LayoutDashboard size={16} />
 								<span>Buka Panel Panitia</span>
@@ -215,7 +214,7 @@ export function LoginPage() {
 									textDecoration: "none",
 								}}
 							>
-								<Radio size={16} color="#264D3B" />
+								<Radio size={16} color="#4D702F" />
 								<span>Buka Tugas Lapangan Pecalang</span>
 							</Link>
 
@@ -280,7 +279,7 @@ export function LoginPage() {
 						<div
 							style={{
 								background: "#F8FAF8",
-								border: "1px solid rgba(38, 77, 59, 0.12)",
+								border: "1px solid rgba(92, 132, 55, 0.12)",
 								borderRadius: 14,
 								padding: "12px 14px",
 								fontSize: 12.5,
@@ -291,10 +290,10 @@ export function LoginPage() {
 								gap: 10,
 							}}
 						>
-							<Compass size={16} color="#264D3B" style={{ flexShrink: 0, marginTop: 2 }} />
+							<Compass size={16} color="#4D702F" style={{ flexShrink: 0, marginTop: 2 }} />
 							<div>
 								Masyarakat umum tidak perlu masuk untuk melihat peta penutupan jalan dan jadwal acara.{" "}
-								<Link to="/peta" style={{ color: "#264D3B", fontWeight: 600, textDecoration: "none" }}>
+								<Link to="/peta" style={{ color: "#4D702F", fontWeight: 600, textDecoration: "none" }}>
 									Buka Peta Kawasan →
 								</Link>
 							</div>
@@ -429,7 +428,7 @@ export function LoginPage() {
 								disabled={signInMutation.isPending}
 								style={{
 									marginTop: 6,
-									background: "#264D3B",
+									background: "#4D702F",
 									color: "#FFFFFF",
 									border: "none",
 									borderRadius: 9999,
@@ -466,7 +465,7 @@ export function LoginPage() {
 								<Link
 									to="/register"
 									style={{
-										color: "#264D3B",
+										color: "#4D702F",
 										fontWeight: 600,
 										textDecoration: "none",
 									}}

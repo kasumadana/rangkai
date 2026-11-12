@@ -18,9 +18,9 @@ export const ROAD_STATUS_LABELS = {
 		label: "Lancar",
 		fullLabel: "Lancar / Dibuka",
 		description: "Ruas jalan dapat dilalui secara normal",
-		badgeBg: "#F0FDF4",
-		badgeText: "#15803D",
-		badgeBorder: "#BBF7D0",
+		badgeBg: "#F0F4EB",
+		badgeText: "#4D702F",
+		badgeBorder: "#C6D5B8",
 	},
 	intermittent: {
 		value: "intermittent",
@@ -179,7 +179,7 @@ export const WASTE_CATEGORY_LABELS = {
 		value: "organic",
 		label: "Organik",
 		description: "Canang sari, banten, daun pisang, janur, bunga sisa upakara",
-		color: "#166534",
+		color: "#355024",
 	},
 	recyclable: {
 		value: "recyclable",

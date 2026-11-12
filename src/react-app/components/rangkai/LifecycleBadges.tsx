@@ -1,5 +1,18 @@
-import { Token, type TokenProps } from "@astryxdesign/core/Token";
 import type { EventLifecycleStatus } from "../../lib/api-client";
+
+type StatusColor = "gray" | "blue" | "teal" | "green" | "red" | "orange";
+const STATUS_COLOR_CLASSES: Record<StatusColor, string> = {
+	gray: "bg-stone-100 text-stone-800",
+	blue: "bg-blue-50 text-blue-900",
+	teal: "bg-teal-50 text-teal-900",
+	green: "bg-green-50 text-green-900",
+	red: "bg-red-50 text-red-900",
+	orange: "bg-orange-50 text-orange-900",
+};
+
+function StatusLabel({ color, label }: { color: StatusColor; label: string }) {
+	return <span className={`inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_COLOR_CLASSES[color]}`}>{label}</span>;
+}
 
 /**
  * Event lifecycle indicator per AGENTS.md §13:
@@ -9,7 +22,7 @@ const EVENT_STATUS_MAP: Record<
 	EventLifecycleStatus,
 	{
 		label: string;
-		color: NonNullable<TokenProps["color"]>;
+		color: StatusColor;
 	}
 > = {
 	draft: {
@@ -48,7 +61,7 @@ export function EventLifecycleBadge({
 	status: EventLifecycleStatus;
 }) {
 	const config = EVENT_STATUS_MAP[status] ?? EVENT_STATUS_MAP.draft;
-	return <Token color={config.color} size="sm" label={config.label} />;
+	return <StatusLabel color={config.color} label={config.label} />;
 }
 
 /**
@@ -64,7 +77,7 @@ export type CleanupTaskStatus =
 
 const CLEANUP_STATUS_MAP: Record<
 	CleanupTaskStatus,
-	{ label: string; color: NonNullable<TokenProps["color"]> }
+	{ label: string; color: StatusColor }
 > = {
 	todo: {
 		label: "BELUM DIMULAI (TODO)",
@@ -90,5 +103,5 @@ const CLEANUP_STATUS_MAP: Record<
 
 export function CleanupStatusBadge({ status }: { status: CleanupTaskStatus }) {
 	const config = CLEANUP_STATUS_MAP[status] ?? CLEANUP_STATUS_MAP.todo;
-	return <Token color={config.color} size="sm" label={config.label} />;
+	return <StatusLabel color={config.color} label={config.label} />;
 }

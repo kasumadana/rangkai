@@ -441,7 +441,7 @@ export function OrganizerAlternativeRoutesManager({
 										cx={previewSvg.start.split(",")[0]}
 										cy={previewSvg.start.split(",")[1]}
 										r="4"
-										fill="#16A34A"
+										fill="#5C8437"
 									/>
 									{/* End dot (red) */}
 									<circle
@@ -673,7 +673,9 @@ export function PublicAlternativeRoutesList({ slug }: { slug: string }) {
 	}
 
 	const routes = routesQuery.data?.alternativeRoutes ?? [];
-	if (routes.length === 0) return null;
+	if (routesQuery.isLoading) return <p role="status">Memuat jalur alternatif...</p>;
+	if (routesQuery.isError) return <p role="alert">Jalur alternatif belum dapat dimuat. <button type="button" className="teduh-btn-secondary" onClick={() => void routesQuery.refetch()}>Coba lagi</button></p>;
+	if (routes.length === 0) return <p>Belum ada jalur alternatif yang disetujui.</p>;
 
 	return (
 		<div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5 space-y-4">

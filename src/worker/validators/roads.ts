@@ -75,12 +75,8 @@ export const createRoadStatusSchema = z.object({
 	note: z.string().trim().max(500).optional().nullable(),
 });
 
-export const BALI_GEOGRAPHIC_BOUNDS = {
-	minLng: 114.3,
-	maxLng: 115.9,
-	minLat: -8.95,
-	maxLat: -7.95,
-};
+import { BALI_GEOGRAPHIC_BOUNDS } from "./bali-bounds";
+export { BALI_GEOGRAPHIC_BOUNDS } from "./bali-bounds";
 
 export function calculatePathLengthMeters(coords: Array<[number, number]>): number {
 	let total = 0;

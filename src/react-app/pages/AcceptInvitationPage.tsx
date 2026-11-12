@@ -88,7 +88,7 @@ export function AcceptInvitationPage() {
 				>
 					{isInviteLoading ? (
 						<div style={{ textAlign: "center", padding: "40px 0", color: "#545B67" }}>
-							<p style={{ margin: 0, fontSize: 15 }}>Memeriksa keabsahan tautan undangan...</p>
+							<p style={{ margin: 0, fontSize: "1rem" }}>Memeriksa keabsahan tautan undangan...</p>
 						</div>
 					) : inviteError || !inviteData?.valid ? (
 						<div style={{ textAlign: "center", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -96,7 +96,7 @@ export function AcceptInvitationPage() {
 							<h1 style={{ margin: 0, fontSize: 22, fontWeight: 400, color: "#181B20" }}>
 								Tautan Undangan Tidak Berlaku
 							</h1>
-							<p style={{ margin: 0, fontSize: 14, color: "#545B67", lineHeight: 1.6 }}>
+							<p style={{ margin: 0, fontSize: "1rem", color: "#545B67", lineHeight: 1.6 }}>
 								Tautan ini mungkin telah kedaluwarsa atau sudah digunakan sebelumnya. Silakan hubungi Prajuru / Organizer Anda untuk mendapatkan tautan baru.
 							</p>
 							<div style={{ marginTop: 8 }}>
@@ -113,8 +113,8 @@ export function AcceptInvitationPage() {
 										display: "inline-block",
 										padding: "3px 10px",
 										borderRadius: 9999,
-										background: "#ECF3EF",
-										color: "#264D3B",
+										background: "#F0F4EB",
+										color: "#4D702F",
 										fontSize: 12,
 										fontWeight: 600,
 										marginBottom: 10,
@@ -134,7 +134,7 @@ export function AcceptInvitationPage() {
 								>
 									Bergabung ke {inviteData.organization.name}
 								</h1>
-								<p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "#545B67" }}>
+								<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.6, color: "#545B67" }}>
 									{inviteData.invitationRole === "organizer" ? "Anda diundang sebagai penyelenggara organisasi ini." : "Anda diundang bertugas dalam koordinasi kegiatan upacara adat di Bali."}
 								</p>
 							</div>
@@ -142,7 +142,7 @@ export function AcceptInvitationPage() {
 							{/* Event & Permissions Summary Card */}
 							<div
 								style={{
-									background: "#F8FAF8",
+									background: "var(--color-surface)",
 									borderRadius: 16,
 									padding: "18px 20px",
 									display: "flex",
@@ -152,27 +152,27 @@ export function AcceptInvitationPage() {
 								}}
 							>
 								{inviteData.event ? <div>
-									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 600 }}>
+									<div style={{ fontSize: "1rem", color: "#71717A", fontWeight: 600 }}>
 										Kegiatan yang ditugaskan
 									</div>
-									<div style={{ fontSize: 15, fontWeight: 600, color: "#181B20", marginTop: 2 }}>
+									<div style={{ fontSize: "1rem", fontWeight: 600, color: "#181B20", marginTop: 2 }}>
 										{inviteData.event.title}
 									</div>
 								</div> : null}
 
 								{inviteData.invitationRole === "officer" ? <div>
-									<div style={{ fontSize: 11.5, color: "#71717A", fontWeight: 600, marginBottom: 6 }}>
+									<div style={{ fontSize: "1rem", color: "#71717A", fontWeight: 600, marginBottom: 6 }}>
 										Izin hak tugas lapangan
 									</div>
 									<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
 										{inviteData.permissions.canUpdateTraffic && (
-											<div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#264D3B", fontWeight: 500 }}>
+											<div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#4D702F", fontWeight: 500 }}>
 												<Radio size={16} />
 												<span>Pembaruan Status Ruas Jalan (Pecalang)</span>
 											</div>
 										)}
 										{inviteData.permissions.canUpdateCleanup && (
-											<div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#264D3B", fontWeight: 500 }}>
+											<div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "#4D702F", fontWeight: 500 }}>
 												<Trash2 size={16} />
 												<span>Pemeriksaan Foto Bukti & Catatan Sampah (Kebersihan)</span>
 											</div>
@@ -188,7 +188,7 @@ export function AcceptInvitationPage() {
 										border: "1px solid rgba(158, 42, 43, 0.2)",
 										borderRadius: 12,
 										padding: "12px 14px",
-										fontSize: 13,
+										fontSize: "1rem",
 										color: "#9E2A2B",
 									}}
 								>
@@ -210,11 +210,11 @@ export function AcceptInvitationPage() {
 											gap: 10,
 										}}
 									>
-										<div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9E2A2B", fontWeight: 600, fontSize: 14 }}>
+										<div style={{ display: "flex", alignItems: "center", gap: 8, color: "#9E2A2B", fontWeight: 600, fontSize: "1rem" }}>
 											<AlertCircle size={18} />
 											<span>Alamat Email Tidak Cocok</span>
 										</div>
-										<p style={{ margin: 0, fontSize: 13, color: "#545B67", lineHeight: 1.5 }}>
+										<p style={{ margin: 0, fontSize: "1rem", color: "#545B67", lineHeight: 1.5 }}>
 											Undangan ini ditujukan untuk email: <strong>{targetEmail}</strong>. Saat ini Anda masuk sebagai: <strong>{sessionEmail}</strong>.
 										</p>
 										<div style={{ display: "flex", gap: 8, marginTop: 4 }}>
@@ -227,7 +227,7 @@ export function AcceptInvitationPage() {
 													border: "none",
 													borderRadius: 9999,
 													padding: "8px 16px",
-													fontSize: 12.5,
+													fontSize: "1rem",
 													cursor: "pointer",
 													fontWeight: 500,
 												}}
@@ -240,7 +240,7 @@ export function AcceptInvitationPage() {
 									<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 										<div
 											style={{
-												fontSize: 13,
+												fontSize: "1rem",
 												color: "#545B67",
 												background: "#F4F4F3",
 												borderRadius: 12,
@@ -254,12 +254,12 @@ export function AcceptInvitationPage() {
 											onClick={handleAccept}
 											disabled={acceptMutation.isPending}
 											style={{
-												background: "#264D3B",
+												background: "#4D702F",
 												color: "#FFFFFF",
 												border: "none",
 												borderRadius: 9999,
 												padding: "12px 20px",
-												fontSize: 14,
+												fontSize: "1rem",
 												fontWeight: 500,
 												display: "flex",
 												alignItems: "center",
@@ -277,15 +277,14 @@ export function AcceptInvitationPage() {
 								)
 							) : (
 								<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-									<p style={{ margin: 0, fontSize: 13.5, color: "#545B67", lineHeight: 1.5 }}>
+									<p style={{ margin: 0, fontSize: "1rem", color: "#545B67", lineHeight: 1.5 }}>
 										Untuk menerima undangan ini dan mencatat tugas di lapangan, Anda perlu masuk atau mendaftar akun terlebih dahulu:
 									</p>
 									<div style={{ display: "flex", gap: 10 }}>
 										<Link
 											to="/login"
 											state={{ from: `/invite/${token}` }}
-											className="teduh-pill-action"
-											style={{ flex: 1, justifyContent: "center" }}
+											className="ui-button ui-button-primary"
 										>
 											<LogIn size={15} />
 											<span>Masuk Akun</span>

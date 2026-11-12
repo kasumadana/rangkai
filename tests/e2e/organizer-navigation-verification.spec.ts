@@ -392,7 +392,8 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			await page.setViewportSize({ width: 1440, height: 900 });
 			await page.waitForTimeout(300);
 
-			const inviteEmailInput = page.getByPlaceholder("contoh: pecalang.desa@rangkai.local");
+			const inviteEmailInput = page.getByLabel("Email Penerima Undangan *");
+			await expect(page.getByLabel("Peran Undangan")).toBeVisible();
 			const inputFont = await inviteEmailInput.evaluate((el: unknown) => window.getComputedStyle(el).fontSize);
 			console.log("[VERIFY TYPOGRAPHY] Team invite input font size at 1440px:", inputFont);
 			expect(parseFloat(inputFont)).toBeGreaterThanOrEqual(16);

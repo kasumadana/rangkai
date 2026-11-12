@@ -129,7 +129,7 @@ export function RegisterPage() {
 					<Link
 						to="/login"
 						className="teduh-back-link"
-						style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}
+						style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "1rem" }}
 					>
 						<ArrowLeft size={15} />
 						<span>Kembali ke Halaman Masuk</span>
@@ -157,8 +157,8 @@ export function RegisterPage() {
 									width: 48,
 									height: 48,
 									borderRadius: "50%",
-									background: "#ECF3EF",
-									color: "#264D3B",
+									background: "#F0F4EB",
+									color: "#4D702F",
 									display: "flex",
 									alignItems: "center",
 									justifyContent: "center",
@@ -180,7 +180,7 @@ export function RegisterPage() {
 								>
 									Pendaftaran Akun Berhasil
 								</h1>
-								<p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "#545B67" }}>
+								<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.6, color: "#545B67" }}>
 									Identitas akun Anda telah terdaftar. Pilih langkah berikutnya sesuai kebutuhan Anda:
 								</p>
 							</div>
@@ -189,8 +189,8 @@ export function RegisterPage() {
 								{safeReturnUrl ? (
 									<div
 										style={{
-											background: "#ECF3EF",
-											border: "1px solid rgba(38, 77, 59, 0.3)",
+											background: "#F0F4EB",
+											border: "1px solid rgba(92, 132, 55, 0.3)",
 											borderRadius: 16,
 											padding: "16px 18px",
 											display: "flex",
@@ -199,18 +199,17 @@ export function RegisterPage() {
 										}}
 									>
 										<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-											<CheckCircle2 size={18} color="#264D3B" />
+											<CheckCircle2 size={18} color="#4D702F" />
 											<span style={{ fontSize: 14, fontWeight: 600, color: "#181B20" }}>
 												Kembali ke Tautan Undangan Anda
 											</span>
 										</div>
-										<p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: "#545B67" }}>
+										<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.5, color: "#545B67" }}>
 											Akun Anda telah aktif dan siap menerima hak penugasan resmi.
 										</p>
 										<Link
 											to={safeReturnUrl}
-											className="teduh-pill-action"
-											style={{ alignSelf: "flex-start", marginTop: 4, padding: "8px 16px", fontSize: 13 }}
+											className="ui-button ui-button-primary"
 										>
 											<span>Buka Undangan & Konfirmasi Hak Akses</span>
 											<ArrowRight size={14} />
@@ -222,7 +221,7 @@ export function RegisterPage() {
 								<div
 									style={{
 										background: "#F8FAF8",
-										border: "1px solid rgba(38, 77, 59, 0.15)",
+										border: "1px solid rgba(92, 132, 55, 0.15)",
 										borderRadius: 16,
 										padding: "16px 18px",
 										display: "flex",
@@ -231,18 +230,17 @@ export function RegisterPage() {
 									}}
 								>
 									<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-										<PlusCircle size={18} color="#264D3B" />
+										<PlusCircle size={18} color="#4D702F" />
 										<span style={{ fontSize: 14, fontWeight: 600, color: "#181B20" }}>
 											Saya Prajuru / Penyelenggara Baru
 										</span>
 									</div>
-									<p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: "#545B67" }}>
+									<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.5, color: "#545B67" }}>
 										Daftarkan profil desa adat Anda. Anda otomatis menjadi Organizer untuk mengelola kegiatan dan mengundang petugas.
 									</p>
 									<Link
 										to="/onboarding/organization"
-										className="teduh-pill-action"
-										style={{ alignSelf: "flex-start", marginTop: 4, padding: "8px 16px", fontSize: 13 }}
+										className="ui-button ui-button-primary"
 									>
 										<span>Buat Organisasi Desa Adat</span>
 										<ArrowRight size={14} />
@@ -263,11 +261,11 @@ export function RegisterPage() {
 								>
 									<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 										<ShieldCheck size={18} color="#64748B" />
-										<span style={{ fontSize: 14, fontWeight: 600, color: "#181B20" }}>
+										<span style={{ fontSize: "1rem", fontWeight: 600, color: "#181B20" }}>
 											Saya Petugas Lapangan (Pecalang / Kebersihan)
 										</span>
 									</div>
-									<p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.5, color: "#545B67" }}>
+									<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.5, color: "#545B67" }}>
 										Silakan buka tautan undangan resmi yang dikirimkan oleh Prajuru / Organizer Anda melalui WhatsApp untuk otomatis bergabung.
 									</p>
 									<Link
@@ -276,7 +274,7 @@ export function RegisterPage() {
 											alignSelf: "flex-start",
 											marginTop: 4,
 											fontSize: 13,
-											color: "#264D3B",
+											color: "#4D702F",
 											fontWeight: 600,
 											textDecoration: "none",
 										}}
@@ -302,7 +300,7 @@ export function RegisterPage() {
 								>
 									Daftar Akun Petugas
 								</h1>
-								<p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: "#545B67" }}>
+								<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.6, color: "#545B67" }}>
 									Registrasi identitas untuk Prajuru Desa Adat dan Petugas Lapangan.
 								</p>
 							</div>
@@ -311,10 +309,10 @@ export function RegisterPage() {
 							<div
 								style={{
 									background: "#F8FAF8",
-									border: "1px solid rgba(38, 77, 59, 0.12)",
+									border: "1px solid rgba(92, 132, 55, 0.12)",
 									borderRadius: 14,
 									padding: "12px 14px",
-									fontSize: 12.5,
+									fontSize: "1rem",
 									lineHeight: 1.5,
 									color: "#545B67",
 								}}
@@ -329,7 +327,7 @@ export function RegisterPage() {
 										border: "1px solid rgba(158, 42, 43, 0.2)",
 										borderRadius: 12,
 										padding: "12px 14px",
-										fontSize: 13,
+										fontSize: "1rem",
 										color: "#9E2A2B",
 										lineHeight: 1.5,
 									}}
@@ -341,14 +339,14 @@ export function RegisterPage() {
 							<form onSubmit={handleRegisterSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
 								{/* Name */}
 								<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-									<label htmlFor="reg-name" style={{ fontSize: 13, fontWeight: 500, color: "#181B20" }}>
+									<label htmlFor="reg-name" style={{ fontSize: "1rem", fontWeight: 500, color: "#181B20" }}>
 										Nama Lengkap
 									</label>
 									<div
 										style={{
 											display: "flex",
 											alignItems: "center",
-											background: "#F8FAF8",
+											background: "var(--color-surface)",
 											border: fieldErrors.name
 												? "1.5px solid #9E2A2B"
 												: "1px solid rgba(228, 231, 229, 0.9)",
@@ -373,27 +371,27 @@ export function RegisterPage() {
 												outline: "none",
 												background: "transparent",
 												width: "100%",
-												fontSize: 14,
+												fontSize: "1rem",
 												color: "#181B20",
 												fontFamily: "var(--font-family)",
 											}}
 										/>
 									</div>
 									{fieldErrors.name && (
-										<span style={{ fontSize: 12, color: "#9E2A2B" }}>{fieldErrors.name}</span>
+										<span style={{ fontSize: "1rem", color: "#9E2A2B" }}>{fieldErrors.name}</span>
 									)}
 								</div>
 
 								{/* Email */}
 								<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-									<label htmlFor="reg-email" style={{ fontSize: 13, fontWeight: 500, color: "#181B20" }}>
+									<label htmlFor="reg-email" style={{ fontSize: "1rem", fontWeight: 500, color: "#181B20" }}>
 										Alamat Email
 									</label>
 									<div
 										style={{
 											display: "flex",
 											alignItems: "center",
-											background: "#F8FAF8",
+											background: "var(--color-surface)",
 											border: fieldErrors.email
 												? "1.5px solid #9E2A2B"
 												: "1px solid rgba(228, 231, 229, 0.9)",
@@ -418,27 +416,27 @@ export function RegisterPage() {
 												outline: "none",
 												background: "transparent",
 												width: "100%",
-												fontSize: 14,
+												fontSize: "1rem",
 												color: "#181B20",
 												fontFamily: "var(--font-family)",
 											}}
 										/>
 									</div>
 									{fieldErrors.email && (
-										<span style={{ fontSize: 12, color: "#9E2A2B" }}>{fieldErrors.email}</span>
+										<span style={{ fontSize: "1rem", color: "#9E2A2B" }}>{fieldErrors.email}</span>
 									)}
 								</div>
 
 								{/* Password */}
 								<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-									<label htmlFor="reg-password" style={{ fontSize: 13, fontWeight: 500, color: "#181B20" }}>
+									<label htmlFor="reg-password" style={{ fontSize: "1rem", fontWeight: 500, color: "#181B20" }}>
 										Kata Sandi (Minimal 8 karakter)
 									</label>
 									<div
 										style={{
 											display: "flex",
 											alignItems: "center",
-											background: "#F8FAF8",
+											background: "var(--color-surface)",
 											border: fieldErrors.password
 												? "1.5px solid #9E2A2B"
 												: "1px solid rgba(228, 231, 229, 0.9)",
@@ -463,7 +461,7 @@ export function RegisterPage() {
 												outline: "none",
 												background: "transparent",
 												width: "100%",
-												fontSize: 14,
+												fontSize: "1rem",
 												color: "#181B20",
 												fontFamily: "var(--font-family)",
 											}}
@@ -477,20 +475,20 @@ export function RegisterPage() {
 										</button>
 									</div>
 									{fieldErrors.password && (
-										<span style={{ fontSize: 12, color: "#9E2A2B" }}>{fieldErrors.password}</span>
+										<span style={{ fontSize: "1rem", color: "#9E2A2B" }}>{fieldErrors.password}</span>
 									)}
 								</div>
 
 								{/* Confirm Password */}
 								<div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-									<label htmlFor="reg-confirm" style={{ fontSize: 13, fontWeight: 500, color: "#181B20" }}>
+									<label htmlFor="reg-confirm" style={{ fontSize: "1rem", fontWeight: 500, color: "#181B20" }}>
 										Konfirmasi Kata Sandi
 									</label>
 									<div
 										style={{
 											display: "flex",
 											alignItems: "center",
-											background: "#F8FAF8",
+											background: "var(--color-surface)",
 											border: fieldErrors.confirmPassword
 												? "1.5px solid #9E2A2B"
 												: "1px solid rgba(228, 231, 229, 0.9)",
@@ -517,14 +515,14 @@ export function RegisterPage() {
 												outline: "none",
 												background: "transparent",
 												width: "100%",
-												fontSize: 14,
+												fontSize: "1rem",
 												color: "#181B20",
 												fontFamily: "var(--font-family)",
 											}}
 										/>
 									</div>
 									{fieldErrors.confirmPassword && (
-										<span style={{ fontSize: 12, color: "#9E2A2B" }}>{fieldErrors.confirmPassword}</span>
+										<span style={{ fontSize: "1rem", color: "#9E2A2B" }}>{fieldErrors.confirmPassword}</span>
 									)}
 								</div>
 
@@ -534,12 +532,12 @@ export function RegisterPage() {
 									disabled={signUpMutation.isPending}
 									style={{
 										marginTop: 6,
-										background: "#264D3B",
+										background: "#4D702F",
 										color: "#FFFFFF",
 										border: "none",
 										borderRadius: 9999,
 										padding: "12px 20px",
-										fontSize: 14,
+										fontSize: "1rem",
 										fontWeight: 500,
 										display: "flex",
 										alignItems: "center",
@@ -560,7 +558,7 @@ export function RegisterPage() {
 									paddingTop: 16,
 									borderTop: "1px solid #F1F2F4",
 									textAlign: "center",
-									fontSize: 13.5,
+									fontSize: "1rem",
 									color: "#545B67",
 								}}
 							>
@@ -568,7 +566,7 @@ export function RegisterPage() {
 								<Link
 									to="/login"
 									style={{
-										color: "#264D3B",
+										color: "#4D702F",
 										fontWeight: 600,
 										textDecoration: "none",
 									}}

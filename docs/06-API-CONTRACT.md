@@ -195,6 +195,7 @@ Request:
   "startsAt": "2026-11-10T08:00:00Z",
   "endsAt": "2026-11-10T14:00:00Z",
   "venueName": "Balai Banjar",
+  "venueLocation": { "type": "Point", "coordinates": [115.21, -8.65] },
   "category": "upacara",
   "description": "Deskripsi opsional",
   "permitReference": "SURAT/2026/01"
@@ -202,6 +203,8 @@ Request:
 ```
 
 Response: 201 Created with event object in status "draft". Atomic audit log recorded.
+
+`venueLocation` is optional and nullable. When present it must be a GeoJSON Point in `[longitude, latitude]` order within the configured Bali bounds. It is chosen and reviewed by the organizer; it is never inferred from a road or district. Existing events can remain without a point.
 
 GET /api/events
 Permission: authenticated organization member
@@ -245,13 +248,14 @@ Response: 200 OK
 GET /api/events/:eventId
 Permission: authorized organization member (organizer or assigned field officer)
 Response: 200 OK with event detail. Returns 403/404 if caller is unassigned or outside the organization.
+The detail includes `venueLocation` as a GeoJSON Point or `null`.
 
 PATCH /api/events/:eventId
 Permission: organizer
 Constraints:
 - Terminal states (`completed`, `cancelled`) cannot be modified (409 Conflict).
 - Published and active events cannot be edited via PATCH (409 Conflict); edits must occur prior to publication while in `draft` or `review` status (FR-011).
-- In `review` status, modifying any organizer-editable field (`title`, `category`, `description`, `venueName`, `startsAt`, `endsAt`, `permitReference`) invalidates previous human review verification and resets status to `draft`.
+- In `review` status, modifying any organizer-editable field (`title`, `category`, `description`, `venueName`, `venueLocation`, `startsAt`, `endsAt`, `permitReference`) invalidates previous human review verification and resets status to `draft`.
 Response: 200 OK with updated event. Atomic audit log recorded. Zero-row concurrent conflicts return 409 Conflict without creating false audit records.
 
 POST /api/events/:eventId/review
@@ -356,7 +360,7 @@ Request (accepts flat fields or `{ "corrections": { ... } }` wrapper):
   "contactInformation": "I Made Surya (0812-0000-0101)"
 }
 ```
-Persists all 12 reviewed/corrected fields on `events` atomically under `FOR UPDATE OF e`, resets `review` status to `draft` (clearing `verifiedBy`/`verifiedAt`) when any field changes, and records `before_json` and `after_json` from the locked row (`hasContactInformation` boolean is logged in audit JSON rather than raw private contact strings; `contactInformation` is returned only to organizers and stripped from officer and public responses).
+Persists reviewed/corrected fields, including optional `venueLocation`, on `events` atomically under `FOR UPDATE OF e`, resets `review` status to `draft` (clearing `verifiedBy`/`verifiedAt`) when any field changes, and records `before_json` and `after_json` from the locked row (`hasContactInformation` boolean is logged in audit JSON rather than raw private contact strings; `contactInformation` is returned only to organizers and stripped from officer and public responses).
 
 ## 6. Road Segments
 
@@ -541,7 +545,7 @@ Query: from, to, optional bbox
 Returns only published/active public information.
 
 GET /api/public/events/:slug
-Returns public event summary.
+Returns public event summary including organizer-selected `venueLocation` as a GeoJSON Point or `null`; the same field is included in the public event list. Normal publication and authority filters apply.
 
 GET /api/public/events/:slug/roads
 Returns planned road impacts and effective status.
@@ -766,3 +770,23 @@ Advisory decisions NEVER directly mutate domain operational state (events, road 
 - `GET /api/events/:eventId/public-notice-draft/latest`: Retrieves latest notice draft and approval status.
 - `POST /api/events/:eventId/public-notice-draft/:runId/decision`: Records approval/rejection or validated human correction. Validates length limits, rejects unsupported safety/authority claims (e.g., "dijamin aman", "resmi oleh polisi") or unlisted road names, and forces simulation tag.
 - `POST /api/events/:eventId/waste-plan`: Calculates scenario waste logistics. Supports user-specified generation rates (`wastePerPersonDayKg`) and fractions (`organicFraction`, `recyclableFraction`, `residualFraction`). If omitted or 0, returns `forecastKg: null`, `method: "operational_checklist"`, and checklist only without fabricated numeric assumptions.
+
+### Public assistant and waste scenarios (candidate implementation)
+
+`POST /api/public/assistant/questions` is anonymous and enabled only when `PUBLIC_ASSISTANT_ENABLED=true` and Gemini is configured. It accepts `question` (1–500 characters), optional exact `eventSlug`, `location` (venue, village or district), and optional ISO `from`/`to`. A request body is limited to 4096 bytes and the existing isolate-local rate limiter applies (10/minute per IP; distributed edge protection remains an operations requirement). Retrieval includes published and active events; an exact `eventSlug` also permits completed public events, subject to the same operational-authority or simulation filter. Gemini receives only the question and up to ten publicly visible event titles and IDs; it selects an intent and IDs under a structured schema. The server validates identifiers and produces all returned text, URLs and facts itself. It reuses public road and cleanup handlers, preserves simulation labels and marks expired road observations unconfirmed. Route help, missing data and out-of-scope requests abstain. Disabled/unconfigured/provider failure returns 503 and the existing error envelope; invalid input returns 422. This feature is not a safety guarantee and cannot provide closure bypass directions.
+
+`POST /api/events/:eventId/waste-plan` retains its organizer-only authorization, `forecastKg:null`, and `insufficient_historical_data`. Optional `scenario` contains `coefficientKgPerParticipantDay:{min,max,provenance}` and optional complete `categoryShares:{organic,recyclable,residual}` summing to one. `scenarioRange` reports low/high estimated weights and assumptions, not measured weight. Totals are rounded to tenths of a kilogram. Category shares are normalized within the accepted sum tolerance; the rounded low total and the difference between rounded totals are allocated separately by largest remainder in tenths, with ties resolved organic, recyclable, residual. This preserves category ordering and endpoint totals, but a category can differ from independently rounded shares by a tenth or more. Optional `facilityLocation:{latitude,longitude}` produces straight-line distances to historical directory candidates; `suitableMatches` is empty until acceptance and service restrictions are supported. Candidates have unknown current operation and acceptance and require confirmation. Legacy exact scenario values remain available; legacy implicit fractions and sack capacity are labeled assumptions. Supplying only some legacy category fractions, or fractions not summing to one, now returns 422.
+
+### Private cleanup photo-quality assessment
+
+`POST /api/cleanup-tasks/:taskId/photo-quality` accepts JSON `{ "beforeEvidenceId": "uuid", "afterEvidenceId": "uuid" }`. Both private evidence records must belong to the task and match their respective stages. Access requires an organizer in the owning organization or the task-assigned officer with event cleanup permission. Cancelled events cannot be assessed. The feature is disabled unless `AI_PHOTO_ASSESSMENT_ENABLED` is exactly `true` and a Gemini key and private R2 binding are configured.
+
+On success, `data` contains `beforeReadable`, `afterReadable`, `sameAreaLikely` (`yes`, `no`, or `uncertain`), `issues`, `observations`, `taskId`, `wasteWeightKg: null`, `automaticallyVerified: false`, `requiresOrganizerReview: true`, `model`, `promptVersion`, and `schemaVersion`. It changes no cleanup or road state. Error envelopes include request IDs: 401 unauthenticated, 403 forbidden, 404 missing or inaccessible task/pair, 409 cancelled event, 413 oversized request, 422 invalid input, 429 rate limited, and 503 unavailable storage, disabled feature, invalid photo, or provider failure.
+
+## Authenticated read-only assistant
+
+`POST /api/assistant/questions` requires a Better Auth session and accepts a JSON object with `question` (1â€“500 characters), optional UUID `organizationId` and `eventId`, or a separate `helpTopic` (`event`, `traffic`, `cleanup`). Help cannot be combined with selected context. Without both context IDs the response asks for selection and searches no events; if an organization was supplied its membership is checked. The server checks membership, event ownership and officer assignment and category permissions. The provider selects only the selected event ID and receives only its title and the user's question. The server checks the session and permissions again after the provider, retrieves bounded facts, checks permissions again before returning them, and recomputes road expiry. No mutations are available. Questions and event titles are processed externally when the provider is called.
+
+Successful responses contain `status` (`answered`, `abstained`, `selection_required`), `scope` (`internal`, `help`), `intent`, `answer`, `sources`, and `searchUrl`. Each source has `sourceId`, server-authored `url`, `kind`, `title`, and typed `facts`: event `{status, startsAt, endsAt, isSimulation}`; road `{status, observedAt, expiresAt, isSimulation}`; cleanup `{status, dueAt, isSimulation}`; waste `{category, measurementMethod, quantityKg, sackCount, isSimulation}`; help `{}`. Quantity is a decimal string or null, sack count an integer or null, and timestamps ISO strings or null. Help is labeled `Panduan penggunaan` and is reviewed application text. Status values are stored lowercase; expired or absent road observations are `unconfirmed`.
+
+Errors use the existing request-ID envelope: 401 session absent, 403 organization or assignment/permission denied, 404 missing or foreign event, 422 invalid body, 429 isolate-local rate limit, and 503 disabled, missing provider configuration, changed context, or invalid/provider failure. `PUBLIC_ASSISTANT_ENABLED=true` and a configured Gemini key are required for provider-backed requests; help and context selection do not call the provider. This flag does not provide distributed cost protection or prove production readiness.

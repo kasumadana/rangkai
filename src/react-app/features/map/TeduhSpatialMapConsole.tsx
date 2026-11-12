@@ -1,15 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { Token } from "@astryxdesign/core/Token";
-import { Stack } from "@astryxdesign/core/Stack";
 import {
 	ArrowRight,
 	Clock,
 	Locate,
-	LogOut,
-	Menu,
 	RotateCcw,
 	Search,
-	ShieldCheck,
 	X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -19,7 +14,7 @@ import {
 	RoadStatusBadge,
 	type CeremonyDetailItem,
 } from "../../components/rangkai";
-import { useAuthSession, useSignOutMutation } from "../../lib/auth";
+import { PublicHeader } from "../../components/ui/PublicHeader";
 import type { BaliDistrictProperties } from "../../lib/bali-districts";
 import type {
 	BaliVillageCeremonyProfile,
@@ -41,9 +36,6 @@ import { BaliMapTilerView } from "./BaliMapTilerView";
 export function TeduhSpatialMapConsole() {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const mapViewportRef = useRef<HTMLDivElement>(null);
-
-	const { data: sessionData } = useAuthSession();
-	const signOutMutation = useSignOutMutation();
 
 	useGsapPageReveal(mapViewportRef, []);
 
@@ -79,9 +71,7 @@ export function TeduhSpatialMapConsole() {
 	// Search dropdown state
 	const [searchQuery, setSearchQuery] = useState("");
 	const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
-	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 	const searchDropdownRef = useRef<HTMLDivElement>(null);
-	const mobileSearchRef = useRef<HTMLDivElement>(null);
 
 	// Guide panel dismissed state — defaults to false so it shows on initial visit; dismisses completely on X click
 	const [isGuideDismissed, setIsGuideDismissed] = useState<boolean>(false);
@@ -262,11 +252,7 @@ export function TeduhSpatialMapConsole() {
 			const insideDesktop =
 				searchDropdownRef.current &&
 				searchDropdownRef.current.contains(target);
-			const insideMobile =
-				mobileSearchRef.current &&
-				mobileSearchRef.current.contains(target);
-
-			if (!insideDesktop && !insideMobile) {
+			if (!insideDesktop) {
 				setIsSearchDropdownOpen(false);
 			}
 		}
@@ -368,8 +354,8 @@ export function TeduhSpatialMapConsole() {
 									style={{
 										fontSize: 11,
 										fontWeight: 500,
-										color: "#264D3B",
-										background: "#ECF3EF",
+										color: "#4D702F",
+										background: "#F0F4EB",
 										padding: "2px 8px",
 										borderRadius: 9999,
 									}}
@@ -411,12 +397,12 @@ export function TeduhSpatialMapConsole() {
 								}}
 							>
 								<div>
-									<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+									<div className="flex flex-wrap items-center gap-1">
 										<span className="text-sm font-medium text-stone-900">{c.ceremonyTitle}</span>
 										{c.isSimulation !== false ? (
-											<Token color="orange" size="sm" label="SIMULASI" />
+											<span className="map-popup-badge simulation-token">SIMULASI</span>
 										) : null}
-									</Stack>
+									</div>
 									<div className="text-xs text-stone-600 mt-0.5">
 										{c.desaAdatName} • {c.kabupaten}
 									</div>
@@ -500,333 +486,12 @@ export function TeduhSpatialMapConsole() {
 			ref={mapViewportRef}
 			className={`map-viewport ${isDrawerOpen ? "has-drawer-open" : ""}`}
 		>
-			{/* 1. DESKTOP FLOATING SPLIT TOPBAR */}
-			<header
-				className="map-desktop-topbar"
-				aria-label="Bilah Navigasi Peta"
-				data-gsap="reveal"
-			>
-				{/* Left Capsule: Logo + Search Bar + Instant Dropdown */}
-				<div className="map-desktop-topbar-left" ref={searchDropdownRef}>
-					<Link to="/" className="navbar-brand" aria-label="Rangkai Beranda">
-						<img
-							src="/logo.png"
-							alt="Rangkai Logo"
-							className="navbar-brand-logo"
-						/>
-					</Link>
-
-					<div className="map-topbar-divider" />
-
-					<div className="map-search-input-wrap">
-						<Search size={15} color="#64748B" />
-						<input
-							type="text"
-							className="map-search-input"
-							placeholder="Cari kecamatan, desa, atau acara..."
-							value={searchQuery}
-							onChange={(e) => {
-								setSearchQuery(e.target.value);
-								setIsSearchDropdownOpen(true);
-							}}
-							onFocus={() => setIsSearchDropdownOpen(true)}
-						/>
-						{searchQuery && (
-							<button
-								type="button"
-								onClick={() => {
-									setSearchQuery("");
-									setIsSearchDropdownOpen(false);
-								}}
-								style={{
-									background: "none",
-									border: "none",
-									cursor: "pointer",
-									color: "#64748B",
-									padding: 2,
-								}}
-								aria-label="Bersihkan pencarian"
-							>
-								<X size={15} />
-							</button>
-						)}
-					</div>
-
-					{/* Live Dropdown Results (Desktop) */}
-					{searchDropdownNode}
-				</div>
-
-				{/* Right Capsule: 3 Clean Nav Links + Officer Auth */}
-				<div className="map-desktop-topbar-right">
-					<nav style={{ display: "flex", alignItems: "center", gap: 4 }}>
-						<Link to="/" className="map-nav-link">
-							Beranda
-						</Link>
-						<Link to="/peta" className="map-nav-link is-active">
-							Peta Kawasan
-						</Link>
-						<Link to="/events" className="map-nav-link">
-							Jadwal Upacara
-						</Link>
-					</nav>
-
-					<div className="map-topbar-divider" />
-
-					{sessionData?.user ? (
-						<div
-							style={{
-								display: "flex",
-								alignItems: "center",
-								gap: 8,
-								paddingLeft: 4,
-							}}
-						>
-							<Link
-								to="/dashboard"
-								style={{
-									display: "inline-flex",
-									alignItems: "center",
-									gap: 6,
-									fontSize: 13,
-									fontWeight: 500,
-									color: "#264D3B",
-									textDecoration: "none",
-								}}
-							>
-								<span>Panel Petugas</span>
-							</Link>
-							<button
-								type="button"
-								onClick={() => signOutMutation.mutate()}
-								title="Keluar Akun"
-								style={{
-									background: "none",
-									border: "none",
-									cursor: "pointer",
-									color: "#64748B",
-									display: "flex",
-								}}
-							>
-								<LogOut size={16} />
-							</button>
-						</div>
-					) : (
-						<Link
-							to="/login"
-							style={{
-								display: "inline-flex",
-								alignItems: "center",
-								gap: 6,
-								padding: "7px 14px",
-								borderRadius: 9999,
-								background: "#9E2A2B",
-								color: "#FFFFFF",
-								fontSize: 12.5,
-								fontWeight: 500,
-								textDecoration: "none",
-							}}
-						>
-							<ShieldCheck size={14} />
-							<span>Akses Petugas</span>
-						</Link>
-					)}
-				</div>
-			</header>
-
-			{/* 2. MOBILE TOP SEARCH CAPSULE (< 860px) WITH HAMBURGER MENU */}
-			<div
-				ref={mobileSearchRef}
-				className="map-mobile-search-capsule"
-				data-gsap="reveal"
-			>
-				<Link
-					to="/"
-					aria-label="Kembali ke Beranda"
-					style={{
-						display: "inline-flex",
-						alignItems: "center",
-						justifyContent: "center",
-						textDecoration: "none",
-						flexShrink: 0,
-					}}
-				>
-					<img
-						src="/logo.png"
-						alt="Rangkai"
-						style={{ width: 24, height: 24, objectFit: "contain" }}
-					/>
-				</Link>
-				<div className="map-topbar-divider" style={{ height: 18, margin: "0 2px" }} />
-				<Search size={16} color="#64748B" style={{ flexShrink: 0 }} />
-				<input
-					type="text"
-					placeholder="Cari kecamatan, desa, atau acara..."
-					value={searchQuery}
-					onChange={(e) => {
-						setSearchQuery(e.target.value);
-						setIsSearchDropdownOpen(true);
-					}}
-					onFocus={() => setIsSearchDropdownOpen(true)}
-					style={{
-						flex: 1,
-						border: "none",
-						outline: "none",
-						background: "transparent",
-						fontSize: 13.5,
-						color: "#181B20",
-						minWidth: 0,
-					}}
-				/>
-				{searchQuery && (
-					<button
-						type="button"
-						onClick={() => {
-							setSearchQuery("");
-							setIsSearchDropdownOpen(false);
-						}}
-						style={{ background: "none", border: "none", color: "#64748B", padding: 4 }}
-						aria-label="Bersihkan pencarian"
-					>
-						<X size={16} />
-					</button>
-				)}
-				<button
-					type="button"
-					onClick={() => setIsMobileMenuOpen(true)}
-					style={{
-						background: "none",
-						border: "none",
-						color: "#264D3B",
-						padding: "4px 2px",
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "center",
-						cursor: "pointer",
-						flexShrink: 0,
-					}}
-					aria-label="Buka Menu"
-				>
-					<Menu size={20} />
-				</button>
-
-				{/* Live Dropdown Results (Mobile) */}
-				{searchDropdownNode}
-			</div>
-
-			{/* Mobile Slide-Over Menu for Map Console */}
-			<div
-				className={`mobile-nav-overlay ${isMobileMenuOpen ? "is-visible" : ""}`}
-				onClick={() => setIsMobileMenuOpen(false)}
-			/>
-			<aside
-				className={`mobile-nav-menu ${isMobileMenuOpen ? "is-open" : ""}`}
-				aria-label="Menu Ponsel Peta"
-			>
-				<div className="mobile-nav-top">
-					<div className="mobile-nav-header">
-						<Link to="/" className="navbar-brand">
-							<img src="/logo.png" alt="Rangkai Logo" style={{ height: 32 }} />
-						</Link>
-						<button
-							type="button"
-							onClick={() => setIsMobileMenuOpen(false)}
-							style={{ background: "none", border: "none", cursor: "pointer", color: "#545B67" }}
-							aria-label="Tutup menu"
-						>
-							<X size={24} />
-						</button>
-					</div>
-
-					<div className="mobile-nav-links">
-						<Link
-							to="/"
-							className="mobile-nav-link"
-							onClick={() => setIsMobileMenuOpen(false)}
-						>
-							Beranda
-						</Link>
-						<Link
-							to="/peta"
-							className="mobile-nav-link is-active"
-							onClick={() => setIsMobileMenuOpen(false)}
-						>
-							Peta Kawasan
-						</Link>
-						<Link
-							to="/events"
-							className="mobile-nav-link"
-							onClick={() => setIsMobileMenuOpen(false)}
-						>
-							Jadwal Upacara
-						</Link>
-					</div>
-				</div>
-
-				<div style={{ paddingTop: 20, borderTop: "1px solid #E2E4E8" }}>
-					{sessionData?.user ? (
-						<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-							<Link
-								to="/dashboard"
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: 10,
-									padding: "10px 14px",
-									background: "#F4F4F3",
-									borderRadius: 12,
-									textDecoration: "none",
-									color: "#181B20",
-									fontSize: 14,
-								}}
-							>
-								<ShieldCheck size={18} color="#264D3B" />
-								<span>Panel Petugas Desa</span>
-							</Link>
-							<button
-								type="button"
-								onClick={() => signOutMutation.mutate()}
-								style={{
-									display: "flex",
-									alignItems: "center",
-									gap: 10,
-									padding: "10px 14px",
-									background: "none",
-									border: "1px solid #E2E4E8",
-									borderRadius: 12,
-									color: "#B91C1C",
-									fontSize: 14,
-									cursor: "pointer",
-								}}
-							>
-								<LogOut size={18} />
-								<span>Keluar Akun</span>
-							</button>
-						</div>
-					) : (
-						<Link
-							to="/login"
-							style={{
-								display: "flex",
-								alignItems: "center",
-								justifyContent: "center",
-								gap: 8,
-								width: "100%",
-								padding: "12px 20px",
-								borderRadius: 9999,
-								background: "#9E2A2B",
-								color: "#FFFFFF",
-								textDecoration: "none",
-								fontWeight: 500,
-								fontSize: 14.5,
-								boxSizing: "border-box",
-							}}
-						>
-							<ShieldCheck size={18} />
-							<span>Akses Petugas Desa</span>
-						</Link>
-					)}
-				</div>
-			</aside>
+			<PublicHeader map />
+            <div className="map-search-control" ref={searchDropdownRef}>
+                <label htmlFor="map-search">Cari lokasi atau kegiatan</label>
+                <div className="map-search-control-input"><Search size={16} aria-hidden="true" /><input id="map-search" type="search" value={searchQuery} placeholder="Cari kecamatan, desa, atau acara" onChange={e => { setSearchQuery(e.target.value); setIsSearchDropdownOpen(true); }} onFocus={() => setIsSearchDropdownOpen(true)} />{searchQuery && <button type="button" onClick={() => { setSearchQuery(""); setIsSearchDropdownOpen(false); }} aria-label="Bersihkan pencarian"><X size={16} /></button>}</div>
+                {searchDropdownNode}
+            </div>
 
 			{/* 3. GUIDED 3-STEP EXPLORATION PANEL (Dismisses completely when X is clicked) */}
 			{!isGuideDismissed && (
@@ -848,11 +513,11 @@ export function TeduhSpatialMapConsole() {
 							<span
 								style={{
 									fontSize: 14,
-									fontWeight: 500,
+									fontWeight: 600,
 									color: "#181B20",
 								}}
 							>
-								Panduan Peta Kawasan Bali
+								Panduan Peta Titik Upacara Bali
 							</span>
 							<button
 								type="button"
@@ -884,13 +549,13 @@ export function TeduhSpatialMapConsole() {
 							}}
 						>
 							<li>
-								<strong>Pilih Wilayah</strong> dengan klik area berwarna di peta atau gunakan kotak pencarian.
+								<strong>Pilih Titik Upacara</strong> dengan klik pin lokasi di peta atau gunakan kotak pencarian daerah.
 							</li>
 							<li>
-								<strong>Klik Titik Upacara</strong> untuk melihat kartu ringkas lokasi dan jam kegiatan.
+								<strong>Tinjau Kartu Ringkas</strong> untuk melihat status penutupan jalan dan jadwal WITA.
 							</li>
 							<li>
-								<strong>Klik Lihat Detail</strong> untuk membuka panel rincian ruas jalan terdampak.
+								<strong>Klik Lihat Detail</strong> untuk membuka rincian ruas jalan terdampak & jalur alternatif.
 							</li>
 						</ol>
 					</div>
@@ -1016,15 +681,15 @@ export function TeduhSpatialMapConsole() {
 						<div className="drawer-header">
 							<div style={{ flex: 1, minWidth: 0 }}>
 								<div className="mb-1.5">
-									<Stack direction="horizontal" gap={1} align="center" wrap="wrap">
+									<div className="flex flex-wrap items-center gap-1">
 										<span className="drawer-location-tag">
 											{activeVillage.desaAdatName} • {activeVillage.kabupaten}
 										</span>
 										{activeVillage.isSimulation !== false ? (
-											<Token color="orange" size="sm" label="SIMULASI" />
+											<span className="map-popup-badge simulation-token">SIMULASI</span>
 										) : null}
 										<RoadStatusBadge status={activeVillage.primaryStatus} />
-									</Stack>
+									</div>
 								</div>
 								<h3 className="drawer-title">
 									{activeVillage.ceremonyTitle}
@@ -1053,7 +718,7 @@ export function TeduhSpatialMapConsole() {
 									<div className="drawer-info-item">
 										<span className="drawer-info-label">Jadwal Pelaksanaan</span>
 										<div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
-											<Clock size={15} color="#264D3B" />
+											<Clock size={15} color="#4D702F" />
 											<span className="drawer-info-value tabular-nums">
 												{activeVillage.scheduleDateLabel} • {activeVillage.scheduleWindowWita}
 											</span>

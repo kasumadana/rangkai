@@ -121,7 +121,7 @@ test.describe("Journey 6: Map Failure Fallback, Catalog 503 Retry, and 390px Mob
 			await expect(noWebglPage.getByText(longRoadName).first()).toBeVisible();
 
 			await noWebglPage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey6-map-fallback-accessible-list.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey6-map-fallback-accessible-list.png",
 				fullPage: true,
 			});
 			await noWebglContext.close();
@@ -163,7 +163,7 @@ test.describe("Journey 6: Map Failure Fallback, Catalog 503 Retry, and 390px Mob
 			await expect(catalogTestPage.getByText(/Katalog ruas jalan tidak tersedia/i)).not.toBeVisible();
 
 			await catalogTestPage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey6-catalog-503-recovery.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey6-catalog-503-recovery.png",
 				fullPage: true,
 			});
 			await catalogTestPage.close();
@@ -204,21 +204,21 @@ test.describe("Journey 6: Map Failure Fallback, Catalog 503 Retry, and 390px Mob
 
 			// Capture settled mobile view
 			await mobilePage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey6-mobile-390px-no-overflow.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey6-mobile-390px-no-overflow.png",
 				fullPage: true,
 			});
 
 			// Capture tablet / intermediate view (768x1024)
 			await mobilePage.setViewportSize({ width: 768, height: 1024 });
 			await mobilePage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey6-tablet-intermediate.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey6-tablet-intermediate.png",
 				fullPage: true,
 			});
 
 			// Capture desktop view (1280x720)
 			await mobilePage.setViewportSize({ width: 1280, height: 720 });
 			await mobilePage.screenshot({
-				path: "D:/Development/Lomba/rangkai/.scratch/production-readiness/correction-evidence/journey6-desktop-settled.png",
+				path: "./.scratch/production-readiness/correction-evidence/journey6-desktop-settled.png",
 				fullPage: true,
 			});
 

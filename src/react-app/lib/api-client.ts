@@ -131,6 +131,7 @@ export interface EventRecord {
 	category?: string | null;
 	description?: string | null;
 	venueName: string;
+	venueLocation?: { type: "Point"; coordinates: [number, number] } | null;
 	startsAt: string;
 	endsAt: string;
 	permitReference?: string | null;

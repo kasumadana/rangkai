@@ -24,7 +24,7 @@ import {
 	wasteRecords,
 } from "../../src/db/schema";
 
-const EVIDENCE_DIR = "D:/Development/Lomba/rangkai/.scratch/final-development-20261109/residual-fix-evidence";
+const EVIDENCE_DIR = "./.scratch/final-development-20261109/residual-fix-evidence";
 
 test.describe("Residual Fixes Verification: STD-02, SPEC-10, BASE-01, and Core Flow", () => {
 	test("complete browser proof for layout ergonomics, clipboard denial, settled fallbacks, and core lifecycle", async ({

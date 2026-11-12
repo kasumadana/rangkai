@@ -1,13 +1,8 @@
-import { LinkProvider } from "@astryxdesign/core/Link";
-import { ToastViewport } from "@astryxdesign/core/Toast";
-import { Theme } from "@astryxdesign/core/theme";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router";
-import { defaultThemeSlug, themes } from "../astryx-themes";
+import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider } from "react-router";
 import {
 	PublicShellLayout,
-	RouterLinkBridge,
 	WorkspaceShellLayout,
 } from "./components/layout/AppShellLayout";
 import { createAppQueryClient } from "./lib/query-client";
@@ -16,6 +11,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { OrganizationOnboardingPage } from "./pages/OrganizationOnboardingPage";
 import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
+import { OrganizerOverviewPage } from "./pages/OrganizerOverviewPage";
 import { OrganizerDashboardPage } from "./pages/OrganizerDashboardPage";
 import { FieldTaskListPage } from "./pages/FieldTaskListPage";
 import {
@@ -26,17 +22,15 @@ import {
 	WorkflowRouteShellPage,
 } from "./pages/RouteViews";
 import { SettingsPage } from "./pages/SettingsPage";
-import { UiSystemCatalogPage } from "./pages/UiSystemCatalogPage";
+import { AssistantWidget } from "./features/assistant/AssistantWidget";
+import { PublicAssistantPage } from "./pages/PublicAssistantPage";
 
-export function App() {
-	const [queryClient] = useState(() => createAppQueryClient());
+function RootLayout() {
+	return <><AssistantWidget /><Outlet /></>;
+}
 
-	return (
-		<Theme theme={themes[defaultThemeSlug]} mode="light">
-			<LinkProvider component={RouterLinkBridge}>
-				<QueryClientProvider client={queryClient}>
-					<BrowserRouter>
-						<Routes>
+const router = createBrowserRouter(createRoutesFromElements(
+	<Route element={<RootLayout />}>
 							{/* Public Information Architecture */}
 							<Route element={<PublicShellLayout />}>
 								<Route path="/" element={<PublicHomePage />} />
@@ -46,6 +40,7 @@ export function App() {
 									element={<Navigate to="/events" replace />}
 								/>
 								<Route path="/events" element={<PublicEventsListPage />} />
+								<Route path="/tanya" element={<PublicAssistantPage />} />
 								<Route
 									path="/events/:slug"
 									element={<PublicEventDetailPage />}
@@ -70,7 +65,7 @@ export function App() {
 							<Route element={<WorkspaceShellLayout />}>
 								<Route
 									path="/dashboard"
-									element={<OrganizerDashboardPage />}
+									element={<OrganizerOverviewPage />}
 								/>
 								<Route
 									path="/dashboard/events"
@@ -158,17 +153,16 @@ export function App() {
 									<Route key={path} path={path} element={<WorkflowRouteShellPage stepCode="Tugas Lapangan" title="Tugas Lapangan" subtitle="Perbarui tugas yang ditugaskan kepada Anda." requirementRef="Petugas Lapangan" />} />
 								))}
 								<Route path="/settings" element={<SettingsPage />} />
-								<Route path="/ui-system" element={<UiSystemCatalogPage />} />
+								<Route path="/ui-system" element={<Navigate to="/events" replace />} />
 							</Route>
 
 							<Route path="*" element={<Navigate to="/" replace />} />
-						</Routes>
-					</BrowserRouter>
-					<ToastViewport position="bottomEnd" />
-				</QueryClientProvider>
-			</LinkProvider>
-		</Theme>
-	);
+	</Route>
+));
+
+export function App() {
+	const [queryClient] = useState(() => createAppQueryClient());
+	return <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>;
 }
 
 export default App;
