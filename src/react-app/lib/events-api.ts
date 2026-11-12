@@ -32,6 +32,7 @@ export interface ListEventsParams {
 
 export interface CreateEventPayload {
 	organizationId: string;
+	isSimulation?: boolean;
 	title: string;
 	startsAt?: string | null;
 	endsAt?: string | null;
@@ -2088,5 +2089,3 @@ export function getImpactTypeLabel(type?: string): string {
 			return "Penutupan Jalan";
 	}
 }
-
-

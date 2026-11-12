@@ -392,7 +392,7 @@ operational decision.
 The Grounded Public Assistant provides natural-language question answering for citizens inquiring about published Balinese cultural events, road closure schedules, and cleanup status.
 
 **Core Domain Invariants:**
-1. **Public-Only Projection:** Retrieval MUST query only published, active, or completed events from organizations with operational authority or marked as simulation.
+1. **Public-Only Projection:** Retrieval queries published and active events, and includes completed events when an exact event slug is supplied. Events must belong to organizations with operational authority or be marked as simulation.
 2. **Never Query Private State:** The assistant must NEVER access private R2 documents, unverified road segments, invitation tokens, user credentials, phone numbers, or administrative notes.
 3. **Strict Abstention on Stale / Missing Data:** If road status is older than 30 minutes (TTL expired), the assistant MUST explicitly state that the status is unconfirmed and direct the user to the live map or field officers.
 4. **No Automated Permit or Safety Guarantees:** The assistant must never claim an alternative route is legally guaranteed, police-certified, or completely congestion-free.
@@ -546,3 +546,17 @@ The evaluation protocol tests the model across 5 degradation categories (4 pairs
   1. Collect 20 ethically labeled photo pairs during village pilot with prajuru consent.
   2. Implement client-side facial/license plate blurring canvas before R2 upload.
   3. Validate confusion matrix (target: precision >= 90% on debris detection) before enabling in production.
+
+### Candidate public assistant and waste scenario
+
+DECISION: Gemini classifies a bounded question and selects public event identifiers only; it does not author displayed facts or links. Server code validates every selected ID against retrieved public-authority-filtered records and obtains road/cleanup facts from existing public endpoints. Unsupported or absent information abstains; stale road observations are unconfirmed. A missing provider is an explicit failure, not a simulated answer. No live model accuracy or provider verification is claimed. Prompt and event titles are untrusted input, and no private documents, R2 keys or contacts are sent.
+
+DECISION: Waste planning uses organizer-supplied coefficient ranges and optional complete shares, with an explicit formula. It is a scenario, not a trained model or measured weight. Historical facility entries carry source and date, and are not treated as verified acceptance or availability. The legacy exact scenario's default category shares and sack capacity are assumptions, not measurements. No image-derived weight or automatic road reopening is performed.
+
+### Cleanup photo-quality assistance
+
+When explicitly enabled, the server sends the selected private before and after JPEG or PNG evidence to Gemini for bounded readability and same-area observations. Output is schema validated and requires organizer review; it is not a cleanliness certification or waste-weight estimate. The result never verifies cleanup or changes road status. Provider behavior and accuracy have not been evaluated on real photo pairs; synthetic tests do not establish accuracy.
+
+### Authenticated assistant boundary
+
+The internal read-only assistant checks the selected organization, event and assignment before sending the question and selected event ID/title to Gemini. Structured selections are schema- and source-validated; the server authors facts and links. It rechecks session and permissions after the provider response and checks permissions after bounded fact retrieval. Raw documents, photos, contacts, invitations and audit payloads are excluded. Application help is reviewed static content, not a model result. Provider failure requires manual navigation; no result is automatically published or changed.

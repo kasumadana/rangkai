@@ -2,6 +2,7 @@ import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { useEffect, useRef, useState } from "react";
 import { markPreloaderShown, shouldPlayPreloader } from "../../lib/preloader";
+import { BrandLogo } from "../ui/BrandLogo";
 
 gsap.registerPlugin(useGSAP);
 
@@ -175,13 +176,7 @@ export function RangkaiPreloader({
 		>
 			<div ref={brandRef} className="rangkai-preloader-inner">
 				<div className="rangkai-preloader-brand" style={{ justifyContent: "center" }}>
-					<img
-						src="/logo.png"
-						alt="Rangkai Emblem"
-						width={38}
-						height={38}
-						className="rangkai-preloader-logo"
-					/>
+					<BrandLogo decorative />
 				</div>
 				<div className="rangkai-preloader-track">
 					<div ref={barRef} className="rangkai-preloader-bar" />

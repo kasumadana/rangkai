@@ -34,7 +34,7 @@ export function LandingPage() {
 	const landingRef = useRef<HTMLDivElement>(null);
 
 	// Live API connection for published/active events and road impacts from backend
-	const { data: publicEventsData, isLoading: isEventsLoading } = useQuery({
+	const { data: publicEventsData, isLoading: isEventsLoading, isError: isEventsError, refetch: refetchEvents } = useQuery({
 		queryKey: ["public", "events", { limit: 20 }],
 		queryFn: () => fetchPublicEvents({ limit: 20 }),
 		staleTime: 30_000,
@@ -251,20 +251,22 @@ export function LandingPage() {
 							Memuat jadwal upacara terpublikasi dari server...
 						</p>
 					</div>
-				) : filteredEvents.length > 0 ? (
+				) : isEventsError ? (
+                    <div role="alert"><p>Gagal memuat jadwal kegiatan.</p><button className="ui-button" type="button" onClick={() => void refetchEvents()}>Coba lagi</button></div>
+                ) : filteredEvents.length > 0 ? (
 					<div className="schedule-grid">
 						{filteredEvents.map((evt: NormalizedLandingEvent) => {
 							let statusClass = "status-intermittent";
-							let statusText = "Terjadwal";
+							let statusText = "Jalan buka-tutup";
 							if (evt.status === "closed") {
 								statusClass = "status-closed";
-								statusText = "Sedang Berlangsung";
+								statusText = "Jalan ditutup";
 							} else if (evt.status === "open") {
 								statusClass = "status-open";
-								statusText = "Selesai";
+								statusText = "Jalan terbuka";
 							} else if (evt.status === "unknown") {
 								statusClass = "status-unknown";
-								statusText = "Butuh Konfirmasi";
+								statusText = "Status jalan belum dikonfirmasi";
 							}
 
 							return (
@@ -278,9 +280,9 @@ export function LandingPage() {
 											<span className="schedule-village-label">{evt.village} • {evt.regency}</span>
 											<div className="flex flex-wrap items-center gap-1">
 												{evt.isSimulation !== false ? (
-													<span className="map-popup-badge simulation-token">SIMULASI</span>
+													<span className="simulation-label">SIMULASI</span>
 												) : null}
-												<span className={`road-status-badge ${statusClass}`}>
+												<span className={`status-label ${statusClass}`}>
 													{statusText}
 												</span>
 											</div>

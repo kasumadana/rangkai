@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router";
+import { createBrowserRouter, createRoutesFromElements, Navigate, Outlet, Route, RouterProvider } from "react-router";
 import {
 	PublicShellLayout,
 	WorkspaceShellLayout,
@@ -11,6 +11,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { OrganizationOnboardingPage } from "./pages/OrganizationOnboardingPage";
 import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
+import { OrganizerOverviewPage } from "./pages/OrganizerOverviewPage";
 import { OrganizerDashboardPage } from "./pages/OrganizerDashboardPage";
 import { FieldTaskListPage } from "./pages/FieldTaskListPage";
 import {
@@ -21,14 +22,15 @@ import {
 	WorkflowRouteShellPage,
 } from "./pages/RouteViews";
 import { SettingsPage } from "./pages/SettingsPage";
+import { AssistantWidget } from "./features/assistant/AssistantWidget";
+import { PublicAssistantPage } from "./pages/PublicAssistantPage";
 
-export function App() {
-	const [queryClient] = useState(() => createAppQueryClient());
+function RootLayout() {
+	return <><AssistantWidget /><Outlet /></>;
+}
 
-	return (
-				<QueryClientProvider client={queryClient}>
-					<BrowserRouter>
-						<Routes>
+const router = createBrowserRouter(createRoutesFromElements(
+	<Route element={<RootLayout />}>
 							{/* Public Information Architecture */}
 							<Route element={<PublicShellLayout />}>
 								<Route path="/" element={<PublicHomePage />} />
@@ -38,6 +40,7 @@ export function App() {
 									element={<Navigate to="/events" replace />}
 								/>
 								<Route path="/events" element={<PublicEventsListPage />} />
+								<Route path="/tanya" element={<PublicAssistantPage />} />
 								<Route
 									path="/events/:slug"
 									element={<PublicEventDetailPage />}
@@ -62,7 +65,7 @@ export function App() {
 							<Route element={<WorkspaceShellLayout />}>
 								<Route
 									path="/dashboard"
-									element={<OrganizerDashboardPage />}
+									element={<OrganizerOverviewPage />}
 								/>
 								<Route
 									path="/dashboard/events"
@@ -154,10 +157,12 @@ export function App() {
 							</Route>
 
 							<Route path="*" element={<Navigate to="/" replace />} />
-						</Routes>
-					</BrowserRouter>
-				</QueryClientProvider>
-	);
+	</Route>
+));
+
+export function App() {
+	const [queryClient] = useState(() => createAppQueryClient());
+	return <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>;
 }
 
 export default App;

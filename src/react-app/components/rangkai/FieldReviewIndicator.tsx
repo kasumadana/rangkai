@@ -3,7 +3,7 @@ import {
 	CheckCircle2,
 	FileQuestion,
 	PencilLine,
-	Sparkles,
+	FileText,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -33,10 +33,10 @@ const STATE_CONFIG: Record<
 	extracted: {
 		label: "Diekstrak AI (Draf)",
 		color: "bg-blue-50 text-blue-900",
-		icon: <Sparkles size={14} aria-hidden="true" />,
+		icon: <FileText size={14} aria-hidden="true" />,
 	},
 	missing: {
-		label: "Tidak Tercantum (Missing)",
+		label: "Tidak Tercantum",
 		color: "bg-stone-100 text-stone-800",
 		icon: <FileQuestion size={14} aria-hidden="true" />,
 	},
@@ -59,5 +59,5 @@ const STATE_CONFIG: Record<
 
 export function FieldReviewIndicator({ state }: FieldReviewIndicatorProps) {
 	const config = STATE_CONFIG[state];
-	return <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${config.color}`}>{config.icon}{config.label}</span>;
+	return <span className={`inline-flex items-center gap-1 rounded px-2.5 py-1 text-base font-semibold ${config.color}`}>{config.icon}{config.label}</span>;
 }
