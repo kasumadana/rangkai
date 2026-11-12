@@ -218,11 +218,15 @@ mandiri, bukan untuk membungkus setiap label, metrik, atau baris.
 
 ### Navbar dan profil
 
-Navbar publik dan workspace memiliki dua komponen utama: **logo dan tombol
-profil**. Role, nama organisasi, nama pengguna, Portal Publik, pengaturan akun,
-dan Keluar ditempatkan di menu profil. Pengunjung anonim mendapat akses Masuk
-atau Daftar dari tombol profil. Link publik penting tetap tersedia melalui CTA
-landing dan footer, bukan hilang karena navbar disederhanakan.
+Navbar workspace memiliki logo dan tombol profil sebagai komponen utama.
+Navbar publik dan peta mempertahankan navigasi situs yang berbeda: logo, tautan
+Beranda/Kegiatan/Peta, serta akses akun. Pada layar sempit tautan publik tersedia
+melalui drawer yang dapat diakses dengan keyboard; pencarian peta tetap berada
+di kontrol peta. Keputusan publik ini mengikuti koreksi pengguna terbaru.
+
+Role, nama organisasi, nama pengguna, Portal Publik, pengaturan akun, dan Keluar
+berada di menu profil. Pengunjung anonim mendapat akses Masuk atau Daftar.
+Tautan publik juga tetap tersedia melalui CTA landing dan footer.
 
 Konteks organisasi yang menentukan data/aksi tetap jelas dalam area konten.
 Label simulasi tetap melekat pada data terkait walaupun ringkasan profil ditutup.
@@ -289,8 +293,8 @@ bila belum ada konfirmasi server.
 ### Responsif
 
 Pada lebar 960px ke bawah, sidebar dapat menjadi drawer dengan hierarki sama.
-Kontrol pembuka berada di tepi navigasi/area konten, sehingga navbar tetap berisi
-logo dan profil. Sediakan label aksesibel “Buka navigasi”; jangan sembunyikan
+Kontrol pembuka sidebar workspace berada di tepi navigasi/area konten, sehingga
+navbar workspace tetap berisi logo dan profil. Sediakan label aksesibel “Buka navigasi”; jangan sembunyikan
 navigasi seluruh aplikasi di dalam menu akun. Konten satu kolom di ponsel;
 review dokumen boleh dua kolom jika masing-masing tetap terbaca.
 
@@ -501,7 +505,7 @@ permintaan membuat widget tidak otomatis mengaktifkan penilaian foto produksi.
 ### Pemeriksaan penerapan berikutnya
 
 Selesai ketika seluruh permukaan yang diubah menggunakan token yang sama;
-Ringkasan berbeda fungsi dari daftar; navbar hanya logo/profil; Pengaturan tetap
+Ringkasan berbeda fungsi dari daftar; navbar workspace berisi logo/profil dan navbar publik mempertahankan tautan utama; Pengaturan tetap
 di bawah; semua link menuju konteks/izin yang benar; wizard hanya untuk proses
 baru; sign-out terkonfirmasi menuju publik; dan pemeriksaan browser relevan
 lulus pada ukuran/zoom di atas. Kontras dan WCAG tetap target sampai dinilai.
