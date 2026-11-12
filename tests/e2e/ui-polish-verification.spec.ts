@@ -1,3 +1,4 @@
+import { approveSyntheticOrganization } from "./approval-fixture";
 import { test, expect, type BrowserContext } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -21,6 +22,8 @@ const EVIDENCE_DIR = "./.scratch/ui-refinement-20261108/correction-evidence";
 const getScrollWidth = () =>
 	(globalThis as unknown as { document: { documentElement: { scrollWidth: number } } }).document
 		.documentElement.scrollWidth;
+
+test.use({ actionTimeout: 10_000 });
 
 test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 	test("verifies simplified layouts, removes clutter, checks responsive viewports, and captures settled evidence", async ({
@@ -209,7 +212,8 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await expect(mobilePage.locator(".events-grid, .schedule-card, .teduh-empty-state").first()).toBeVisible({ timeout: 10000 });
 
 			// Filter bar reachability on /events
-			const eventsFirstFilter390 = mobilePage.locator(".schedule-filter-bar .schedule-filter-btn").first();
+			const eventsFirstFilter390 = mobilePage.getByRole("combobox", { name: "Filter status jadwal" });
+			await expect(eventsFirstFilter390.locator("option")).toHaveCount(3);
 			await expect(eventsFirstFilter390).toBeVisible();
 			const ef390Box = await eventsFirstFilter390.boundingBox();
 			expect(ef390Box).not.toBeNull();
@@ -228,7 +232,8 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			await mobile320Page.getByText("Memuat daftar jadwal upacara terpublikasi...").waitFor({ state: "detached", timeout: 10000 }).catch(() => {});
 			await expect(mobile320Page.locator(".events-grid, .schedule-card, .teduh-empty-state").first()).toBeVisible({ timeout: 10000 });
 
-			const eventsFirstFilter320 = mobile320Page.locator(".schedule-filter-bar .schedule-filter-btn").first();
+			const eventsFirstFilter320 = mobile320Page.getByRole("combobox", { name: "Filter status jadwal" });
+			await expect(eventsFirstFilter320.locator("option")).toHaveCount(3);
 			await expect(eventsFirstFilter320).toBeVisible();
 			const ef320Box = await eventsFirstFilter320.boundingBox();
 			expect(ef320Box).not.toBeNull();
@@ -395,11 +400,7 @@ test.describe("Rangkai UI/UX Audit & Polish Verification Suite", () => {
 			});
 			expect(orgSignup.ok()).toBe(true);
 
-			const orgRes = await desktopContext.request.post(`${baseURL}/api/organizations`, {
-				data: { name: orgName, village: "Ubud", district: "Gianyar" },
-			});
-			expect(orgRes.status()).toBe(201);
-			const orgData = (await orgRes.json()) as { organization: { id: string } };
+			const orgData = await approveSyntheticOrganization(browser, desktopContext.request, baseURL, { name: orgName, village: "Ubud", district: "Gianyar" });
 			const orgId = orgData.organization.id;
 
 			// Create a test event and road

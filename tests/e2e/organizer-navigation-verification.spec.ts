@@ -1,3 +1,4 @@
+import { approveSyntheticOrganization } from "./approval-fixture";
 import { test, expect } from "@playwright/test";
 import { eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -62,6 +63,8 @@ const EVIDENCE_DIR =
 	process.env.EVIDENCE_DIR ||
 	"test-results/organizer-evidence";
 
+test.use({ actionTimeout: 10_000 });
+
 test.describe("Organizer Navigation & Dashboard Verification (After Polish)", () => {
 	test("verifies polished dashboard, contextual navigation, team invitation, bounds, and mixed-role resolution", async ({
 		browser,
@@ -108,27 +111,19 @@ test.describe("Organizer Navigation & Dashboard Verification (After Polish)", ()
 			expect(signupRes.ok()).toBe(true);
 
 			// 2. Create organization A
-			const orgARes = await context.request.post(`${baseURL}/api/organizations`, {
-				data: {
+			const orgAJson = await approveSyntheticOrganization(browser, context.request, baseURL, {
 					name: orgNameA,
 					village: "Sanur",
 					district: "Denpasar Selatan",
-				},
-			});
-			expect(orgARes.status()).toBe(201);
-			const orgAJson = (await orgARes.json()) as { organization: { id: string } };
+				});
 			orgIdA = orgAJson.organization.id;
 
 			// 3. Create organization B (for multi-org and mixed-role verification)
-			const orgBRes = await context.request.post(`${baseURL}/api/organizations`, {
-				data: {
+			const orgBJson = await approveSyntheticOrganization(browser, context.request, baseURL, {
 					name: orgNameB,
 					village: "Kuta",
 					district: "Badung",
-				},
-			});
-			expect(orgBRes.status()).toBe(201);
-			const orgBJson = (await orgBRes.json()) as { organization: { id: string } };
+				});
 			orgIdB = orgBJson.organization.id;
 
 			// 4. Create Event A in Org A

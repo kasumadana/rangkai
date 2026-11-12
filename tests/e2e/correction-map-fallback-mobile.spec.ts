@@ -1,3 +1,4 @@
+import { approveSyntheticOrganization } from "./approval-fixture";
 import { test, expect } from "@playwright/test";
 import { eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
@@ -40,11 +41,7 @@ test.describe("Journey 6: Map Failure Fallback, Catalog 503 Retry, and 390px Mob
 			});
 			expect(orgSignup.ok()).toBe(true);
 
-			const orgRes = await orgContext.request.post(`${baseURL}/api/organizations`, {
-				data: { name: orgName, village: "Sanur", district: "Denpasar Selatan" },
-			});
-			expect(orgRes.status()).toBe(201);
-			const org = (await orgRes.json()) as { organization: { id: string } };
+			const org = await approveSyntheticOrganization(browser, orgContext.request, baseURL, { name: orgName, village: "Sanur", district: "Denpasar Selatan" });
 
 			// 2. Create Event & Simulation Road with long legal name
 			const createEventRes = await orgContext.request.post(`${baseURL}/api/events`, {
