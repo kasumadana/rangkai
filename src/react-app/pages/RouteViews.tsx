@@ -1,3 +1,4 @@
+import { useUnsavedChanges } from "../lib/use-unsaved-changes";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -17,14 +18,12 @@ import {
 	PackageCheck,
 	PenTool,
 	Plus,
-	Radio,
 	Save,
 	Scale,
 	Search,
 	Send,
 	ShieldCheck,
 
-	Sparkles,
 	Trash2,
 	Upload,
 
@@ -1147,7 +1146,7 @@ export function WorkflowRouteShellPage({
 				(o) => o.id === rawEvent.organizationId && o.role === "organizer",
 			);
 		}
-		return myOrganizations.some((o) => o.role === "organizer");
+		return false;
 	}, [permissions?.isOrganizer, rawEvent, myOrganizations]);
 	const canTraffic = permissions?.canUpdateTraffic ?? false;
 	const canCleanup = permissions?.canUpdateCleanup ?? false;
@@ -1193,6 +1192,10 @@ export function WorkflowRouteShellPage({
 
 	// Document & Review Tab State
 	const [docTitle, setDocTitle] = useState("");
+	const [docAiConsent, setDocAiConsent] = useState(false);
+	const [docDirty, setDocDirty] = useState(false);
+	const [fieldDirty, setFieldDirty] = useState(false);
+	useUnsavedChanges(docDirty || fieldDirty);
 	const [docVenue, setDocVenue] = useState("");
 	const [docVenueLongitude, setDocVenueLongitude] = useState("");
 	const [docVenueLatitude, setDocVenueLatitude] = useState("");
@@ -1332,6 +1335,7 @@ export function WorkflowRouteShellPage({
 			if (!isRealUuidEvent) {
 				throw new Error("Buka kegiatan yang telah tersimpan terlebih dahulu.");
 			}
+			if (!docAiConsent) throw new Error("Setujui penggunaan AI untuk membaca dokumen terlebih dahulu.");
 			const uploadRes = await uploadEventDocument(eventId, file, true);
 			const extractRes = await triggerDocumentExtraction(
 				eventId,
@@ -1343,6 +1347,7 @@ export function WorkflowRouteShellPage({
 		onSuccess: (ext) => {
 			const out = ext.outputJson;
 			if (out) {
+				setDocDirty(true);
 				if (out.event_name?.value) setDocTitle(out.event_name.value);
 				if (out.venue_name?.value) setDocVenue(out.venue_name.value);
 				if (out.start_datetime?.value)
@@ -1356,7 +1361,7 @@ export function WorkflowRouteShellPage({
 			}
 			setStatusFeedback({
 				type: "success",
-				message: `Surat edaran berhasil diekstrak oleh ${ext.modelName}. Silakan periksa dan simpan perubahan.`,
+				message: "Surat berhasil dibaca. Buka pemeriksaan untuk memeriksa dan menyimpan perubahan.",
 			});
 		},
 		onError: (err) => {
@@ -1414,6 +1419,7 @@ export function WorkflowRouteShellPage({
 			}
 		},
 		onSuccess: async (_, markReviewed) => {
+			setDocDirty(false);
 			await queryClient.invalidateQueries({
 				queryKey: ["events", "detail", eventId],
 			});
@@ -1597,6 +1603,8 @@ export function WorkflowRouteShellPage({
 			});
 		},
 		onSuccess: (_, vars) => {
+			setFieldDirty(false);
+			setFieldNote("");
 			setSegmentStatuses((prev) => ({
 				...prev,
 				[vars.impactId]: vars.nextStatus,
@@ -1719,7 +1727,7 @@ export function WorkflowRouteShellPage({
 			void cleanupTasksQuery.refetch();
 			setStatusFeedback({
 				type: "success",
-				message: `Foto bukti tahap "${evidenceStage.toUpperCase()}" berhasil diunggah ke Cloudflare R2.`,
+				message: `Foto bukti tahap "${evidenceStage.toUpperCase()}" berhasil diunggah.`,
 			});
 		},
 		onError: (err) => {
@@ -1986,28 +1994,16 @@ export function WorkflowRouteShellPage({
 		});
 	}, [attachedRoadImpacts, segmentStatuses]);
 
-	const WORKFLOW_TABS = [
-		{ id: "wizard", label: "Ringkasan / Detail", icon: FileText },
-		{ id: "document", label: "Dokumen & AI", icon: FileText },
-		{ id: "roads", label: "Dampak Jalan", icon: MapPinned },
-		{ id: "cleanup", label: "Kebersihan", icon: ClipboardCheck },
-		{ id: "team", label: "Tim & Petugas", icon: Users },
-		{ id: "field", label: "Pos Pecalang", icon: Radio },
-	].filter((tab) =>
-		!pathname.startsWith("/field")
-			? tab.id !== "field" || isOrganizer || canTraffic
-			: (tab.id === "field" && (isOrganizer || canTraffic)) ||
-				(tab.id === "cleanup" && (isOrganizer || canCleanup)),
-	);
 
 	return (
-		<div>
+		<div onChangeCapture={() => { if (currentTabValue !== "document") setFieldDirty(true); }}>
 			{/* Header Workspace */}
 			<div className="teduh-workspace-header">
 				<div>
 					<div className="flex flex-wrap items-center gap-3">
 						<h1 className="teduh-workspace-title">
-							{rawEvent?.title || title}
+							{rawEvent?.title || fieldDetailQuery.data?.event.title || title}
+							{taskId && cleanupTasksQuery.data?.cleanupTasks.find((task) => task.id === taskId) ? ` ? ${cleanupTasksQuery.data.cleanupTasks.find((task) => task.id === taskId)?.title}` : null}
 						</h1>
 						{rawEvent ? (
 							<EventLifecycleBadge status={rawEvent.status} />
@@ -2018,44 +2014,22 @@ export function WorkflowRouteShellPage({
 
 				<div className="flex flex-wrap items-center gap-2">
 					<Link
-						to="/dashboard"
+						to={pathname.startsWith("/field") ? "/field" : "/dashboard"}
 						className="teduh-btn-secondary !text-base !py-2 !min-h-[48px]"
 					>
 						<ArrowLeft className="w-3.5 h-3.5" />
-						<span>Daftar Upacara</span>
+						<span>{pathname.startsWith("/field") ? "Daftar tugas" : "Daftar Upacara"}</span>
 					</Link>
-					{isRealUuidEvent ? (
+					{isRealUuidEvent && !pathname.startsWith("/field") ? (
 						<Link
 							to={`/dashboard/events/${eventId}`}
 							className="teduh-btn-primary !text-base !py-2 !min-h-[48px]"
 						>
-							<Sparkles className="w-3.5 h-3.5" />
-							<span>Buka Wizard Lengkap</span>
+							<span>Ringkasan Kegiatan</span>
 						</Link>
 					) : null}
 				</div>
 			</div>
-
-			{/* Field operators retain only their assigned operational tabs. */}
-			{pathname.startsWith("/field") && <div className="flex flex-wrap items-center gap-2 mb-6" role="tablist" aria-label="Modul Alur Kerja">
-				{WORKFLOW_TABS.map((tab) => {
-					const IconComp = tab.icon;
-					const active = currentTabValue === tab.id;
-					return (
-						<button
-							key={tab.id}
-							type="button"
-							role="tab"
-							aria-selected={active}
-							onClick={() => handleTabChange(tab.id)}
-							className={`teduh-tab-item ${active ? "is-active" : ""}`}
-						>
-							<IconComp className="w-4 h-4" />
-							<span>{tab.label}</span>
-						</button>
-					);
-				})}
-			</div>}
 
 			{/* Status Feedback Banner */}
 			{statusFeedback ? (
@@ -2075,7 +2049,7 @@ export function WorkflowRouteShellPage({
 			{/* =================================================================== */}
 			{currentTabValue === "document" ? (
 				<div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-					<div className="xl:col-span-5 teduh-workspace-card space-y-4">
+					<div hidden={pathname.endsWith("/review")} className="xl:col-span-5 teduh-workspace-card space-y-4">
 						<div className="space-y-1">
 							<h2 className="teduh-workspace-card-title">
 								Unggah Surat Edaran &amp; Ekstraksi AI
@@ -2086,10 +2060,11 @@ export function WorkflowRouteShellPage({
 							</p>
 						</div>
 
+						<label className="flex items-start gap-2"><input type="checkbox" checked={docAiConsent} onChange={(event) => setDocAiConsent(event.target.checked)} /> Saya menyetujui dokumen dikirim untuk pembacaan AI.</label>
 						<div className="rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/50 p-6 text-center space-y-3">
 							<Upload className="w-7 h-7 text-emerald-800 mx-auto" />
 							<p className="text-base font-bold text-stone-900">
-								Berkas Surat Edaran Desa Adat (Maks. 10 MB)
+								Berkas Surat Edaran Desa Adat (Maks. 8 MB)
 							</p>
 							<label className="teduh-btn-primary min-h-[48px] cursor-pointer">
 								<Upload className="w-4 h-4" />
@@ -2100,8 +2075,8 @@ export function WorkflowRouteShellPage({
 								</span>
 								<input
 									type="file"
-									accept=".pdf,image/jpeg,image/png,image/webp"
-									disabled={uploadAndExtractDocMutation.isPending}
+									accept=".pdf,image/jpeg,image/png"
+									disabled={uploadAndExtractDocMutation.isPending || !docAiConsent}
 									onChange={(e) => {
 										const file = e.target.files?.[0];
 										if (file) {
@@ -2112,20 +2087,21 @@ export function WorkflowRouteShellPage({
 								/>
 							</label>
 						</div>
+						<Link className="ui-button ui-button-primary" to={`/dashboard/events/${eventId}/review`}>Periksa rincian</Link>
 
 						<div className="rounded-xl border border-stone-200 bg-white p-3.5 text-base text-stone-600 space-y-1">
 							<p className="font-bold text-stone-900">
-								Prinsip Human-in-the-Loop Rangkai
+								Pemeriksaan panitia
 							</p>
 							<p>
 								Hasil ekstraksi AI tidak pernah langsung dipublikasikan ke
 								warga. Prajuru wajib memeriksa dan mengonfirmasi rincian di
-								sebelah kanan.
+								di halaman pemeriksaan.
 							</p>
 						</div>
 					</div>
 
-					<div className="xl:col-span-7 teduh-workspace-card space-y-4">
+					<div hidden={!pathname.endsWith("/review")} onChangeCapture={() => setDocDirty(true)} className="xl:col-span-7 teduh-workspace-card space-y-4">
 						<div className="flex items-center justify-between">
 							<h2 className="teduh-workspace-card-title">
 								Periksa &amp; Konfirmasi Rincian Upacara
@@ -2369,7 +2345,7 @@ export function WorkflowRouteShellPage({
 							mode={roadInputMode}
 							height={430}
 							draftCoordinates={draftCoordinates}
-							onDraftCoordinatesChange={setDraftCoordinates}
+							onDraftCoordinatesChange={(coordinates) => { setFieldDirty(true); setDraftCoordinates(coordinates); }}
 							catalogSegments={catalogSegments}
 							selectedCatalogSegmentId={selectedCatalogSegmentId}
 							onSelectCatalogSegment={setSelectedCatalogSegmentId}
@@ -2636,7 +2612,7 @@ export function WorkflowRouteShellPage({
 							</h2>
 							<p className="text-base text-stone-600">
 								Klik ruas jalan pada peta atau pada panel kendali di sebelah
-								kanan untuk memperbarui status penutupan jalan secara real-time.
+								untuk mencatat kondisi jalan yang diamati.
 							</p>
 						</div>
 
@@ -3324,7 +3300,7 @@ export function WorkflowRouteShellPage({
 									<button
 										type="button"
 										onClick={() => void invitationsQuery.refetch()}
-										className="font-bold underline"
+										className="font-bold underline min-h-12"
 									>
 										Coba lagi
 									</button>

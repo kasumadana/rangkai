@@ -209,8 +209,7 @@ export function RegisterPage() {
 										</p>
 										<Link
 											to={safeReturnUrl}
-											className="teduh-pill-action"
-											style={{ alignSelf: "flex-start", marginTop: 4, padding: "8px 16px", fontSize: "1rem" }}
+											className="ui-button ui-button-primary"
 										>
 											<span>Buka Undangan & Konfirmasi Hak Akses</span>
 											<ArrowRight size={14} />
@@ -241,8 +240,7 @@ export function RegisterPage() {
 									</p>
 									<Link
 										to="/onboarding/organization"
-										className="teduh-pill-action"
-										style={{ alignSelf: "flex-start", marginTop: 4, padding: "8px 16px", fontSize: "1rem" }}
+										className="ui-button ui-button-primary"
 									>
 										<span>Buat Organisasi Desa Adat</span>
 										<ArrowRight size={14} />

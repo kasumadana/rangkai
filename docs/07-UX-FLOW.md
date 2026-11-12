@@ -311,3 +311,8 @@ The frontend is standardized on Astryx (`@astryxdesign/core`, `@astryxdesign/the
 5. **Waste Logistics & Scenario Planner (`/dashboard/events/:id/cleanup`):**
    - Calculates sack count, drop-point recommendations, and waste breakdown (~0.35 kg/person/day).
    - Honest disclosure: `forecastKg: null` avoids unverified AI claims without historical labeled scale data.
+
+
+### Event creation and saved sections
+
+The four-step creation flow stays at `/dashboard/events/new` after a draft is created. Saving is server-confirmed; a locally retained draft supports recovery and is not an autosave. Existing events use the summary route and contextual sidebar links for document upload, review, roads, cleanup, and team. Unsaved changes trigger a confirmation before in-app navigation or browser Back, and a browser warning before a reload or tab close. AI document processing requires consent and manual entry remains available when extraction fails.

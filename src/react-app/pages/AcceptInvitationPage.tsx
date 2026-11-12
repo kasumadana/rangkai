@@ -284,8 +284,7 @@ export function AcceptInvitationPage() {
 										<Link
 											to="/login"
 											state={{ from: `/invite/${token}` }}
-											className="teduh-pill-action"
-											style={{ flex: 1, justifyContent: "center" }}
+											className="ui-button ui-button-primary"
 										>
 											<LogIn size={15} />
 											<span>Masuk Akun</span>

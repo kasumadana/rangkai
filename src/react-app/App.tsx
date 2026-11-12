@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router";
+import { createBrowserRouter, createRoutesFromElements, Navigate, Route, RouterProvider } from "react-router";
 import {
 	PublicShellLayout,
 	WorkspaceShellLayout,
@@ -24,13 +24,8 @@ import {
 import { SettingsPage } from "./pages/SettingsPage";
 import { PublicAssistantPage } from "./pages/PublicAssistantPage";
 
-export function App() {
-	const [queryClient] = useState(() => createAppQueryClient());
-
-	return (
-				<QueryClientProvider client={queryClient}>
-					<BrowserRouter>
-						<Routes>
+const router = createBrowserRouter(createRoutesFromElements(
+						<>
 							{/* Public Information Architecture */}
 							<Route element={<PublicShellLayout />}>
 								<Route path="/" element={<PublicHomePage />} />
@@ -157,10 +152,12 @@ export function App() {
 							</Route>
 
 							<Route path="*" element={<Navigate to="/" replace />} />
-						</Routes>
-					</BrowserRouter>
-				</QueryClientProvider>
-	);
+						</>
+));
+
+export function App() {
+	const [queryClient] = useState(() => createAppQueryClient());
+	return <QueryClientProvider client={queryClient}><RouterProvider router={router} /></QueryClientProvider>;
 }
 
 export default App;

@@ -192,8 +192,7 @@ export function LoginPage() {
 						<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 							<Link
 								to="/dashboard"
-								className="teduh-pill-action"
-								style={{ justifyContent: "center", padding: "12px 18px", fontSize: 14 }}
+								className="ui-button ui-button-primary"
 							>
 								<LayoutDashboard size={16} />
 								<span>Buka Panel Panitia</span>

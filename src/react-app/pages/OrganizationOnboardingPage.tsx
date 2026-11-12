@@ -128,7 +128,7 @@ export function OrganizationOnboardingPage() {
 						Untuk mendaftarkan organisasi desa adat baru, Anda harus memiliki akun terdaftar.
 					</p>
 					<div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 8 }}>
-						<Link to="/login" className="teduh-pill-action">
+						<Link to="/login" className="ui-button ui-button-primary">
 							<span>Masuk Akun</span>
 						</Link>
 						<Link to="/register" className="teduh-back-link">

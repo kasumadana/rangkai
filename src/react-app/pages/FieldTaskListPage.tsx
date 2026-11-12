@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, ClipboardCheck, Radio } from "lucide-react";
 import { Link } from "react-router";
 import { EmptyStateCard, ErrorStateBanner, LoadingStateBlock } from "../components/rangkai";
 import { fetchFieldTasks } from "../lib/events-api";
@@ -17,14 +16,13 @@ export function FieldTaskListPage() {
 		</header>
 		<section className="rounded-xl bg-blue-50 p-4 text-blue-900" aria-label="Pedoman Koordinasi Operasional Lapangan">
 			<strong>Pedoman Koordinasi Operasional Lapangan</strong>
-			<p>Pembaruan status ruas jalan berlaku 30 menit per SPO. Rangkai adalah instrumen koordinasi internal desa adat dan bukan pengganti wewenang penutupan jalan resmi kepolisian atau Dishub.</p>
+			<p>Status jalan yang kedaluwarsa harus diperbarui oleh petugas. Rangkai membantu koordinasi dan tidak menggantikan wewenang kepolisian atau Dishub.</p>
 		</section>
 		{isLoading ? <LoadingStateBlock label="Memuat daftar penugasan lapangan..." rows={3} /> : isError ?
 			<ErrorStateBanner title="Gagal Memuat Penugasan" error={error} onRetry={() => void refetch()} fallbackAction={<Link className="teduh-btn-primary" to="/login">Masuk Akun Petugas</Link>} /> :
 			assignments.length === 0 ? <EmptyStateCard title="Belum Ada Penugasan Kegiatan" description="Anda belum terdaftar dalam penugasan Pos Pecalang maupun Kebersihan pada kegiatan manapun. Hubungi Prajuru Desa Adat Anda untuk menerima tautan undangan tugas lapangan." actions={<Link className="teduh-btn-secondary" to="/events">Lihat Jadwal Upacara Se-Bali</Link>} /> :
 			<ul className="m-0 list-none divide-y divide-stone-200 p-0">
 				{assignments.map((task) => <li key={`${task.eventId}-${task.assignmentId ?? "oversight"}`} className="flex flex-wrap items-start gap-3 py-4">
-					{task.canUpdateTraffic ? <Radio size={20} aria-hidden="true" /> : <ClipboardCheck size={20} aria-hidden="true" />}
 					<div className="min-w-0 flex-1">
 						<div className="flex flex-wrap items-center gap-2"><strong>{task.eventTitle}</strong>{task.isSimulation ? <span className="map-popup-badge simulation-token">SIMULASI</span> : null}</div>
 						<p className="mt-1 text-sm text-stone-600">{task.organizationName} • {task.venueName || "Lokasi belum ditentukan"} • {formatWitaRange(task.startsAt, task.endsAt)}</p>
@@ -34,7 +32,7 @@ export function FieldTaskListPage() {
 							{task.isOrganizerOversight ? <span className="rounded-full bg-purple-50 px-2.5 py-1 text-purple-900">Prajuru Desa</span> : null}
 						</div>
 					</div>
-					<Link className="teduh-btn-primary" to={`/field/events/${task.eventId}`}>Buka Pos Jaga <ArrowRight size={16} aria-hidden="true" /></Link>
+					<Link className="ui-button ui-button-primary" to={`/field/events/${task.eventId}`}>Buka tugas</Link>
 				</li>)}
 			</ul>}
 	</section>;
