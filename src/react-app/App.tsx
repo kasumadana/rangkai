@@ -9,6 +9,7 @@ import { createAppQueryClient } from "./lib/query-client";
 import { EventWizardPage } from "./pages/EventWizardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { AdminOrganizationsPage } from "./pages/AdminOrganizationsPage";
 import { OrganizationOnboardingPage } from "./pages/OrganizationOnboardingPage";
 import { AcceptInvitationPage } from "./pages/AcceptInvitationPage";
 import { OrganizerOverviewPage } from "./pages/OrganizerOverviewPage";
@@ -55,6 +56,8 @@ const router = createBrowserRouter(createRoutesFromElements(
 									path="/onboarding/organization"
 									element={<OrganizationOnboardingPage />}
 								/>
+								<Route path="/onboarding/status" element={<OrganizationOnboardingPage />} />
+								<Route path="/admin/organizations" element={<AdminOrganizationsPage />} />
 								<Route
 									path="/invite/:token"
 									element={<AcceptInvitationPage />}

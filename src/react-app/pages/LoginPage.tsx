@@ -18,6 +18,7 @@ import {
 	useAuthSession,
 	useMyOrganizationsQuery,
 	useSignInMutation,
+	fetchMyOrganizations,
 	useSignOutMutation,
 } from "../lib/auth";
 import { useGsapPageReveal } from "../lib/gsap-motion";
@@ -82,7 +83,8 @@ export function LoginPage() {
 				email: parsed.data.email,
 				password: parsed.data.password,
 			});
-			navigate(redirectTarget);
+			if (rawFrom) navigate(redirectTarget);
+			else { try { const orgs = await fetchMyOrganizations(); navigate(orgs.organizations.length ? "/dashboard" : "/onboarding/status"); } catch { navigate("/onboarding/status"); } }
 		} catch (err) {
 			if (err instanceof ApiClientError) {
 				setServerErrorMessage(err.message);
@@ -190,6 +192,7 @@ export function LoginPage() {
 						)}
 
 						<div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                            <Link to="/onboarding/status">Lihat status pengajuan</Link>
 							<Link
 								to="/dashboard"
 								className="ui-button ui-button-primary"

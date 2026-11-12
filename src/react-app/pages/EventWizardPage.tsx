@@ -5,7 +5,6 @@ import {
 	AlertTriangle,
 	ArrowLeft,
 	ArrowRight,
-	Building2,
 	CheckCircle2,
 	ClipboardCheck,
 	FileText,
@@ -35,7 +34,6 @@ import { DashboardRoadMapInput } from "../features/map/DashboardRoadMapInput";
 import { VenueLocationInput } from "../features/map/VenueLocationInput";
 import { ApiClientError } from "../lib/api-client";
 import {
-	useCreateOrganizationMutation,
 	useMyOrganizationsQuery,
 } from "../lib/auth";
 import { SYSTEM_STATE_MESSAGES } from "../lib/constants/labels";
@@ -240,7 +238,6 @@ export function EventWizardPage() {
 	);
 
 	const myOrgsQuery = useMyOrganizationsQuery();
-	const createOrgMutation = useCreateOrganizationMutation();
 	const myOrganizations = useMemo(
 		() => myOrgsQuery.data?.organizations ?? [],
 		[myOrgsQuery.data?.organizations],
@@ -291,8 +288,6 @@ export function EventWizardPage() {
 	const [aiConsentGranted, setAiConsentGranted] = useState(false);
 
 	// Inline quick-create Desa Adat state
-	const [quickOrgName, setQuickOrgName] = useState("");
-	const [quickOrgVillage, setQuickOrgVillage] = useState("");
 
 	// Step 2: Road Map Input State ("draw" vs "catalog")
 	const [roadInputMode, setRoadInputMode] = useState<"draw" | "catalog">(
@@ -1045,74 +1040,7 @@ export function EventWizardPage() {
 										))}
 									</select>
 
-									{/* Quick-create Desa Adat if user has 0 memberships */}
-									{myOrganizations.length === 0 ? (
-										<div className="rounded border border-[#F3D9A4] bg-[#FDF7EB] p-3.5 space-y-2.5 mt-2">
-											<div className="flex items-center gap-1.5 text-base font-bold text-[#9A5B13]">
-												<Building2 className="w-3.5 h-3.5" />
-												<span>
-													Belum punya Desa Adat terdaftar? Buat cepat di sini:
-												</span>
-											</div>
-											<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-												<input
-													type="text"
-													value={quickOrgName}
-													onChange={(e) => setQuickOrgName(e.target.value)}
-													placeholder="Nama Desa Adat / Banjar *"
-													className="rounded border border-[#E5E3DC] bg-white px-3 py-1.5 text-base text-[#181817]"
-												/>
-												<input
-													type="text"
-													value={quickOrgVillage}
-													onChange={(e) => setQuickOrgVillage(e.target.value)}
-													placeholder="Kelurahan / Kecamatan (Mis. Ubud)"
-													className="rounded border border-[#E5E3DC] bg-white px-3 py-1.5 text-base text-[#181817]"
-												/>
-											</div>
-											<button
-												type="button"
-												disabled={
-													createOrgMutation.isPending ||
-													quickOrgName.trim().length < 3
-												}
-												onClick={async () => {
-													try {
-														const res = await createOrgMutation.mutateAsync({
-															name: quickOrgName.trim(),
-															village: quickOrgVillage.trim() || undefined,
-														});
-														updateField(
-															"organizationId",
-															res.organization.id,
-														);
-														saveOrganizationId(res.organization.id);
-														setQuickOrgName("");
-														setQuickOrgVillage("");
-														setBannerFeedback({
-															status: "success",
-															title: "Desa Adat Berhasil Didaftarkan",
-															description: `"${res.organization.name}" kini aktif sebagai Desa Adat penyelenggara.`,
-														});
-													} catch (err) {
-														setBannerFeedback({
-															status: "error",
-															title: "Gagal Membuat Desa Adat",
-															description:
-																err instanceof Error
-																	? err.message
-																	: "Pastikan Anda telah masuk akun.",
-														});
-													}
-												}}
-												className="px-3 py-1.5 rounded bg-[#4D702F] text-white text-base font-semibold hover:bg-[#405E28] disabled:opacity-50"
-											>
-												{createOrgMutation.isPending
-													? "Mendaftarkan..."
-													: "+ Daftarkan & Gunakan Desa Adat Ini"}
-											</button>
-										</div>
-									) : null}
+									{myOrganizations.length === 0 && <p>Belum ada organisasi terhubung. <Link to="/onboarding/organization">Ajukan organisasi untuk ditinjau</Link>.</p>}
 								</div>
 
 								{/* AI Consent Checkbox */}

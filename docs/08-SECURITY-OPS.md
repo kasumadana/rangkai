@@ -233,3 +233,24 @@ The assistant sends questions and at most ten public event titles/IDs to the con
 Assessment uses only task-scoped, authorized private evidence records; clients cannot supply object keys or URLs. Images go to Gemini only when the feature is explicitly enabled and an authorized user requests assessment. Object keys, raw image data and provider output are not logged or returned as source content. Photo uploads can contain metadata; operational use requires appropriate consent and review of the external provider data handling before enabling the feature.
 
 The authenticated assistant is read-only and scopes event facts to current membership and assigned officer permissions. It sends only a question and selected event ID/title to the provider and does not expose documents, photos, contact lists, invitation tokens, secrets, or audit payloads. Permission is checked again after provider processing and before response. The isolate-local limiter is not a distributed cost guard; production enablement requires separate edge/cost controls and authorized provider verification.
+
+## Organization governance (approved 2026-11-12)
+
+Platform superadmin grants are separate from organization memberships. Only active superadmin grants authorize the review queue and decisions; suspended, revoked and absent grants are denied server-side. An approval does not set operational authority, confer a police permit or approve a road impact. Preserve existing memberships; review each existing organization and authority independently, with no automatic mass approval or privilege backfill. Simulated activities remain explicitly labeled and do not prove real authority.
+
+Bootstrap one named, already registered administrator only after out-of-band identity and authority verification by the operator. Using restricted database credentials and a reviewed change window, execute an operator-supplied parameterized transaction inserting that user ID into `platform_grants` with role `superadmin` and status `active`, and a corresponding `platform_audit` row with the same actor, action `platform_grant.bootstrap`, request ID and reason; commit both together. Verify the exact user ID, role and audit entry, restrict database access and record the change ticket. Never publish a bootstrap endpoint, default password, credential or broad grant script. A separate approved process must handle future grant changes; no administration UI for grants is implied by this slice. Apply additive migrations to the guarded development branch first; production migration requires its own review and approval.
+
+### Bootstrap transaction template
+
+A database administrator supplies the already verified user ID, a change-ticket request ID and a reason through their database client's parameter binding; these are placeholders, not default credentials. Confirm the identity and lack of an existing grant before executing. Use one transaction, for example:
+
+```sql
+BEGIN;
+INSERT INTO platform_grants (user_id, role, status)
+VALUES (:verified_user_id, 'superadmin', 'active');
+INSERT INTO platform_audit (actor_id, action, request_id, reason)
+VALUES (:verified_user_id, 'platform_grant.bootstrap', :change_ticket_id, :reason);
+COMMIT;
+```
+
+The client must bind values as parameters rather than interpolate untrusted SQL. If either insert fails, roll back; verify the grant and audit row using a separate read before handing control to the named administrator. This grants no organization membership and does not change `has_operational_authority`.

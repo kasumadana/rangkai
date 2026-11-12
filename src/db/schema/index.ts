@@ -11,6 +11,7 @@ import {
 	text,
 	timestamp,
 	unique,
+	uniqueIndex,
 	uuid,
 } from "drizzle-orm/pg-core";
 import { user } from "../auth-schema";
@@ -129,6 +130,38 @@ export const memberships = pgTable(
 		),
 	],
 );
+
+export const platformGrants = pgTable("platform_grants", {
+ id: uuid("id").primaryKey().defaultRandom(),
+ userId: text("user_id").notNull().references(() => user.id),
+ role: text("role").notNull(),
+ status: text("status").default("active").notNull(),
+ createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [unique("platform_grants_user_role_unique").on(table.userId, table.role), check("platform_grants_role_check", sql`role IN ('superadmin', 'government_reviewer')`), check("platform_grants_status_check", sql`status IN ('active', 'suspended', 'revoked')`)]);
+
+export const organizationApplications = pgTable("organization_applications", {
+ id: uuid("id").primaryKey().defaultRandom(),
+ applicantId: text("applicant_id").notNull().references(() => user.id),
+ name: text("name").notNull(),
+ village: text("village").notNull(),
+ district: text("district").notNull(),
+ status: text("status").default("pending").notNull(),
+ decisionReason: text("decision_reason"),
+ decidedBy: text("decided_by").references(() => user.id),
+ decidedAt: timestamp("decided_at", { withTimezone: true }),
+ organizationId: uuid("organization_id").references(() => organizations.id),
+ createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [check("organization_applications_status_check", sql`status IN ('pending', 'approved', 'rejected')`), index("organization_applications_applicant_idx").on(table.applicantId), index("organization_applications_pending_idx").on(table.status), uniqueIndex("organization_applications_one_pending").on(table.applicantId).where(sql`status = 'pending'`)]);
+
+export const platformAudit = pgTable("platform_audit", {
+ id: uuid("id").primaryKey().defaultRandom(),
+ actorId: text("actor_id").notNull().references(() => user.id),
+ action: text("action").notNull(),
+ applicationId: uuid("application_id").references(() => organizationApplications.id),
+ reason: text("reason"),
+ requestId: text("request_id").notNull(),
+ createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
 
 export const events = pgTable(
 	"events",

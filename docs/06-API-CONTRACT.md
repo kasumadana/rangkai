@@ -57,38 +57,11 @@ Public endpoints never require a session.
 
 ## 4. Organizations & Onboarding
 
-### POST /api/organizations
-Permission: authenticated user  
-Requires: `Content-Type: application/json`
+### Organization applications and platform administration
 
-Request:
-```json
-{
-  "name": "Banjar Kaja Sesetan",
-  "village": "Sesetan",
-  "district": "Denpasar Selatan"
-}
-```
+`POST /api/organizations` now returns 403 for authenticated users; this is a breaking change to the former direct-create contract. Signup creates identity only. Authenticated applicants use `POST /api/me/organization-applications` with strict `{name, village, district}` (3-150, 2-100 and 2-100 characters after trimming); a second pending application returns 409. `GET /api/me/organization-applications` returns only the caller's own history, including rejection reason and approved organization ID. Rejected applicants may submit a new application.
 
-Behavior:
-- Atomically creates organization, assigns caller as `organizer` member, and writes initial audit log in a single CTE.
-- Idempotent: If caller already created an organization with identical name, returns existing organization (200 OK) without error or duplicates.
-- Default authority: `hasOperationalAuthority` defaults to `false`. Operational authority can only be granted by external authority.
-- Sanitized errors: Database constraint errors are mapped into standardized error envelopes without exposing internal table or SQL details.
-
-Response: 201 Created (or 200 OK if existing):
-```json
-{
-  "organization": {
-    "id": "uuid",
-    "name": "Banjar Kaja Sesetan",
-    "village": "Sesetan",
-    "district": "Denpasar Selatan",
-    "hasOperationalAuthority": false,
-    "createdAt": "2026-11-08T10:00:00Z"
-  }
-}
-```
+`GET /api/admin/organization-applications?page=1` requires an active superadmin platform grant and returns up to 50 applications, applicant identity, `page` and `hasMore`. `POST /api/admin/organization-applications/:id/decision` accepts strict `{decision: "approve" | "reject", reason?: string}`; rejection requires a nonempty reason, maximum 1000 characters. An authorized approval atomically creates an organization, organizer membership, decision and platform audit; a repeated identical decision returns the existing result and a conflicting decision returns 409. Rejection retains history and audit. Organization approval sets `hasOperationalAuthority=false`; it is not a road approval, official authority or permit. Invalid input yields 422, unauthenticated access 401, missing/suspended/revoked platform grants 403, and dependency failures a sanitized error. Organization and platform roles remain distinct.
 
 ### GET /api/organizations/my
 Permission: authenticated user  
@@ -273,7 +246,7 @@ Prerequisites:
 - Event must have explicit human review verification (`verifiedBy` and `verifiedAt` non-null).
 - Confirmed core fields (`title`, `startsAt`, `endsAt`, `venueName`).
 - At least one road impact referencing a verified road segment (`road_segments.verified_by` and `verified_at` non-null) with `plannedTo > plannedFrom`.
-- Operational Authority Gate (AGENTS §1): If publishing an operational event (`isSimulation: false`), the host organization must have `hasOperationalAuthority: true`. Otherwise, returns 403 Forbidden (`OPERATIONAL_AUTHORITY_REQUIRED`). Simulation events (`isSimulation: true`) may be published by any verified organization and are publicly tagged with `[SIMULATED]`.
+- Operational Authority Gate (AGENTS §1): If publishing an operational event (`isSimulation: false`), the host organization must have `hasOperationalAuthority: true`. Otherwise, returns 403 Forbidden (`OPERATIONAL_AUTHORITY_REQUIRED`). Simulation events (`isSimulation: true`) may be published by an authorized organizer and are publicly tagged with `[SIMULATED]`; an organization application approval is not proof of external operational authority.
 Idempotency:
 - If event is already published, returns 200 OK immediately without generating duplicate slugs or audit rows.
 Response: 200 OK with publicSlug, publishedAt, isSimulation, status "published". Atomic audit log recorded.

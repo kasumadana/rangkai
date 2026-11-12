@@ -217,8 +217,8 @@ FR-050..056 -> Cleanup module -> Workflow tests
 FR-060..065 -> Public module -> Anonymous E2E tests
 FR-070..073 -> Audit module -> Audit integration tests
 
-### FR-023: Safe Organization Onboarding
-The system shall atomically provision a new organization, assign the creating user as an organizer member, and record an initial audit log entry in a single transactional database CTE. Repeated creation attempts with identical names shall return the existing record idempotently without creating duplicate organizations.
+### FR-023: Organization Applications and Approval
+Authenticated users may submit one pending organization application and inspect only their own history. An active superadmin may approve or reject with reason. Approval atomically creates the organization, organizer membership, decision and platform audit, with idempotent identical decisions and denial for absent, suspended or revoked grants. Rejection permits a new application. Signup and the legacy direct-create endpoint confer no organizer privilege. Approval does not establish operational authority or approve a road closure.
 
 ### FR-024: Secure Invitation Lifecycle & Token Hashing
 The system shall store invitation tokens as SHA-256 hashes, require and bind a normalized recipient email, and execute acceptance via atomic single-consumption compare-and-swap (CAS) to eliminate double-claim race conditions.

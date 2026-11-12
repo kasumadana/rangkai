@@ -236,13 +236,13 @@ export function RegisterPage() {
 										</span>
 									</div>
 									<p style={{ margin: 0, fontSize: "1rem", lineHeight: 1.5, color: "#545B67" }}>
-										Daftarkan profil desa adat Anda. Anda otomatis menjadi Organizer untuk mengelola kegiatan dan mengundang petugas.
+										Ajukan profil organisasi untuk ditinjau. Akses pengelola diberikan setelah persetujuan.
 									</p>
 									<Link
 										to="/onboarding/organization"
 										className="ui-button ui-button-primary"
 									>
-										<span>Buat Organisasi Desa Adat</span>
+										<span>Ajukan Organisasi Desa Adat</span>
 										<ArrowRight size={14} />
 									</Link>
 								</div>
@@ -317,7 +317,7 @@ export function RegisterPage() {
 									color: "#545B67",
 								}}
 							>
-								<strong>Catatan Peran:</strong> Anda tidak perlu memilih peran saat mendaftar. Hak akses sebagai <em>Organizer</em> atau <em>Petugas Lapangan</em> ditentukan setelah Anda membuat organisasi atau menerima tautan undangan resmi.
+								<strong>Catatan Peran:</strong> Anda tidak perlu memilih peran saat mendaftar. Hak akses sebagai <em>Organizer</em> atau <em>Petugas Lapangan</em> ditentukan setelah pengajuan disetujui atau Anda menerima tautan undangan resmi.
 							</div>
 
 							{serverErrorMessage && (

@@ -294,3 +294,7 @@ Run migrations against a development Neon branch first.
 - Derive the current status from history.
 - Keep waste measurements separate from AI predictions.
 - Keep document content private by default.
+
+## Organization governance (approved 2026-11-12)
+
+`platform_grants` associates a user with a distinct superadmin or government_reviewer role and active, suspended or revoked state; user and role are unique. `organization_applications` records applicant, proposed name/village/district, pending/approved/rejected decision, reason, decision actor/time and resulting organization; one pending application per applicant is enforced by a partial unique index. `platform_audit` records actor, action, application, reason, request ID and UTC timestamp. Foreign keys preserve relationships. Existing memberships and organizations are not backfilled or automatically approved.
