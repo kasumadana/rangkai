@@ -31,3 +31,11 @@ Status: partial implementation, NOT a production-release PASS. Single Codex sess
 - No deployment, production migration, release tag or final-release acceptance.
 
 References retrieved: Cloudflare R2 Workers API https://developers.cloudflare.com/r2/api/workers/workers-api-reference/ and Gemini structured output https://ai.google.dev/gemini-api/docs/structured-output .
+
+## Ticket 01 local browser follow-up
+
+- The map popup now displays the observation expiry in Asia/Makassar, alongside the existing name, impact, status and planned schedule. A synthetic Chromium fixture mounts the actual MapLibre component and checks impact and catalog line clicks, marker click, hidden catalog features in draw mode and rendered drawn preview.
+- The synthetic field-page test confirms a dual-permission officer loads cleanup tasks on the traffic view, rejects WebP, empty and oversized photos, receives a server error, retries the same file, and uploads before/after stages. Its API is mocked; it does not prove persistence or production permissions.
+- Executed on the follow-up: focused Chromium browser suite 2/2 passed using installed Chrome and SwiftShader; `pnpm exec vitest run tests/unit/final-qa-input.test.ts` 4/4 passed; `pnpm exec tsc -b`, changed TypeScript ESLint and `pnpm build` passed. Build emitted existing Zod annotation and chunk-size warnings. Earlier fixture setup and concurrent-edit runs failed before correction and are not passes.
+- Reuse the prior local workerd R2 and actual Gemini evidence above; neither establishes production behavior. Production anonymous assistant remains 401 and deployed revision is unidentified; production organizer/officer credentials, production R2 and provider acceptance remain external gates.
+- Self-review (same session, not independent): Standards—no authorization or private data path changed; browser test uses synthetic data and no live provider. Spec—map status expiry is shown and the targeted rendered interactions pass; production acceptance and full role journey remain separate, and no deployment was performed.
