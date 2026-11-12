@@ -65,3 +65,33 @@ test("synthetic organization switch emits validated context and updates role", a
  await page.setViewportSize({ width: 1440, height: 900 }); await page.goto("/settings"); await page.evaluate(() => (globalThis as unknown as { addEventListener: (name: string, handler: (event: { detail: string }) => void) => void; document: { body: { setAttribute: (name: string, value: string) => void } } }).addEventListener("rangkai:organization-changed", event => (globalThis as unknown as { document: { body: { setAttribute: (name: string, value: string) => void } } }).document.body.setAttribute("data-test-organization", event.detail)));
  await page.getByRole("button", { name: "Profil" }).click(); await page.locator("#profile-menu").getByLabel("Organisasi").selectOption("org-2"); await expect(page.locator("body")).toHaveAttribute("data-test-organization", "org-2"); await expect(page.locator("#workspace-navigation").getByRole("link", { name: "Tugas saya" })).toBeVisible(); await expect(page.locator("#workspace-navigation").getByRole("link", { name: "Ringkasan" })).toHaveCount(0);
 });
+
+test("brand lockup uses supplied SVG and readable wordmark across shells", async ({ page }, testInfo) => {
+ await syntheticApi(page, "organizer");
+ const screenshotPath = (name: string) => process.env.RANGKAI_UI_SCREENSHOTS ? join(process.env.RANGKAI_UI_SCREENSHOTS, name) : testInfo.outputPath(name);
+ for (const width of [320, 1440]) {
+  await page.setViewportSize({ width, height: 900 });
+  for (const path of ["/", "/peta", "/dashboard"]) {
+   await page.goto(path);
+   const header = page.locator("header").first();
+   const brand = header.getByRole("link", { name: "rangkai beranda" });
+   await expect(brand).toBeVisible(); await expect(brand.locator("img")).toHaveAttribute("src", "/rangkai-icon.svg"); await expect(brand.locator("img")).toHaveAttribute("alt", ""); await expect(brand.locator("span")).toHaveText("rangkai");
+   const icon = await brand.locator("img").boundingBox(); const word = await brand.locator("span").boundingBox();
+   expect(icon && word && word.x >= icon.x + icon.width).toBeTruthy();
+   const font = await brand.locator("span").evaluate(node => (globalThis as unknown as { getComputedStyle: (element: unknown) => { fontFamily: string } }).getComputedStyle(node).fontFamily); expect(font).toContain("Plus Jakarta Sans");
+   expect(await page.evaluate(() => (globalThis as unknown as { document: { documentElement: { scrollWidth: number } }; innerWidth: number }).document.documentElement.scrollWidth <= (globalThis as unknown as { innerWidth: number }).innerWidth)).toBeTruthy();
+   await page.screenshot({ path: screenshotPath(`G-logo-${path === "/" ? "public" : path.slice(1)}-${width}.png`), fullPage: false });
+  }
+ }
+ await page.goto("/"); await expect(page.locator("footer").getByRole("link", { name: "rangkai beranda" })).toHaveCount(1);
+ const favicon = await page.locator('link[rel="icon"]').getAttribute("href"); expect(favicon).toBe("/rangkai-icon.svg"); expect((await page.request.get(favicon!)).status()).toBe(200);
+});
+
+test("preloader reuses decorative brand lockup", async ({ page }, testInfo) => {
+ await page.route("**/api/**", route => route.fulfill({ json: { events: [], features: [], organizations: [], pagination: { total: 0, totalPages: 0 } } }));
+ await page.goto("/", { waitUntil: "domcontentloaded" });
+ const brand = page.locator(".rangkai-preloader .brand-logo");
+ await expect(brand).toBeVisible(); await expect(brand).toHaveAttribute("aria-hidden", "true"); await expect(brand.locator("img")).toHaveAttribute("src", "/rangkai-icon.svg"); await expect(brand.locator("span")).toHaveText("rangkai");
+ const output = process.env.RANGKAI_UI_SCREENSHOTS ? join(process.env.RANGKAI_UI_SCREENSHOTS, "G-logo-preloader.png") : testInfo.outputPath("G-logo-preloader.png");
+ await page.screenshot({ path: output });
+});

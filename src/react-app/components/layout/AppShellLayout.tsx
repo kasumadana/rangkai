@@ -11,6 +11,7 @@ import { useAuthSession, useMyOrganizationsQuery } from "../../lib/auth";
 import { fetchEventDetail, fetchFieldEventDetail, getSavedOrganizationId } from "../../lib/events-api";
 
 import { ProfileMenu } from "../ui/ProfileMenu";
+import { BrandLogo } from "../ui/BrandLogo";
 import { PublicHeader } from "../ui/PublicHeader";
 import { RangkaiPreloader } from "../rangkai";
 
@@ -26,7 +27,7 @@ export function PublicShellLayout() {
 
  if (pathname === "/peta" || pathname.endsWith("/map")) return <><RangkaiPreloader preloaderKey="peta" /><Outlet /></>;
 
- return <div className="public-shell">{pathname === "/" && <RangkaiPreloader preloaderKey="landing" />}<PublicHeader /><main id="main-content"><Outlet /></main><footer className="simple-footer"><nav aria-label="Tautan publik"><Link to="/">Beranda</Link><Link to="/events">Jadwal kegiatan</Link><Link to="/peta">Peta kawasan</Link><Link to="/tanya">Tanya kegiatan</Link><Link to="/dashboard">Ruang kerja</Link><Link to="/field">Tugas lapangan</Link></nav><p>Rangkai membantu koordinasi dan bukan izin resmi penutupan jalan. Penyelesaian kebersihan tidak membuka jalan secara otomatis; pembaruan jalan dilakukan petugas berwenang.</p></footer></div>;
+ return <div className="public-shell">{pathname === "/" && <RangkaiPreloader preloaderKey="landing" />}<PublicHeader /><main id="main-content"><Outlet /></main><footer className="simple-footer"><BrandLogo /><nav aria-label="Tautan publik"><Link to="/">Beranda</Link><Link to="/events">Jadwal kegiatan</Link><Link to="/peta">Peta kawasan</Link><Link to="/tanya">Tanya kegiatan</Link><Link to="/dashboard">Ruang kerja</Link><Link to="/field">Tugas lapangan</Link></nav><p>Rangkai membantu koordinasi dan bukan izin resmi penutupan jalan. Penyelesaian kebersihan tidak membuka jalan secara otomatis; pembaruan jalan dilakukan petugas berwenang.</p></footer></div>;
 
 }
 
@@ -74,7 +75,7 @@ export function WorkspaceShellLayout() {
 
  const link = (to: string, label: string, current: boolean) => <Link key={to} to={to} onClick={() => setOpen(false)} aria-current={current ? "page" : undefined} className={`teduh-sidebar-link ${current ? "is-active" : ""}`}>{label}</Link>;
 
- return <div className="teduh-workspace-shell"><header className="teduh-workspace-topbar"><div className="teduh-workspace-topbar-left"><button ref={trigger} type="button" className="workspace-menu-toggle" aria-label={open ? "Tutup menu ruang kerja" : "Buka menu ruang kerja"} aria-expanded={open} aria-controls="workspace-navigation" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button><Link to="/" className="teduh-workspace-brand"><img src="/logo.png" alt="Rangkai" /></Link></div><ProfileMenu /></header>
+ return <div className="teduh-workspace-shell"><header className="teduh-workspace-topbar"><div className="teduh-workspace-topbar-left"><button ref={trigger} type="button" className="workspace-menu-toggle" aria-label={open ? "Tutup menu ruang kerja" : "Buka menu ruang kerja"} aria-expanded={open} aria-controls="workspace-navigation" onClick={() => setOpen(!open)}>{open ? <X /> : <Menu />}</button><BrandLogo /></div><ProfileMenu /></header>
 
  <div className="teduh-workspace-body">{open && <button type="button" className="workspace-menu-backdrop" aria-label="Tutup menu ruang kerja" onClick={() => { setOpen(false); trigger.current?.focus(); }} />}
 
