@@ -38,6 +38,18 @@ function state(): State { return { member: "organizer", event: true, assignment:
 function provider(intent = "event_lookup", ids = [`event:${eventId}`]) {
  return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ intent, sourceIds: ids }) }] } }] }), { status: 200 });
 }
+function answerProvider(sourceIds: string[], answer = "Saya menemukan informasi yang sesuai dengan pertanyaan.") {
+ return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ disposition: "answered", answer, sourceIds }) }] } }] }), { status: 200 });
+}
+function providerSequence(intent = "event_lookup", ids = [`event:${eventId}`], answer?: string) {
+ let calls = 0;
+ return vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+  if (calls++ === 0) return provider(intent, ids);
+  const body = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
+  const request = JSON.parse(body.contents[0].parts[0].text) as { evidence: Array<{ sourceId: string }> };
+  return answerProvider(request.evidence.map(item => item.sourceId), answer);
+ });
+}
 afterEach(() => vi.unstubAllGlobals());
 describe("authenticated assistant", () => {
  it("denies anonymous, foreign organization, foreign event, and unassigned officer before provider", async () => {
@@ -52,15 +64,24 @@ describe("authenticated assistant", () => {
   expect(h.calls).toHaveLength(0); expect(fetchMock).not.toHaveBeenCalled();
  });
  it("returns only projected event data and never sends private metadata", async () => {
-  const fetchMock = vi.fn().mockResolvedValue(provider()); vi.stubGlobal("fetch", fetchMock);
+  const fetchMock = providerSequence(); vi.stubGlobal("fetch", fetchMock);
   const h = harness(state()); const response = await h.request(input); const json = await response.json() as Result;
   expect(response.status).toBe(200); expect(json.sources[0]).toMatchObject({ facts: { isSimulation: true } });
   expect(JSON.stringify(json)).not.toContain("secret"); expect(JSON.stringify(fetchMock.mock.calls)).not.toContain("secret");
   for (const mutation of Object.values(h.mutations)) expect(mutation).not.toHaveBeenCalled();
  });
+ it("answers role-appropriate help from reviewed guidance", async () => {
+  vi.stubGlobal("fetch", providerSequence("help", ["help:traffic"], "Petugas yang ditugaskan dapat mencatat pengamatan status jalan sesuai izin."));
+  const response = await harness(state()).request({ ...input, question: "Bagaimana cara melaporkan kondisi jalan?" });
+  const json = await response.json() as Result & { answer: string };
+  expect(response.status).toBe(200);
+  expect(json.status).toBe("answered");
+  expect(json.answer).toContain("mencatat pengamatan status jalan");
+  expect(json.sources).toMatchObject([{ sourceId: "help:traffic", kind: "help" }]);
+ });
  it("enforces category permissions and allows dual permissions", async () => {
   for (const [intent, assignment, status] of [["road_status", { traffic: false, cleanup: true }, 403], ["cleanup_summary", { traffic: true, cleanup: false }, 403], ["road_status", { traffic: true, cleanup: true }, 200], ["cleanup_summary", { traffic: true, cleanup: true }, 200]] as const) {
-   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(provider(intent)));
+   vi.stubGlobal("fetch", providerSequence(intent));
    const h = harness({ ...state(), member: "officer", assignment }); const response = await h.request(input); expect(response.status).toBe(status);
    if (status === 403) expect(h.calls).not.toContain(intent === "road_status" ? roadImpacts : cleanupTasks);
    if (status === 200) { const json = await response.json() as Result; expect(json.sources.every(s => "isSimulation" in s.facts && s.facts.isSimulation)).toBe(true); if (intent === "road_status") expect(json.sources[0]).toMatchObject({ facts: { status: "unconfirmed" } }); else expect(json.sources.find(s => s.kind === "waste")).toMatchObject({ facts: { measurementMethod: "estimated" } }); }
@@ -69,9 +90,23 @@ describe("authenticated assistant", () => {
  it("rechecks revoked membership and assignment after provider await", async () => {
   for (const revoke of ["member", "assignment"] as const) {
    const s = { ...state(), member: "officer", assignment: { traffic: true, cleanup: true } };
-   vi.stubGlobal("fetch", vi.fn(async () => { if (revoke === "member") s.member = null as never; else s.assignment = null as never; return provider("road_status"); }));
+   vi.stubGlobal("fetch", vi.fn(async (_input: string | URL | Request, init?: RequestInit) => { if (revoke === "member") s.member = null as never; else s.assignment = null as never; if (!init?.body) return provider("road_status"); return provider("road_status"); }));
    expect((await harness(s).request(input)).status).toBe(403);
   }
+ });
+ it("rechecks access after grounded answer generation before returning private facts", async () => {
+  let calls = 0;
+  const s: State = { ...state(), member: "officer", assignment: { traffic: true, cleanup: true } };
+  vi.stubGlobal("fetch", vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+   if (calls++ === 0) return provider("road_status");
+   s.member = null;
+   const body = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
+   const request = JSON.parse(body.contents[0].parts[0].text) as { evidence: Array<{ sourceId: string }> };
+   return answerProvider(request.evidence.map(item => item.sourceId), "Jalan terbuka.");
+  }));
+  const response = await harness(s).request(input);
+  expect(response.status).toBe(403);
+  expect(JSON.stringify(await response.json())).not.toContain("Road");
  });
  it("revalidates the original session after pending private fact reads", async () => {
   for (const outcome of ["revoked", "expired", "replaced", "failure", "authorized"] as const) {
@@ -80,7 +115,7 @@ describe("authenticated assistant", () => {
    const entered = new Promise<void>(resolve => { reached = resolve; });
    const s = state();
    s.onQuery = async table => { if (table === roadImpacts) { reached(); await pending; } };
-   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(provider("road_status")));
+   vi.stubGlobal("fetch", providerSequence("road_status"));
    const request = harness(s).request(input);
    await entered;
    if (outcome === "revoked") s.session = false;
@@ -101,7 +136,7 @@ describe("authenticated assistant", () => {
    const entered = new Promise<void>(resolve => { reached = resolve; });
    const s = state();
    s.onQuery = async table => { if (table === memberships && ++memberReads === (empty ? 2 : 3)) { reached(); await pending; } };
-   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(provider("event_lookup", empty ? [] : [`event:${eventId}`])));
+   vi.stubGlobal("fetch", providerSequence("event_lookup", empty ? [] : [`event:${eventId}`]));
    const request = harness(s).request(input); await entered; s.session = false; release();
    const response = await request;
    expect(response.status).toBe(401); expect(await response.json()).not.toHaveProperty("sources");
@@ -109,6 +144,11 @@ describe("authenticated assistant", () => {
  });
  it("enforces its isolate-local rate limit", async () => {
   const h = harness(state());
+  vi.stubGlobal("fetch", vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+   const body = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
+   const request = JSON.parse(body.contents[0].parts[0].text) as { sources?: unknown[]; evidence?: Array<{ sourceId: string }> };
+   return request.evidence ? answerProvider(request.evidence.map(item => item.sourceId)) : provider("event_lookup", [`event:${eventId}`]);
+  }));
   const init = { method: "POST", headers: { "content-type": "application/json", "x-test-rate-limit": "1", "cf-connecting-ip": "203.0.113.174" }, body: JSON.stringify({ question: "hello" }) };
   for (let i = 0; i < 10; i++) expect((await h.app.request("/assistant/questions", init, env)).status).toBe(200);
   const response = await h.app.request("/assistant/questions", init, env);

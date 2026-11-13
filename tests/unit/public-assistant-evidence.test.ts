@@ -11,8 +11,18 @@ vi.mock("../../src/worker/routes/public", async () => {
 import { publicAssistantRouter } from "../../src/worker/routes/public-assistant";
 const row = { slug: "synthetic", title: "Synthetic", status: "published", isSimulation: true, startsAt: null, endsAt: null };
 function app() { const chain = { from: () => chain, innerJoin: () => chain, where: () => chain, orderBy: () => chain, limit: async () => [row] }; const server = new Hono<{ Bindings: Env; Variables: AppVariables }>(); server.use("*", async (c, next) => { c.set("db", { select: () => chain } as never); c.set("requestId", "test"); await next(); }); server.route("/assistant", publicAssistantRouter); return server; }
-async function ask(intent: string) {
- vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ intent, sourceIds: ["event:synthetic"] }) }] } }] }))));
+function model(value: unknown) { return new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify(value) }] } }] })); }
+function modelSequence(intent: string, answer = "Informasi yang cocok dengan pertanyaan tersedia.") {
+ let calls = 0;
+ return vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+  if (calls++ === 0) return model({ intent, sourceIds: ["event:synthetic"] });
+  const body = JSON.parse(String(init?.body)) as { contents: Array<{ parts: Array<{ text: string }> }> };
+  const request = JSON.parse(body.contents[0].parts[0].text) as { evidence: Array<{ sourceId: string }> };
+  return model({ disposition: "answered", answer, sourceIds: request.evidence.map(item => item.sourceId) });
+ });
+}
+async function ask(intent: string, answer?: string) {
+ vi.stubGlobal("fetch", modelSequence(intent, answer));
  return app().request("/assistant/questions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: "synthetic test" }) }, { PUBLIC_ASSISTANT_ENABLED: "true", GEMINI_API_KEY: "synthetic" });
 }
 async function askWithStatus(status: string, exact: boolean, authorized = true) {
@@ -30,14 +40,14 @@ async function askWithStatus(status: string, exact: boolean, authorized = true) 
  const server = new Hono<{ Bindings: Env; Variables: AppVariables }>();
  server.use("*", async (c, next) => { c.set("db", { select: () => chain } as never); c.set("requestId", "test"); await next(); });
  server.route("/assistant", publicAssistantRouter);
- vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ candidates: [{ finishReason: "STOP", content: { parts: [{ text: JSON.stringify({ intent: "cleanup_summary", sourceIds: ["event:synthetic"] }) }] } }] }))));
+ vi.stubGlobal("fetch", modelSequence("cleanup_summary"));
  const response = await server.request("/assistant/questions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ question: "Ringkasan kebersihan kegiatan", ...(exact ? { eventSlug: "synthetic" } : {}) }) }, { PUBLIC_ASSISTANT_ENABLED: "true", GEMINI_API_KEY: "synthetic" });
  return { response, queries };
 }
 afterEach(() => vi.unstubAllGlobals());
 describe("assistant public evidence", () => {
  it("converts expired open to unconfirmed and keeps simulation label", async () => { const response = await ask("road_status"); const data = await response.json() as { status: string; answer: string; sources: Array<{ status: string; isSimulation: boolean; expiresAt: string; summary: { verifiedTasks: number } }> }; expect(data.status).toBe("answered"); expect(data.sources[0].status).toBe("unconfirmed"); expect(data.sources[0].isSimulation).toBe(true); expect(data.sources[0].expiresAt).toBe("2020-01-01T01:00:00.000Z"); });
- it("returns public cleanup counts without road transition", async () => { const response = await ask("cleanup_summary"); const data = await response.json() as { status: string; answer: string; sources: Array<{ status: string; isSimulation: boolean; expiresAt: string; summary: { verifiedTasks: number } }> }; expect(data.sources[0].summary.verifiedTasks).toBe(1); expect(data.answer).toContain("tidak membuka jalan"); });
+ it("returns public cleanup counts without road transition", async () => { const response = await ask("cleanup_summary", "Satu tugas telah diverifikasi. Verifikasi kebersihan tidak membuka jalan."); const data = await response.json() as { status: string; answer: string; sources: Array<{ status: string; isSimulation: boolean; expiresAt: string; summary: { verifiedTasks: number } }> }; expect(data.sources[0].summary.verifiedTasks).toBe(1); expect(data.answer).toContain("tidak membuka jalan"); });
  it("answers completed cleanup for an exact public slug", async () => {
   const { response, queries } = await askWithStatus("completed", true);
   const data = await response.json() as { status: string; sources: Array<{ status: string; summary: { verifiedTasks: number } }> };

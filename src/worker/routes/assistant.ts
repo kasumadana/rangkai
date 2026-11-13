@@ -6,7 +6,7 @@ import { cleanupTasks, eventAssignments, events, memberships, organizationTerrit
 import { sendError } from "../lib/errors";
 import { requireAuth } from "../middleware/auth";
 import { rateLimit } from "../middleware/rate-limit";
-import { freshRoadStatus, selectAssistantSources, validateSelection, type AssistantSource } from "../services/public-assistant";
+import { freshRoadStatus, generateGroundedAssistantAnswer, preserveAssistantCaveats, selectAssistantSources, validateAssistantAnswer, validateSelection, type AssistantAnswerEvidence, type AssistantSource } from "../services/public-assistant";
 import { assistantHelp } from "../services/assistant-help";
 import type { AppVariables, Env } from "../types";
 import { GEMINI_MODEL_NAME } from "../validators/extractions";
@@ -60,7 +60,10 @@ assistantRouter.post("/questions", async c => {
  if (c.env?.PUBLIC_ASSISTANT_ENABLED !== "true") return sendError(c, "FEATURE_DISABLED", "Asisten tidak aktif.", 503);
  if (!c.env.GEMINI_API_KEY?.trim()) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten belum dikonfigurasi.", 503);
  const source: AssistantSource = { sourceId: `event:${eventId}`, publicUrl: "", title: initial.event.title, status: initial.event.status, isSimulation: initial.event.isSimulation, startsAt: null, endsAt: null, observedAt: null, expiresAt: null };
- const selected = validateSelection(await selectAssistantSources(question, [source], c.env.GEMINI_API_KEY.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME), [source]);
+ const helpEntries = Object.entries(assistantHelp).filter(([topic]) => topic === "platform" || topic === "map" || topic === "event" && initial.organizer || topic === "traffic" && initial.traffic || topic === "cleanup" && initial.cleanup);
+ const helpCandidates = helpEntries.map(([topic, item]) => ({ sourceId: `help:${topic}`, title: item.title }));
+ const candidates = [source, ...helpCandidates];
+ const selected = validateSelection(await selectAssistantSources(question, candidates, c.env.GEMINI_API_KEY.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME), candidates, question);
  if (!selected) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten tidak dapat memproses pertanyaan. Gunakan halaman kegiatan.", 503);
  const originalSession = c.get("session");
  const validateSession = async () => {
@@ -75,27 +78,41 @@ assistantRouter.post("/questions", async c => {
  if (current.error) return denied(current.error);
  if (selected.intent === "road_status" && !current.traffic || selected.intent === "cleanup_summary" && !current.cleanup) return sendError(c, "FORBIDDEN", "Permission required.", 403);
  const url = current.organizer ? `/dashboard/events/${eventId}` : `/field/events/${eventId}`;
- const base = { status: "abstained" as const, scope: "internal" as const, intent: selected.intent, answer: "Informasi yang diminta belum dapat dijawab. Gunakan halaman kegiatan.", sources: [] as AssistantSourceFact[], searchUrl: url };
- if (!selected.sourceIds.includes(source.sourceId)) {
+ const base = { status: "abstained" as const, scope: "internal" as const, intent: selected.intent, answer: selected.intent === "out_of_scope" ? "Pertanyaan ini di luar konteks Rangkai. Saya dapat membantu informasi kegiatan, status jalan, kebersihan, dan panduan penggunaan yang sesuai dengan izin Anda." : "Informasi yang diminta belum tersedia. Gunakan halaman kegiatan untuk memeriksa data yang tercatat.", sources: [] as AssistantSourceFact[], searchUrl: url };
+ if (selected.intent === "help") {
+  for (const [topic, item] of helpEntries) {
+   const sourceId = `help:${topic}`;
+   if (selected.sourceIds.includes(sourceId)) base.sources.push({ sourceId, url: item.url, kind: "help", title: item.title, facts: {} });
+  }
+ } else if (!selected.sourceIds.includes(source.sourceId)) {
   const sessionError = await validateSession();
   if (sessionError) return sessionError;
   return c.json(base);
  }
  const sim = current.event.isSimulation;
- if (selected.intent === "event_lookup") {
+ if (selected.intent === "event_lookup" && selected.sourceIds.includes(source.sourceId)) {
   base.sources.push({ sourceId: source.sourceId, url, kind: "event", title: current.event.title, facts: { status: current.event.status, startsAt: current.event.startsAt?.toISOString() ?? null, endsAt: current.event.endsAt?.toISOString() ?? null, isSimulation: sim } });
- } else if (selected.intent === "road_status") {
+ } else if (selected.intent === "road_status" && selected.sourceIds.includes(source.sourceId)) {
   const roads = await db.select({ id: roadImpacts.id, title: roadSegments.displayName }).from(roadImpacts).innerJoin(roadSegments, eq(roadImpacts.roadSegmentId, roadSegments.id)).where(and(eq(roadImpacts.eventId, eventId), sql`(EXISTS (SELECT 1 FROM ${events} e0 WHERE e0.id=${roadImpacts.eventId} AND e0.is_simulation) OR EXISTS (SELECT 1 FROM ${roadReviewRequests} q JOIN ${organizationTerritoryVersions} tv ON tv.id=q.territory_version_id JOIN ${events} e ON e.id=q.event_id JOIN ${roadSegments} segment ON segment.id=q.road_segment_id WHERE q.road_impact_id=${roadImpacts.id} AND q.status='approved' AND q.is_simulation=e.is_simulation AND q.geometry_wkb=encode(ST_AsEWKB(segment.geom),'hex') AND q.planned_from=${roadImpacts.plannedFrom} AND q.planned_to=${roadImpacts.plannedTo} AND q.impact_type=${roadImpacts.impactType} AND q.event_starts_at IS NOT DISTINCT FROM e.starts_at AND q.event_ends_at IS NOT DISTINCT FROM e.ends_at AND q.territory_content_hash=tv.content_hash AND tv.status='verified' AND q.territory_version_id=(SELECT latest.id FROM ${organizationTerritoryVersions} latest WHERE latest.organization_id=e.organization_id AND latest.status='verified' ORDER BY latest.version DESC LIMIT 1)))`)).limit(20);
   for (const road of roads) {
    const [latest] = await db.select({ status: roadStatusUpdates.status, observedAt: roadStatusUpdates.observedAt, expiresAt: roadStatusUpdates.expiresAt }).from(roadStatusUpdates).where(eq(roadStatusUpdates.roadImpactId, road.id)).orderBy(desc(roadStatusUpdates.createdAt)).limit(1);
    const expiresAt = latest?.expiresAt?.toISOString() ?? null;
    base.sources.push({ sourceId: `road:${road.id}`, url: current.organizer ? `${url}/roads` : url, kind: "road", title: road.title, facts: { status: freshRoadStatus(latest?.status ?? "unknown", expiresAt), observedAt: latest?.observedAt?.toISOString() ?? null, expiresAt, isSimulation: sim } });
   }
- } else if (selected.intent === "cleanup_summary") {
-  const tasks = await db.select({ id: cleanupTasks.id, title: cleanupTasks.title, status: cleanupTasks.status, dueAt: cleanupTasks.dueAt }).from(cleanupTasks).where(eq(cleanupTasks.eventId, eventId)).limit(20);
-  const waste = await db.select({ id: wasteRecords.id, category: wasteRecords.category, measurementMethod: wasteRecords.measurementMethod, quantityKg: wasteRecords.quantityKg, sackCount: wasteRecords.sackCount }).from(wasteRecords).where(eq(wasteRecords.eventId, eventId)).limit(20);
+ } else if (selected.intent === "cleanup_summary" && selected.sourceIds.includes(source.sourceId)) {
+  const tasks = await db.select({ id: cleanupTasks.id, title: cleanupTasks.title, status: cleanupTasks.status, dueAt: cleanupTasks.dueAt }).from(cleanupTasks).where(eq(cleanupTasks.eventId, eventId)).limit(10);
+  const waste = await db.select({ id: wasteRecords.id, category: wasteRecords.category, measurementMethod: wasteRecords.measurementMethod, quantityKg: wasteRecords.quantityKg, sackCount: wasteRecords.sackCount }).from(wasteRecords).where(eq(wasteRecords.eventId, eventId)).limit(10);
   for (const task of tasks) base.sources.push({ sourceId: `cleanup:${task.id}`, url: current.organizer ? `${url}/cleanup` : url, kind: "cleanup", title: task.title, facts: { status: task.status, dueAt: task.dueAt?.toISOString() ?? null, isSimulation: sim } });
   for (const record of waste) base.sources.push({ sourceId: `waste:${record.id}`, url: current.organizer ? `${url}/cleanup` : url, kind: "waste", title: current.event.title, facts: { category: record.category, measurementMethod: record.measurementMethod, quantityKg: record.quantityKg, sackCount: record.sackCount, isSimulation: sim } });
+ }
+ let generated: ReturnType<typeof validateAssistantAnswer> = null;
+ if (base.sources.length) {
+  const evidence: AssistantAnswerEvidence[] = base.sources.map(item => {
+   const helpEntry = item.kind === "help" ? helpEntries.find(([topic]) => `help:${topic}` === item.sourceId)?.[1] : undefined;
+   return { sourceId: item.sourceId, kind: item.kind, title: item.title, facts: item.kind === "help" ? { reviewedAnswer: helpEntry?.answer ?? "" } : item.facts };
+  });
+  generated = validateAssistantAnswer(await generateGroundedAssistantAnswer(question, selected.intent, evidence, c.env.GEMINI_API_KEY.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME), evidence);
+  if (!generated) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten tidak dapat memverifikasi jawaban. Coba lagi nanti.", 503);
  }
  const finalAccess = await access();
  if (finalAccess.error) return denied(finalAccess.error);
@@ -104,6 +121,9 @@ assistantRouter.post("/questions", async c => {
  const finalSessionError = await validateSession();
  if (finalSessionError) return finalSessionError;
  for (const item of base.sources) if (item.kind === "road") item.facts.status = freshRoadStatus(item.facts.status, item.facts.expiresAt);
- if (!base.sources.length) return c.json(base);
- return c.json({ ...base, status: "answered", answer: selected.intent === "road_status" ? "Status kedaluwarsa tidak terkonfirmasi; jalan terbuka belum tentu lancar." : selected.intent === "cleanup_summary" ? "Berikut catatan kebersihan dan sampah. Verifikasi kebersihan tidak membuka jalan." : "Berikut data kegiatan yang dipilih." });
+ if (!base.sources.length || !generated) return c.json(base);
+ const sources = generated.disposition === "answered" ? base.sources.filter(item => generated!.sourceIds.includes(item.sourceId)) : [];
+ const citedEvidence: AssistantAnswerEvidence[] = sources.map(item => ({ sourceId: item.sourceId, kind: item.kind, title: item.title, facts: item.kind === "help" ? {} : item.facts }));
+ const answer = generated.disposition === "answered" ? preserveAssistantCaveats(generated.answer, selected.intent, citedEvidence) : generated.answer;
+ return c.json({ ...base, status: generated.disposition, answer, sources });
 });
