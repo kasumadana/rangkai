@@ -26,6 +26,10 @@
 	"env": {
 		"production": {
 			"name": "rangkai-production",
+			"vars": {
+				"PUBLIC_ASSISTANT_ENABLED": "true",
+				"NETWORK_ROUTING_ENABLED": "true"
+			},
 			"r2_buckets": [
 				{
 					"bucket_name": "rangkai-documents-prod",
