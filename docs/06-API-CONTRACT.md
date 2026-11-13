@@ -717,6 +717,14 @@ Anonymous list of organizer-approved manual alternative routes for a published e
   }
   ```
 
+### POST /api/public/routes/guidance
+Transient GPS guidance through a selected, organizer-approved manual corridor.
+- **Input:** `{ "coordinates": [[longitude, latitude], ...] }`; 2–50 ordered coordinate pairs, each within Bali's configured bounds. Request body is limited to 4 KiB.
+- **Provider:** Requires `NETWORK_ROUTING_ENABLED=true` and the server-side `ORS_API_KEY`; makes a fixed `driving-car` request to HeiGIT OpenRouteService and never exposes the key to the browser.
+- **Precondition:** The client calls this endpoint only when the selected event has at least one organizer-approved manual alternative route. Without one, it displays that no approved route is available and sends no ORS request.
+- **Response:** `{ "coordinates": [[longitude, latitude], ...], "distanceMeters": 1800, "durationSeconds": 240 }` from one validated GeoJSON LineString.
+- **Privacy and failure:** Coordinates are not stored or logged, and responses use `Cache-Control: no-store`. Provider calls time out after six seconds. Missing configuration, provider errors, or malformed geometry return `503`; invalid input returns `422`. The client must still reject returned geometry crossing an active closed/intermittent road and must not draw fallback geometry.
+
 ### POST /api/public/routes/alternatives
 Conditional network routing candidate avoiding road closures.
 - **Gate:** Unconditionally returns `HTTP 503 SERVICE_UNAVAILABLE` (Ticket 07 deferred). Real road-network avoidance routing is not active, preventing any unsafe fallback paths, external network calls, or pretend geometry. Points caller to verified manual alternative routes.

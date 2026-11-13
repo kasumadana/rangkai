@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { z } from "zod";
 import {
 	cleanupTasks,
@@ -17,6 +18,7 @@ import {
 import { evaluateEffectiveRoadStatus } from "./roads";
 import { computeRouteSourceSnapshotHash } from "./alternative-routes";
 import { BALI_GEOGRAPHIC_BOUNDS } from "../validators/roads";
+import { rateLimit } from "../middleware/rate-limit";
 
 const publicRouter = new Hono<{
 	Bindings: Env;
@@ -28,6 +30,36 @@ const PUBLIC_LIST_STATUSES = ["published", "active"] as const;
 const publicAuthority = sql`(${events.isSimulation} IS DISTINCT FROM FALSE OR EXISTS (
 	SELECT 1 FROM organizations o WHERE o.id = ${events.organizationId} AND o.has_operational_authority = TRUE
 ))`;
+
+const routeGuidanceCoordinateSchema = z.tuple([
+	z.number().refine(
+		(n) => Number.isFinite(n) && n >= BALI_GEOGRAPHIC_BOUNDS.minLng && n <= BALI_GEOGRAPHIC_BOUNDS.maxLng,
+		{ message: "Koordinat longitude harus berada di wilayah Bali." },
+	),
+	z.number().refine(
+		(n) => Number.isFinite(n) && n >= BALI_GEOGRAPHIC_BOUNDS.minLat && n <= BALI_GEOGRAPHIC_BOUNDS.maxLat,
+		{ message: "Koordinat latitude harus berada di wilayah Bali." },
+	),
+]);
+
+const routeGuidanceSchema = z.object({
+	coordinates: z.array(routeGuidanceCoordinateSchema).min(2).max(50),
+}).strict();
+
+const routeGuidanceResponseSchema = z.object({
+	features: z.array(z.object({
+		geometry: z.object({
+			type: z.literal("LineString"),
+			coordinates: z.array(z.tuple([z.number(), z.number()])).min(2).max(20_000),
+		}),
+		properties: z.object({
+			summary: z.object({
+				distance: z.number().finite().nonnegative(),
+				duration: z.number().finite().nonnegative(),
+			}),
+		}).passthrough(),
+	})).min(1),
+});
 
 /**
  * GET /api/public/events
@@ -942,11 +974,130 @@ const networkRoutingSchema = z.object({
 	eventSlug: z.string().trim().max(100).optional(),
 });
 
+publicRouter.use(
+	"/routes/guidance",
+	rateLimit({ windowMs: 60_000, max: 8, keyPrefix: "public-route-guidance" }),
+);
+publicRouter.use(
+	"/routes/guidance",
+	bodyLimit({
+		maxSize: 4096,
+		onError: (c) => sendError(c, "VALIDATION_FAILED", "Request terlalu besar.", 413),
+	}),
+);
+
+/**
+ * POST /api/public/routes/guidance
+ * Private-key ORS directions proxy for a user's GPS guidance along an
+ * organizer-approved corridor. Coordinates are never persisted or logged.
+ */
+publicRouter.post("/routes/guidance", async (c) => {
+	c.header("Cache-Control", "no-store");
+	if (Number(c.req.header("content-length") ?? 0) > 4096) {
+		return sendError(c, "VALIDATION_FAILED", "Request terlalu besar.", 413);
+	}
+
+	let body: unknown;
+	try {
+		body = await c.req.json();
+	} catch {
+		return sendError(c, "BAD_REQUEST", "Invalid JSON payload.", 400);
+	}
+	const parsed = routeGuidanceSchema.safeParse(body);
+	if (!parsed.success) {
+		return sendError(
+			c,
+			"VALIDATION_FAILED",
+			parsed.error.issues[0]?.message || "Invalid route guidance coordinates.",
+			422,
+		);
+	}
+
+	const orsApiKey = c.env?.ORS_API_KEY?.trim();
+	if (c.env?.NETWORK_ROUTING_ENABLED !== "true" || !orsApiKey) {
+		return sendError(
+			c,
+			"DEPENDENCY_UNAVAILABLE",
+			"Panduan rute belum tersedia. Jalur tidak ditampilkan.",
+			503,
+		);
+	}
+
+	const controller = new AbortController();
+	const incomingSignal = c.req.raw.signal;
+	const abortOnDisconnect = () => controller.abort();
+	incomingSignal.addEventListener("abort", abortOnDisconnect, { once: true });
+	const timeoutId = setTimeout(() => controller.abort(), 6_000);
+
+	try {
+		const response = await fetch(
+			"https://api.heigit.org/openrouteservice/v2/directions/driving-car/geojson",
+			{
+				method: "POST",
+				headers: {
+					Authorization: orsApiKey,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({
+					coordinates: parsed.data.coordinates,
+					instructions: false,
+				}),
+				signal: controller.signal,
+			},
+		);
+		if (!response.ok) {
+			return sendError(
+				c,
+				"DEPENDENCY_UNAVAILABLE",
+				"Layanan rute belum dapat menghitung jalur. Coba lagi beberapa saat.",
+				503,
+			);
+		}
+
+		let providerPayload: unknown;
+		try {
+			providerPayload = await response.json();
+		} catch {
+			return sendError(c, "DEPENDENCY_UNAVAILABLE", "Respons rute tidak valid.", 503);
+		}
+		const routeResult = routeGuidanceResponseSchema.safeParse(providerPayload);
+		const feature = routeResult.success ? routeResult.data.features[0] : null;
+		if (
+			!feature ||
+			!feature.geometry.coordinates.every(([lng, lat]) =>
+				Number.isFinite(lng) && Number.isFinite(lat) &&
+				lng >= BALI_GEOGRAPHIC_BOUNDS.minLng && lng <= BALI_GEOGRAPHIC_BOUNDS.maxLng &&
+				lat >= BALI_GEOGRAPHIC_BOUNDS.minLat && lat <= BALI_GEOGRAPHIC_BOUNDS.maxLat
+			)
+		) {
+			return sendError(c, "DEPENDENCY_UNAVAILABLE", "Respons rute tidak valid.", 503);
+		}
+
+		return c.json(
+			{
+				coordinates: feature.geometry.coordinates,
+				distanceMeters: Math.round(feature.properties.summary.distance),
+				durationSeconds: Math.round(feature.properties.summary.duration),
+			},
+			200,
+		);
+	} catch {
+		return sendError(
+			c,
+			"DEPENDENCY_UNAVAILABLE",
+			"Layanan rute lambat atau tidak dapat dijangkau. Coba lagi.",
+			503,
+		);
+	} finally {
+		clearTimeout(timeoutId);
+		incomingSignal.removeEventListener("abort", abortOnDisconnect);
+	}
+});
+
 /**
  * POST /api/public/routes/alternatives (Ticket 07)
  * Network routing candidate with avoidance of road closures.
- * Enforces conditional gate: if ORS_API_KEY is not configured or NETWORK_ROUTING_ENABLED !== 'true',
- * returns honest 503 SERVICE_UNAVAILABLE pointing to verified manual alternative routes.
+ * This endpoint remains deferred and always points to reviewed manual routes.
  */
 publicRouter.post("/routes/alternatives", async (c) => {
 	let body: unknown;

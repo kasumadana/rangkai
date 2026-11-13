@@ -902,7 +902,7 @@ export function DashboardRoadMapInput({
 
 			{/* Legend Bar BELOW Map (keeps map canvas unobstructed) */}
 			<div className="teduh-dashboard-map-legend">
-				{mode !== "operational" ? <span className="teduh-legend-item">Rencana dampak:</span> : null}
+				{mode !== "operational" ? <span className="teduh-legend-title">Rencana dampak:</span> : null}
 				<span className="teduh-legend-item">
 					<i style={{ background: "#C8322B" }} /> Ditutup Penuh
 				</span>

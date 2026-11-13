@@ -535,8 +535,13 @@ export function PublicEventDetailPage({
 	const lastCalcPosRef = useRef<[number, number] | null>(null);
 	const lastCalcTimeRef = useRef<number>(0);
 	const detailGuidanceRequestIdRef = useRef(0);
+	const detailGuidanceAbortControllerRef = useRef<AbortController | null>(null);
 	const lastDetailGuidanceProfileRef = useRef(spatialProfile);
 	const lastDetailGuidanceAlternativesRef = useRef(alternativeRoutesQuery.data);
+	useEffect(
+		() => () => detailGuidanceAbortControllerRef.current?.abort(),
+		[],
+	);
 
 	const handleCalculateDetailAlternativeRoute = useCallback(async () => {
 		if (!spatialProfile || !gps.position?.coordinates) {
@@ -544,11 +549,15 @@ export function PublicEventDetailPage({
 			return;
 		}
 		if (gps.position.accuracy > 50) {
-											detailGuidanceRequestIdRef.current += 1;
+			detailGuidanceRequestIdRef.current += 1;
+			detailGuidanceAbortControllerRef.current?.abort();
 			setDetailGuidanceRoute(null);
 			setDetailGuidanceStatus("Menunggu lokasi yang lebih akurat untuk menyusun rute.");
 			return;
 		}
+		detailGuidanceAbortControllerRef.current?.abort();
+		const abortController = new AbortController();
+		detailGuidanceAbortControllerRef.current = abortController;
 		const requestId = ++detailGuidanceRequestIdRef.current;
 		setDetailGuidanceRoute(null);
 		setDetailGuidanceStatus("Menyusun rute melalui jalur alternatif yang disetujui...");
@@ -558,6 +567,7 @@ export function PublicEventDetailPage({
 				ceremony: spatialProfile,
 				alternativeRoutes:
 					alternativeRoutesQuery.data?.alternativeRoutes ?? [],
+				signal: abortController.signal,
 			});
 			if (requestId !== detailGuidanceRequestIdRef.current) return;
 			setDetailGuidanceRoute(route);
@@ -570,6 +580,10 @@ export function PublicEventDetailPage({
 			if (requestId !== detailGuidanceRequestIdRef.current) return;
 			setDetailGuidanceRoute(null);
 			setDetailGuidanceStatus("Rute belum dapat dihitung. Jalur rute tidak ditampilkan.");
+		} finally {
+			if (detailGuidanceAbortControllerRef.current === abortController) {
+				detailGuidanceAbortControllerRef.current = null;
+			}
 		}
 	}, [spatialProfile, gps.position, alternativeRoutesQuery.data, setDetailGuidanceRoute]);
 
@@ -581,21 +595,25 @@ export function PublicEventDetailPage({
 			lastDetailGuidanceProfileRef.current = spatialProfile;
 			lastDetailGuidanceAlternativesRef.current = alternativeRoutesQuery.data;
 			detailGuidanceRequestIdRef.current += 1;
+			detailGuidanceAbortControllerRef.current?.abort();
 			lastCalcPosRef.current = null;
 			lastCalcTimeRef.current = 0;
 		}
 		if (!gps.active) {
 			detailGuidanceRequestIdRef.current += 1;
+			detailGuidanceAbortControllerRef.current?.abort();
 			lastCalcPosRef.current = null;
 			return;
 		}
 		if (!spatialProfile || !gps.position?.coordinates) {
 			detailGuidanceRequestIdRef.current += 1;
+			detailGuidanceAbortControllerRef.current?.abort();
 			return;
 		}
 
 		if (gps.position.accuracy > 50) {
 			detailGuidanceRequestIdRef.current += 1;
+			detailGuidanceAbortControllerRef.current?.abort();
 			return;
 		}
 
@@ -607,7 +625,7 @@ export function PublicEventDetailPage({
 		if (lastPos) {
 			const movedMeters = haversineDistanceMeters(lastPos, coords);
 			const elapsedSec = (now - lastTime) / 1000;
-			if (movedMeters < 30 || elapsedSec < 15) {
+			if (movedMeters < 30 && elapsedSec < 15) {
 				return;
 			}
 		}
@@ -615,7 +633,6 @@ export function PublicEventDetailPage({
 		lastCalcPosRef.current = coords;
 		lastCalcTimeRef.current = now;
 		// GPS changes start an asynchronous routing request and publish its result.
-		// eslint-disable-next-line react-hooks/set-state-in-effect
 		void handleCalculateDetailAlternativeRoute();
 	}, [gps.active, gps.position, spatialProfile, alternativeRoutesQuery.data, handleCalculateDetailAlternativeRoute]);
 
@@ -1159,7 +1176,7 @@ export function PublicEventDetailPage({
 				{visibleDetailGuidanceStatus ? (
 					<div className="teduh-guidance-status" role="status" aria-live="polite">
 						{visibleDetailGuidanceStatus}
-						<small>Koordinat GPS dikirim ke layanan OSRM saat rute dihitung.</small>
+						<small>Koordinat GPS dikirim melalui server Rangkai ke ORS untuk menghitung rute dan tidak disimpan oleh aplikasi.</small>
 					</div>
 				) : null}
 								<div className="teduh-legend-items">
@@ -2817,23 +2834,24 @@ export function WorkflowRouteShellPage({
 						</div>
 
 						{/* Attached Road Impacts List */}
-						<div className="workflow-panel space-y-3">
-							<h3 className="teduh-workspace-card-title">
-								Ruas Jalan Terdampak ({attachedRoadImpacts.length})
-							</h3>
+						<div className="workflow-panel teduh-road-impacts-panel">
+							<div className="teduh-road-impacts-header">
+								<h3 className="teduh-workspace-card-title">Ruas Jalan Terdampak</h3>
+								<span className="teduh-road-impacts-count">{attachedRoadImpacts.length}</span>
+							</div>
 							{attachedRoadImpacts.length === 0 ? (
 								<EmptyStateCard
 									title={SYSTEM_STATE_MESSAGES.noMatchingRoad.title}
 									description={SYSTEM_STATE_MESSAGES.noMatchingRoad.description}
 								/>
 							) : (
-								<div className="space-y-2.5">
+								<div className="teduh-road-impacts-list">
 									{attachedRoadImpacts.map((imp) => (
 										<div
 											key={imp.id}
-											className="rounded border border-stone-200 bg-white p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 max-w-full overflow-hidden"
+											className="teduh-road-impact-row"
 										>
-											<div className="min-w-0 flex-1 break-words">
+											<div className="teduh-road-impact-copy">
 												<p className="text-base font-bold text-stone-900 break-words">
 													{imp.segment?.displayName ||
 														imp.displayName ||
@@ -2844,8 +2862,8 @@ export function WorkflowRouteShellPage({
 													{imp.diversionNote ? ` • ${imp.diversionNote}` : ""}
 												</p>
 											</div>
-											<div className="flex flex-wrap items-center justify-between sm:justify-end gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-stone-200">
-												<div className="max-w-full overflow-hidden">
+											<div className="teduh-road-impact-actions">
+												<div className="teduh-road-impact-status">
 													<RoadStatusBadge
 														status={
 															imp.operationalStatus?.effectiveStatus ===
@@ -2857,7 +2875,7 @@ export function WorkflowRouteShellPage({
 														expiresAt={imp.operationalStatus?.expiresAt}
 													/>
 												</div>
-												<div className="flex justify-end gap-2 shrink-0">
+												<div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
 													{isOrganizer && imp.sourceType === "catalog" && (rawEvent?.status === "draft" || rawEvent?.status === "review") && (!imp.reviewStatus || imp.reviewStatus === "rejected" || imp.reviewStatus === "superseded") ? (
 														<button
 															type="button"
@@ -2874,6 +2892,7 @@ export function WorkflowRouteShellPage({
 													) : null}
 													<button
 														type="button"
+														aria-label={`Hapus ${imp.segment?.displayName || imp.displayName || "ruas jalan"}`}
 														onClick={() =>
 															void deleteRoadImpactOnTabMutation.mutateAsync(
 																imp.id,

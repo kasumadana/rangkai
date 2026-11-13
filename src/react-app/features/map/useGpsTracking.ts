@@ -15,6 +15,10 @@ export function useGpsTracking() {
 	}, []);
 	const start = useCallback(() => {
 		if (watch.current !== null) return;
+		if (!window.isSecureContext) {
+			setError("GPS memerlukan HTTPS di HP. Alamat HTTP jaringan lokal tidak dapat meminta lokasi.");
+			return;
+		}
 		if (!navigator.geolocation) { setError("GPS tidak tersedia di perangkat ini."); return; }
 		setError(""); setActive(true); setFollowing(true);
 		const id = ++generation.current;
@@ -25,7 +29,15 @@ export function useGpsTracking() {
 			setError(""); setPosition({ coordinates, accuracy: result.coords.accuracy });
 		}, (failure) => {
 			if (generation.current !== id) return;
-			stop(); setError(failure.code === 1 ? "Izin lokasi ditolak. Aktifkan izin lokasi di peramban dan coba lagi." : failure.code === 3 ? "Pencarian lokasi terlalu lama. Coba lagi." : "Lokasi belum tersedia. Periksa GPS dan coba lagi.");
+			if (failure.code === 1) {
+				stop();
+				setError("Izin lokasi ditolak. Aktifkan izin lokasi di peramban dan coba lagi.");
+				return;
+			}
+			setPosition(null);
+			setError(failure.code === 3
+				? "GPS masih mencari lokasi. Pelacakan tetap aktif dan akan mencoba lagi."
+				: "Lokasi belum tersedia. Periksa GPS; pelacakan tetap aktif dan akan mencoba lagi.");
 		}, { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }); }
 		catch { stop(); setError("GPS tidak tersedia di perangkat ini. Coba lagi."); }
 	}, [stop]);

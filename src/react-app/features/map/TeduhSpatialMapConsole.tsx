@@ -140,7 +140,11 @@ export function TeduhSpatialMapConsole() {
 	});
 
 	// 2c. Fetch public alternative routes for the active event (SPEC-08)
-	const { data: altRoutesData } = useQuery({
+	const {
+		data: altRoutesData,
+		isLoading: isAltRoutesLoading,
+		isError: isAltRoutesError,
+	} = useQuery({
 		queryKey: ["public", "events", activeSlug, "alternative-routes"],
 		queryFn: () => fetchPublicAlternativeRoutes(activeSlug),
 		enabled: Boolean(activeSlug),
@@ -339,8 +343,13 @@ export function TeduhSpatialMapConsole() {
 	const lastCalcPosRef = useRef<[number, number] | null>(null);
 	const lastCalcTimeRef = useRef<number>(0);
 	const guidanceRequestIdRef = useRef(0);
+	const guidanceAbortControllerRef = useRef<AbortController | null>(null);
 	const lastGuidanceProfileRef = useRef(activeVillage);
 	const lastGuidanceAlternativesRef = useRef(altRoutesData);
+	useEffect(
+		() => () => guidanceAbortControllerRef.current?.abort(),
+		[],
+	);
 
 	const handleCalculateDrawerRoute = useCallback(async (
 		targetVillage?: BaliVillageCeremonyProfile | null,
@@ -352,10 +361,37 @@ export function TeduhSpatialMapConsole() {
 		}
 		if (gps.position.accuracy > 50) {
 			guidanceRequestIdRef.current += 1;
+			guidanceAbortControllerRef.current?.abort();
 			setSpatialGuidanceRoute(null);
 			setSpatialGuidanceStatus("Menunggu lokasi yang lebih akurat untuk menyusun rute.");
 			return;
 		}
+		if (isAltRoutesLoading || isAltRoutesError) {
+			guidanceRequestIdRef.current += 1;
+			guidanceAbortControllerRef.current?.abort();
+			setSpatialGuidanceRoute(null);
+			setSpatialGuidanceStatus(
+				isAltRoutesLoading
+					? "Memuat jalur alternatif yang disetujui..."
+					: "Data jalur alternatif belum dapat dimuat. Periksa koneksi lalu coba lagi.",
+			);
+			return;
+		}
+		const hasApprovedAlternative =
+			(altRoutesData?.alternativeRoutes.length ?? 0) > 0 ||
+			(v.alternativeRoutes?.length ?? 0) > 0;
+		if (!hasApprovedAlternative) {
+			guidanceRequestIdRef.current += 1;
+			guidanceAbortControllerRef.current?.abort();
+			setSpatialGuidanceRoute(null);
+			setSpatialGuidanceStatus(
+				"Belum ada jalur alternatif yang disetujui untuk kegiatan ini. Tambahkan dan setujui jalur lewat dashboard organizer.",
+			);
+			return;
+		}
+		guidanceAbortControllerRef.current?.abort();
+		const abortController = new AbortController();
+		guidanceAbortControllerRef.current = abortController;
 		const requestId = ++guidanceRequestIdRef.current;
 		setSpatialGuidanceRoute(null);
 		setSpatialGuidanceStatus("Menyusun rute melalui jalur alternatif yang disetujui...");
@@ -364,6 +400,7 @@ export function TeduhSpatialMapConsole() {
 				userLocation: gps.position.coordinates,
 				ceremony: v,
 				alternativeRoutes: altRoutesData?.alternativeRoutes ?? [],
+				signal: abortController.signal,
 			});
 			if (requestId !== guidanceRequestIdRef.current) return;
 			setSpatialGuidanceRoute(route, v);
@@ -376,8 +413,19 @@ export function TeduhSpatialMapConsole() {
 			if (requestId !== guidanceRequestIdRef.current) return;
 			setSpatialGuidanceRoute(null);
 			setSpatialGuidanceStatus("Rute belum dapat dihitung. Jalur rute tidak ditampilkan.");
+		} finally {
+			if (guidanceAbortControllerRef.current === abortController) {
+				guidanceAbortControllerRef.current = null;
+			}
 		}
-	}, [activeVillage, gps.position, altRoutesData, setSpatialGuidanceRoute]);
+	}, [
+		activeVillage,
+		gps.position,
+		altRoutesData,
+		isAltRoutesLoading,
+		isAltRoutesError,
+		setSpatialGuidanceRoute,
+	]);
 
 	useEffect(() => {
 		const routingInputsChanged =
@@ -387,25 +435,30 @@ export function TeduhSpatialMapConsole() {
 			lastGuidanceProfileRef.current = activeVillage;
 			lastGuidanceAlternativesRef.current = altRoutesData;
 			guidanceRequestIdRef.current += 1;
+			guidanceAbortControllerRef.current?.abort();
 			lastCalcPosRef.current = null;
 			lastCalcTimeRef.current = 0;
 		}
 		if (!gps.active) {
 			guidanceRequestIdRef.current += 1;
+			guidanceAbortControllerRef.current?.abort();
 			lastCalcPosRef.current = null;
 			return;
 		}
 		if (!gps.position?.coordinates) {
 			guidanceRequestIdRef.current += 1;
+			guidanceAbortControllerRef.current?.abort();
 			return;
 		}
 		if (!activeVillage) {
 			guidanceRequestIdRef.current += 1;
+			guidanceAbortControllerRef.current?.abort();
 			return;
 		}
 
 		if (gps.position.accuracy > 50) {
 			guidanceRequestIdRef.current += 1;
+			guidanceAbortControllerRef.current?.abort();
 			return;
 		}
 
@@ -417,7 +470,7 @@ export function TeduhSpatialMapConsole() {
 		if (lastPos) {
 			const movedMeters = haversineDistanceMeters(lastPos, coords);
 			const elapsedSec = (now - lastTime) / 1000;
-			if (movedMeters < 30 || elapsedSec < 15) {
+			if (movedMeters < 30 && elapsedSec < 15) {
 				return;
 			}
 		}
@@ -425,7 +478,6 @@ export function TeduhSpatialMapConsole() {
 		lastCalcPosRef.current = coords;
 		lastCalcTimeRef.current = now;
 		// GPS changes start an asynchronous routing request and publish its result.
-		// eslint-disable-next-line react-hooks/set-state-in-effect
 		void handleCalculateDrawerRoute(activeVillage);
 	}, [gps.active, gps.position, activeVillage, altRoutesData, handleCalculateDrawerRoute]);
 
@@ -447,7 +499,12 @@ export function TeduhSpatialMapConsole() {
 		// Reset previous route so old calculation never flashes on a new ceremony
 		setSpatialGuidanceRoute(null);
 		lastCalcPosRef.current = null;
-		if (gps.active && gps.position?.coordinates && gps.position.accuracy <= 50) {
+		if (
+			activeVillage === v &&
+			gps.active &&
+			gps.position?.coordinates &&
+			gps.position.accuracy <= 50
+		) {
 			void handleCalculateDrawerRoute(v);
 		}
 	}
@@ -748,7 +805,7 @@ export function TeduhSpatialMapConsole() {
 				{visibleSpatialGuidanceStatus ? (
 					<div className="map-routing-status" role="status" aria-live="polite">
 						{visibleSpatialGuidanceStatus}
-						<small>Koordinat GPS dikirim ke layanan OSRM saat rute dihitung.</small>
+						<small>Koordinat GPS dikirim melalui server Rangkai ke ORS untuk menghitung rute dan tidak disimpan oleh aplikasi.</small>
 					</div>
 				) : null}
 			</div>
