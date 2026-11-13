@@ -1,7 +1,7 @@
 # Grounded AI Assistant Responses
 
 **Date:** 2026-11-13  
-**Status:** Design selected by user; written specification pending review  
+**Status:** Approved for implementation by user on 2026-11-13
 **Scope:** Public and authenticated modes of the shared assistant widget
 
 ## Problem

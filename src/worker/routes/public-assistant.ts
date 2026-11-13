@@ -6,7 +6,7 @@ import { publicRouter } from "./public";
 import { events, organizations } from "../../db/schema";
 import { sendError } from "../lib/errors";
 import { rateLimit } from "../middleware/rate-limit";
-import { assistantInputSchema, freshRoadStatus, selectAssistantSources, validateSelection, type AssistantSource } from "../services/public-assistant";
+import { assistantInputSchema, freshRoadStatus, generateGroundedAssistantAnswer, preserveAssistantCaveats, selectAssistantSources, validateAssistantAnswer, validateSelection, type AssistantAnswerEvidence, type AssistantSource } from "../services/public-assistant";
 import { assistantHelp, type AssistantHelpTopic } from "../services/assistant-help";
 import type { AppVariables, Env } from "../types";
 import { GEMINI_MODEL_NAME } from "../validators/extractions";
@@ -41,6 +41,10 @@ publicAssistantRouter.post("/questions", async c => {
  const selected = validateSelection(providerSelection, available, question);
  if (!selected && providerSelection !== null) console.warn("assistant_provider_failure", { reason: "selection_invalid" });
  if (!selected) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten tidak dapat memproses pertanyaan. Gunakan pencarian kegiatan.", 503);
+ const makeAnswer = async (intent: string, evidence: AssistantAnswerEvidence[]) => validateAssistantAnswer(
+  await generateGroundedAssistantAnswer(question, intent, evidence, c.env.GEMINI_API_KEY!.trim(), c.env.GEMINI_MODEL?.trim() || GEMINI_MODEL_NAME),
+  evidence,
+ );
  if (selected.intent === "route_help") {
   const abstain = (answer: string) => c.json({ status: "abstained", intent: "route_help", answer, sources: [], searchUrl: "/events", mapUrl: "/peta" });
   if (!selected.origin || !selected.destination) return abstain("Sebutkan lokasi asal dan tujuan secara jelas, lalu coba lagi.");
@@ -64,18 +68,33 @@ publicAssistantRouter.post("/questions", async c => {
     const item = assistantHelp[topic];
     return { sourceId: id, kind: "help" as const, title: item.title, url: item.url, answer: item.answer };
    });
-   return c.json({ status: "answered", intent: "help", answer: "Panduan penggunaan Rangkai:", sources: guidance, searchUrl: "/events" });
+   const evidence: AssistantAnswerEvidence[] = guidance.map(item => ({ sourceId: item.sourceId, kind: "help", title: item.title, facts: { reviewedAnswer: item.answer } }));
+   const answer = await makeAnswer("help", evidence);
+   if (!answer) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten tidak dapat memverifikasi jawaban. Coba lagi nanti.", 503);
+   const sources = answer.disposition === "answered" ? guidance.filter(item => answer.sourceIds.includes(item.sourceId)) : [];
+   const citedEvidence = evidence.filter(item => answer.sourceIds.includes(item.sourceId));
+   const text = answer.disposition === "answered" ? preserveAssistantCaveats(answer.answer, "help", citedEvidence) : answer.answer;
+   return c.json({ status: answer.disposition, intent: "help", answer: text, sources, searchUrl: "/events" });
   }
   return c.json({ status: "abstained", intent: "help", answer: "Panduan yang sesuai belum tersedia.", sources: [], searchUrl: "/events" }); }
  const current = await retrieve();
  const result = current.filter(source => selected.sourceIds.includes(source.sourceId));
- if (selected.intent === "event_lookup" && result.length) return c.json({ status: "answered", intent: selected.intent, answer: "Berikut data kegiatan yang dipilih. Periksa kesesuaian sumber; status kegiatan bukan status jalan.", sources: result, searchUrl: "/events" });
+ if (selected.intent === "event_lookup" && result.length) {
+  const evidence: AssistantAnswerEvidence[] = result.map(source => ({ sourceId: source.sourceId, kind: "event", title: source.title, facts: { venueName: source.venueName ?? null, village: source.village ?? null, district: source.district ?? null, status: source.status, startsAt: source.startsAt, endsAt: source.endsAt, isSimulation: source.isSimulation } }));
+  const answer = await makeAnswer(selected.intent, evidence);
+  if (!answer) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten tidak dapat memverifikasi jawaban. Coba lagi nanti.", 503);
+  const sources = answer.disposition === "answered" ? result.filter(source => answer.sourceIds.includes(source.sourceId)) : [];
+  const citedEvidence = evidence.filter(item => answer.sourceIds.includes(item.sourceId));
+  const text = answer.disposition === "answered" ? preserveAssistantCaveats(answer.answer, selected.intent, citedEvidence) : answer.answer;
+  return c.json({ status: answer.disposition, intent: selected.intent, answer: text, sources, searchUrl: "/events" });
+ }
  if ((selected.intent === "road_status" || selected.intent === "cleanup_summary") && result.length) {
   const internal = new Hono<{ Bindings: Env; Variables: AppVariables }>();
   internal.use("*", async (context, next) => { context.set("db", db); context.set("requestId", c.get("requestId")); await next(); });
   internal.route("/", publicRouter);
   const facts: Array<Record<string, unknown>> = [];
   for (const event of result.slice(0, 3)) {
+   if (facts.length >= 20) break;
    const slug = event.sourceId.slice(6);
    const suffix = selected.intent !== "cleanup_summary" ? "roads" : "cleanup-summary";
    const response = await internal.request(`http://internal/events/${encodeURIComponent(slug)}/${suffix}`, {}, c.env);
@@ -84,14 +103,28 @@ publicAssistantRouter.post("/questions", async c => {
    if (selected.intent !== "cleanup_summary") {
     const shape = z.object({ isSimulation: z.boolean(), roads: z.array(z.object({ id: z.string(), displayName: z.string(), plannedFrom: z.string().nullable().optional(), plannedTo: z.string().nullable().optional(), operationalStatus: z.object({ effectiveStatus: z.string(), observedAt: z.string().nullable(), expiresAt: z.string().nullable() }) })).max(500) }).safeParse(payload);
     if (!shape.success) continue;
-    for (const road of shape.data.roads.slice(0, 20)) facts.push({ sourceId: `road:${road.id}`, publicUrl: `${event.publicUrl}`, title: road.displayName, startsAt: road.plannedFrom ?? null, endsAt: road.plannedTo ?? null, eventStatus: event.status, isSimulation: shape.data.isSimulation, status: freshRoadStatus(road.operationalStatus.effectiveStatus, road.operationalStatus.expiresAt), observedAt: road.operationalStatus.observedAt, expiresAt: road.operationalStatus.expiresAt });
+    for (const road of shape.data.roads.slice(0, Math.max(0, 20 - facts.length))) facts.push({ sourceId: `road:${road.id}`, publicUrl: `${event.publicUrl}`, title: road.displayName, startsAt: road.plannedFrom ?? null, endsAt: road.plannedTo ?? null, eventStatus: event.status, isSimulation: shape.data.isSimulation, status: freshRoadStatus(road.operationalStatus.effectiveStatus, road.operationalStatus.expiresAt), observedAt: road.operationalStatus.observedAt, expiresAt: road.operationalStatus.expiresAt });
    } else {
     const shape = z.object({ isSimulation: z.boolean(), summary: z.object({ totalTasks: z.number().int().nonnegative(), verifiedTasks: z.number().int().nonnegative(), submittedTasks: z.number().int().nonnegative(), inProgressTasks: z.number().int().nonnegative(), todoTasks: z.number().int().nonnegative(), reopenedTasks: z.number().int().nonnegative() }) }).safeParse(payload);
     if (shape.success) facts.push({ sourceId: `cleanup:${slug}`, publicUrl: event.publicUrl, title: event.title, status: event.status, isSimulation: shape.data.isSimulation, observedAt: null, expiresAt: null, summary: shape.data.summary });
    }
   }
   if (selected.intent !== "cleanup_summary") for (const fact of facts) fact.status = freshRoadStatus(String(fact.status), typeof fact.expiresAt === "string" ? fact.expiresAt : null);
-  if (facts.length) return c.json({ status: "answered", intent: selected.intent, answer: selected.intent === "road_status" ? "Status jalan berikut berasal dari laporan publik; status kedaluwarsa tidak terkonfirmasi dan jalan terbuka belum tentu lancar." : "Berikut ringkasan tugas kebersihan publik. Verifikasi kebersihan tidak membuka jalan secara otomatis.", sources: facts, searchUrl: "/events" });
+  if (facts.length) {
+   const evidence: AssistantAnswerEvidence[] = facts.map(fact => {
+    const groundedFacts = Object.fromEntries(Object.entries(fact).filter(([key]) => key !== "sourceId" && key !== "title" && key !== "publicUrl"));
+    return { sourceId: String(fact.sourceId), kind: selected.intent === "road_status" ? "road" : "cleanup", title: String(fact.title), facts: groundedFacts };
+   });
+   const answer = await makeAnswer(selected.intent, evidence);
+   if (!answer) return sendError(c, "DEPENDENCY_UNAVAILABLE", "Asisten tidak dapat memverifikasi jawaban. Coba lagi nanti.", 503);
+   const sources = answer.disposition === "answered" ? facts.filter(fact => answer.sourceIds.includes(String(fact.sourceId))) : [];
+   const citedEvidence = evidence.filter(item => answer.sourceIds.includes(item.sourceId));
+   const text = answer.disposition === "answered" ? preserveAssistantCaveats(answer.answer, selected.intent, citedEvidence) : answer.answer;
+   return c.json({ status: answer.disposition, intent: selected.intent, answer: text, sources, searchUrl: "/events", ...(selected.intent === "road_status" ? { mapUrl: "/peta" } : {}) });
+  }
  }
- return c.json({ status: "abstained", intent: selected.intent, answer: "Informasi yang diminta belum dapat dijawab. Cari kegiatan atau konfirmasi kepada petugas setempat.", sources: [], searchUrl: "/events" });
+ const answer = selected.intent === "out_of_scope"
+  ? "Pertanyaan ini di luar konteks Rangkai. Saya dapat membantu informasi kegiatan, status jalan, ringkasan kebersihan, dan panduan penggunaan."
+  : "Informasi yang diminta belum tersedia. Cari kegiatan atau konfirmasi kepada petugas setempat.";
+ return c.json({ status: "abstained", intent: selected.intent, answer, sources: [], searchUrl: "/events" });
 });
