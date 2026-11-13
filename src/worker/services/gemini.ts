@@ -276,11 +276,11 @@ export async function extractDocumentWithGemini(
 				schemaVersion,
 				latencyMs,
 				errorCode: "PROVIDER_ERROR",
-				errorMessage: `Gemini API returned HTTP ${response.status}. You may retry or enter event details manually.`,
+				errorMessage: `Gemini API returned HTTP ${finalResponse.status}. You may retry or enter event details manually.`,
 			};
 		}
 
-		const payload = (await response.json()) as {
+		const payload = (await finalResponse.json()) as {
 			candidates?: Array<{
 				content?: {
 					parts?: Array<{ text?: string }>;

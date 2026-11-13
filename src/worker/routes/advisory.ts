@@ -562,24 +562,29 @@ ATURAN KEAMANAN:
 2. DILARANG mengarang jalan baru, izin resmi polisi, atau jaminan kelancaran rute.
 3. Kembalikan JSON valid sesuai skema.`;
 
-			const res = await fetch(
-				`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(configuredModel)}:generateContent`,
-				{
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						"x-goog-api-key": apiKey,
-					},
-					body: JSON.stringify({
-						contents: [{ role: "user", parts: [{ text: prompt }] }],
-						generationConfig: {
-							temperature: 0.1,
-							responseMimeType: "application/json",
+			const callAdvisoryModel = (target: string) =>
+				fetch(
+					`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(target)}:generateContent`,
+					{
+						method: "POST",
+						headers: {
+							"Content-Type": "application/json",
+							"x-goog-api-key": apiKey,
 						},
-					}),
-					signal: controller.signal,
-				},
-			);
+						body: JSON.stringify({
+							contents: [{ role: "user", parts: [{ text: prompt }] }],
+							generationConfig: {
+								temperature: 0.1,
+								responseMimeType: "application/json",
+							},
+						}),
+						signal: controller.signal,
+					},
+				);
+			let res = await callAdvisoryModel(configuredModel);
+			if ((res.status === 404 || res.status === 503) && configuredModel !== "gemini-3.6-flash") {
+				res = await callAdvisoryModel("gemini-3.6-flash");
+			}
 			clearTimeout(timer);
 
 			if (res.ok) {
