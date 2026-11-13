@@ -7,7 +7,7 @@ export interface RoadRouteResult {
 	coordinates: Array<[number, number]>;
 	distanceMeters: number;
 	durationSeconds: number;
-	source: "osrm" | "fallback";
+	source: "osrm" | "ors" | "fallback";
 }
 
 export interface UserGuidanceRoute {
@@ -24,7 +24,7 @@ export interface UserGuidanceRoute {
 	routeName: string;
 	viaRouteName: string;
 	googleMapsUrl: string;
-	source: "osrm" | "fallback";
+	source: "osrm" | "ors" | "fallback";
 }
 
 const routeCache = new Map<string, RoadRouteResult>();
@@ -229,6 +229,72 @@ export function buildFallbackRoadGeometry(
 		durationSeconds,
 		source: "fallback",
 	};
+}
+
+function sampleGuidanceWaypoints(
+	coordinates: Array<[number, number]>,
+	maxPoints = 50,
+): Array<[number, number]> {
+	if (coordinates.length <= maxPoints) return coordinates;
+	return Array.from({ length: maxPoints }, (_, index) => {
+		const sourceIndex = Math.round(
+			(index * (coordinates.length - 1)) / (maxPoints - 1),
+		);
+		return coordinates[sourceIndex]!;
+	});
+}
+
+async function requestApprovedGuidanceRoute(
+	waypoints: Array<[number, number]>,
+	signal?: AbortSignal,
+): Promise<RoadRouteResult | null> {
+	try {
+		const response = await fetch("/api/public/routes/guidance", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ coordinates: waypoints }),
+			signal,
+			cache: "no-store",
+		});
+		if (!response.ok) return null;
+
+		const payload: unknown = await response.json();
+		if (!payload || typeof payload !== "object") return null;
+		const result = payload as Record<string, unknown>;
+		if (!Array.isArray(result.coordinates) || result.coordinates.length < 2) return null;
+		const coordinates: Array<[number, number]> = [];
+		for (const point of result.coordinates) {
+			if (
+				!Array.isArray(point) ||
+				point.length !== 2 ||
+				typeof point[0] !== "number" ||
+				typeof point[1] !== "number"
+			) {
+				return null;
+			}
+			const coordinate: [number, number] = [point[0], point[1]];
+			if (!isWithinBaliBounds(coordinate)) return null;
+			coordinates.push(coordinate);
+		}
+		const distanceMeters = result.distanceMeters;
+		const durationSeconds = result.durationSeconds;
+		if (
+			typeof distanceMeters !== "number" ||
+			!Number.isFinite(distanceMeters) ||
+			typeof durationSeconds !== "number" ||
+			!Number.isFinite(durationSeconds)
+		) {
+			return null;
+		}
+		return {
+			coordinates,
+			distanceMeters: Math.round(distanceMeters),
+			durationSeconds: Math.max(30, Math.round(durationSeconds)),
+			source: "ors",
+		};
+	} catch {
+		return null;
+	}
 }
 
 /**
@@ -602,10 +668,16 @@ export async function calculateUserBypassRoute(params: {
 	const candidate = candidates[0];
 	if (!candidate) return null;
 
-	const fullChain = [userLocation, ...candidate.coordinates, destination];
-	const snapped = await snapCoordinatesToRoad(fullChain, signal, { cache: false });
+	const fullChain = [userLocation, ...candidate.coordinates, destination].filter(
+		(point, index, all) =>
+			index === 0 || haversineDistanceMeters(all[index - 1]!, point) > 5,
+	);
+	const snapped = await requestApprovedGuidanceRoute(
+		sampleGuidanceWaypoints(fullChain),
+		signal,
+	);
 	if (
-		snapped.source !== "osrm" ||
+		!snapped ||
 		snapped.coordinates.length < 2 ||
 		!isClearOfClosedRoads(snapped.coordinates, closedSegments)
 	) {

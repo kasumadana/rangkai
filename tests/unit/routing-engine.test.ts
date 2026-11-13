@@ -97,6 +97,17 @@ const mockCeremony: BaliVillageCeremonyProfile = {
 	},
 };
 
+function guidanceResponse(
+	coordinates: Array<[number, number]>,
+	distanceMeters = 500,
+	durationSeconds = 90,
+): Response {
+	return new Response(
+		JSON.stringify({ coordinates, distanceMeters, durationSeconds }),
+		{ status: 200, headers: { "Content-Type": "application/json" } },
+	);
+}
+
 describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 	it("validates Bali coordinate bounds accurately", () => {
 		expect(isWithinBaliBounds([115.2169, -8.6559])).toBe(true);
@@ -154,7 +165,7 @@ describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 		expect(isWithinBaliBounds(origin)).toBe(true);
 	});
 
-	it("does not present fallback guidance when OSRM is unavailable", async () => {
+	it("does not present fallback guidance when ORS is unavailable", async () => {
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
 			.mockRejectedValue(new Error("offline"));
@@ -163,10 +174,25 @@ describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 			const userOrigin = deriveDefaultSimulatedUserOrigin(mockCeremony);
 			const guidance = await calculateUserBypassRoute({
 				userOrigin,
-				ceremony: mockCeremony,
+				ceremony: {
+					...mockCeremony,
+					alternativeRoutes: [
+						{
+							id: "approved-route-for-outage-test",
+							name: "Jalur terverifikasi",
+							coordinates: [
+								[115.219, -8.65],
+								[115.218, -8.647],
+								[115.212, -8.647],
+							] as Array<[number, number]>,
+						},
+					],
+				},
 			});
 
 			expect(guidance).toBeNull();
+			expect(fetchSpy).toHaveBeenCalledTimes(1);
+			expect(fetchSpy.mock.calls[0]?.[0]).toBe("/api/public/routes/guidance");
 		} finally {
 			fetchSpy.mockRestore();
 		}
@@ -206,22 +232,9 @@ describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 			[115.215, -8.651],
 			[115.218, -8.652],
 		];
-		const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-			ok: true,
-			json: async () => ({
-				code: "Ok",
-				routes: [
-					{
-						distance: 500,
-						duration: 90,
-						geometry: {
-							type: "LineString",
-							coordinates: candidateCoordinates,
-						},
-					},
-				],
-			}),
-		} as Response);
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockResolvedValue(guidanceResponse(candidateCoordinates));
 
 		try {
 			const guidance = await calculateUserBypassRoute({
@@ -247,27 +260,7 @@ describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 		};
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
-			.mockImplementation(async (input) => {
-				const coordinatePath = new URL(String(input)).pathname.split(
-					"/driving/",
-				)[1];
-				const coordinates = coordinatePath
-					.split(";")
-					.map((pair) => pair.split(",").map(Number) as [number, number]);
-				return {
-					ok: true,
-					json: async () => ({
-						code: "Ok",
-						routes: [
-							{
-								distance: 500,
-								duration: 90,
-								geometry: { type: "LineString", coordinates },
-							},
-						],
-					}),
-				} as Response;
-			});
+			.mockResolvedValue(guidanceResponse(closedRoad.coordinates));
 
 		try {
 			const guidance = await calculateUserBypassRoute({
@@ -307,26 +300,11 @@ describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 		};
 		const fetchSpy = vi
 			.spyOn(globalThis, "fetch")
-			.mockImplementation(async (input) => {
-				const coordinatePath = new URL(String(input)).pathname.split(
-					"/driving/",
-				)[1];
-				const coordinates = coordinatePath
-					.split(";")
-					.map((pair) => pair.split(",").map(Number) as [number, number]);
-				return {
-					ok: true,
-					json: async () => ({
-						code: "Ok",
-						routes: [
-							{
-								distance: 500,
-								duration: 90,
-								geometry: { type: "LineString", coordinates },
-							},
-						],
-					}),
-				} as Response;
+			.mockImplementation(async (_input, init) => {
+				const payload = JSON.parse(String(init?.body)) as {
+					coordinates: Array<[number, number]>;
+				};
+				return guidanceResponse(payload.coordinates);
 			});
 
 		try {
@@ -368,22 +346,11 @@ describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 			...bypass.coordinates,
 			[115.2208, -8.65],
 		];
-		const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-			ok: true,
-			json: async () => ({
-				code: "Ok",
-				routes: [
-					{
-						distance: 2200,
-						duration: 270,
-						geometry: {
-							type: "LineString",
-							coordinates: networkCoordinates,
-						},
-					},
-				],
-			}),
-		} as Response);
+		const fetchSpy = vi
+			.spyOn(globalThis, "fetch")
+			.mockImplementation(async () =>
+				guidanceResponse(networkCoordinates, 2200, 270),
+			);
 
 		try {
 			const guidance = await calculateUserBypassRoute({
@@ -406,11 +373,26 @@ describe("Routing Engine (Alternative Route & User Location Guidance)", () => {
 			expect(guidance).not.toBeNull();
 			expect(repeatedGuidance).not.toBeNull();
 			expect(fetchSpy).toHaveBeenCalledTimes(2);
+			expect(
+				fetchSpy.mock.calls.every(
+					([input]) => String(input) === "/api/public/routes/guidance",
+				),
+			).toBe(true);
+			const [, requestInit] = fetchSpy.mock.calls[0] ?? [];
+			const requestBody = JSON.parse(String(requestInit?.body)) as {
+				coordinates: Array<[number, number]>;
+			};
+			expect(requestInit?.method).toBe("POST");
+			expect(requestBody.coordinates[0]).toEqual(userLocation);
+			expect(requestBody.coordinates.length).toBeLessThanOrEqual(50);
+			expect(requestBody.coordinates).toEqual(
+				expect.arrayContaining(bypass.coordinates),
+			);
 			expect(guidance?.origin).toEqual(userLocation);
 			expect(guidance?.routeName).toBe(bypass.name);
 			expect(guidance?.isSimulation).toBe(true);
 			expect(guidance?.destination[0]).toBeGreaterThan(115.22);
-			expect(guidance?.source).toBe("osrm");
+			expect(guidance?.source).toBe("ors");
 			expect(
 				doesPathIntersectCorridor(
 					guidance?.coordinates ?? [],

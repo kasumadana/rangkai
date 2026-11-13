@@ -130,11 +130,13 @@ Do not equate:
 ### GPS route guidance privacy
 
 The browser requests location only after the user starts tracking. When it calculates
-personal route guidance, the current GPS coordinate and approved route waypoints are
-sent to the external OSRM endpoint at `router.project-osrm.org`. The application does
-not need to persist these coordinates. Tell users about this transfer while tracking
-is active, and do not log or store precise GPS coordinates. The provider's retention
-terms have not been verified in this project; review them before production use.
+personal route guidance, the current GPS coordinate and up to 50 ordered waypoints
+from the selected approved corridor are sent to the same-origin guidance endpoint.
+The Worker forwards the request to ORS using the server-side `ORS_API_KEY`; the key
+must never reach browser code. The application does not persist or log precise GPS
+coordinates and marks these responses `Cache-Control: no-store`. Tell users about
+this transfer while tracking is active. The provider's retention terms have not been
+verified in this project; review them before production use.
 
 ## 8. Audit Logs
 

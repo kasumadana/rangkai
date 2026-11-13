@@ -5180,29 +5180,30 @@
 }
 
 .teduh-dashboard-map-legend {
-	position: absolute;
-	bottom: 12px;
-	left: 12px;
-	background: rgba(255, 255, 255, 0.94);
-	backdrop-filter: blur(8px);
-	border: 1px solid var(--color-border);
-	border-radius: 4px;
-	padding: 6px 12px;
+	position: static;
+	width: 100%;
+	background: var(--color-surface);
+	border-top: 1px solid var(--color-border);
+	padding: 12px 16px;
 	display: flex;
 	align-items: center;
-	gap: 12px;
+	gap: 8px 16px;
 	flex-wrap: wrap;
 	font-size: 13px;
 	font-weight: 600;
 	color: #181B20;
-	z-index: 5;
-	box-shadow: none;
+}
+
+.teduh-legend-title {
+	font-weight: 700;
+	white-space: nowrap;
 }
 
 .teduh-legend-item {
 	display: inline-flex;
 	align-items: center;
 	gap: 5px;
+	line-height: 1.45;
 }
 
 .teduh-legend-item i {
@@ -5210,6 +5211,74 @@
 	width: 12px;
 	height: 4px;
 	border-radius: 2px;
+}
+
+.teduh-road-impacts-panel {
+	gap: 12px;
+}
+
+.teduh-road-impacts-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.teduh-road-impacts-count {
+	display: inline-flex;
+	min-width: 32px;
+	min-height: 32px;
+	align-items: center;
+	justify-content: center;
+	padding: 0 8px;
+	border: 1px solid var(--color-border);
+	border-radius: 4px;
+	color: var(--color-text-title, #181B20);
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+}
+
+.teduh-road-impacts-list {
+	min-width: 0;
+}
+
+.teduh-road-impact-row {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 12px;
+	min-width: 0;
+	padding: 14px 0;
+	border-top: 1px solid var(--color-border);
+}
+
+.teduh-road-impact-copy {
+	min-width: 0;
+	overflow-wrap: break-word;
+}
+
+.teduh-road-impact-copy p {
+	margin: 0;
+}
+
+.teduh-road-impact-copy p + p {
+	margin-top: 4px;
+}
+
+.teduh-road-impact-actions {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 8px;
+	min-width: 0;
+	padding-top: 12px;
+	border-top: 1px solid var(--color-border);
+}
+
+.teduh-road-impact-status {
+	max-width: 100%;
+	word-break: normal;
 }
 
 .workspace-menu-toggle, .workspace-menu-backdrop { display: none; }
@@ -5312,12 +5381,11 @@
 	}
 
 	.teduh-dashboard-map-legend {
-		left: 8px;
-		right: 64px;
-		bottom: 8px;
-		gap: 8px;
-		font-size: 12px;
+		padding: 12px;
+		gap: 8px 12px;
+		font-size: 13px;
 	}
+
 }
 
 @media (max-width: 480px) {
